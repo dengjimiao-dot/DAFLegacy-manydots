@@ -571,7 +571,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **统一日志系统 + 逐包捕获 + 工具拆分**(2026-09-29,自参考项目 `FileLogger.cs`/`PacketFileLogger.cs`/`BoundedAsyncLogQueue.cs` 迁移,变体:DI 而非全局静态——回应 §10.3 对全局静态 FileLogger 的批评):`Network/Core/BoundedQueueFileLoggerProvider`(ILoggerProvider,有界队列 8192 + 单后台消费者 + 排空退出)统一落盘 `logs/server.log`,与简单控制台共享同一批 ILogger 事件;`Network/Core/PacketFileLogSink`(IPacketTapSink,默认关闭,`DFLegacy:PacketCapture` 配置,64MB 轮转)挂既有 Tap 漏斗;漏斗扩为多端口并集(`RuntimeState.AddTapSink/RemoveTapSink`,MCP hub 与包捕获并存);`HexDump.ToSpacedHex` 自 LogPacket 拆出为 Core 共享工具(加解密/明文解码工具已在 Core,日志层仅做排版);`LoggingOptions`/`PacketCaptureOptions` 入 `Infrastructure/ServerOptions`;新自测套件 `file-logger`(队列丢包/落盘/轮转/捕获/多端口分发)。
 - **`Hosting/` 并入 `Infrastructure/`,会话注册表入 `Game/Session/`**(2026-09-29,镜参考项目 `Infrastructure/` 与 `Game/Session/SessionDirectory`):`ServerOptions`/`PathResolver`/`AdminApiModels` → `Infrastructure/`;`CharacterSessionRegistry` → `Game/Session/`;空目录 `Hosting/` 移除。命名空间不变,调用点零改动。`Properties/` 为 SDK/IDE 约定(`AssemblyInfo.cs` 的 InternalsVisibleTo 与 launchSettings.json),不动;`Services/`(疲劳重置/虚弱恢复后台循环)待 R6 事件入队改造后随其最终形态归位。
 - **共享助手归口**:ChannelSessionSenders 承接库存移动发送器/精灵移动规划簇/库存空间校验族(FindFreeInventorySlot/TryGetInventorySpace/IsInventorySlotValid/兼容槽与部分堆叠搜索)、SendPremiumServiceInfo/SendTownFatigueState;CreatureInventoryMovePlan 迁至 Game/Inventory/。
-- **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;按 4.7 单文件上限的子流程拆分作为遗留项(见 11.4)。
+- **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;其后的按子流程拆分已于同轮完成(四个 partial,见 §11.4)。
 - **规模**:EntranceService.cs 14,832 → 5,128 行;累计挂载协议 43/71;SelfTests 20 套件全量通过(真机冒烟仍为遗留项)。
 
 ### 11.4 遗留项

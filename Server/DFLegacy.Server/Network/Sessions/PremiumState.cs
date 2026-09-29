@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace DFLegacy.Server;
 
 /// <summary>
@@ -7,4 +9,10 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class PremiumState
 {
+    public ConcurrentQueue<(byte ServiceType, uint RemainingSeconds)> PendingUpdates = new();
+
+    public ConcurrentDictionary<byte, long> ExpiryUnix = new();
+
+    /// <summary>Pending cash value from the account service; -1 means none.</summary>
+    public int PendingCeraValue = -1;
 }

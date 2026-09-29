@@ -1,6 +1,6 @@
 # 09 · DAF-MCP 总网关（一）：协议包实时监听（Packet Tap）
 
-- 状态：**已实现**（2026-09-29 核定：G1 协议包监听随 commit `7e12da7` 落地，代码见 `Server/DFLegacy.Mcp/`、`Server/DFLegacy.Server/Tap/IPacketTapSink.cs` 与 `Infrastructure/McpModuleLoader.cs`，§6 全部 7 个工具均已提供；G2 PVF 工具组尚未实施，见 §15.2）
+- 状态：**已实现**（2026-09-29 核定：G1 协议包监听随 commit `7e12da7` 落地，代码见 `Server/DFLegacy.Mcp/`、`Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs` 与 `Infrastructure/McpModuleLoader.cs`，§6 全部 7 个工具均已提供；G2 PVF 工具组尚未实施，见 §15.2）
 
 ---
 
@@ -102,17 +102,25 @@ DFLegacy.Server ──✗──► DFLegacy.Mcp      （编译期零引用，靠
 
 - **编译期**：`DFLegacy.Server.csproj` 不引用 `DFLegacy.Mcp`，无循环。Server 侧唯一新增是约 20 行加载器 `Infrastructure/McpModuleLoader.cs`（反射 `Assembly.Load("DFLegacy.Mcp")`，找到 `IMcpModule` 入口调用 `Attach`），Program.cs 对它只加 1 行调用。该加载器是通用机制，不含 MCP 业务语义。
 - **运行期**：`Enabled=true` 且输出目录存在 `DFLegacy.Mcp.dll` → 激活；DLL 缺失、加载抛错、初始化异常 → 记一条警告后继续运行，游戏服务永远不受影响。`Enabled=false`（默认）→ 加载器短路。
-- **契约归属规则**：共享类型必须住在**被引用的一侧**（`Mcp → Server` ⇒ 两边都要用的类型只能放 Server，否则循环引用）。据此 Server 侧压到理论最小：`Tap/` 只留 1 个文件的遥测接缝 `IPacketTapSink`（原始参数直传，不含 MCP 词汇，§4.1）；事件模型、富化、hub 全在 `DFLegacy.Mcp`——给事件加字段不改 Server。
+- **契约归属规则**：共享类型必须住在**被引用的一侧**（`Mcp → Server` ⇒ 两边都要用的类型只能放 Server，否则循环引用）。据此 Server 侧压到理论最小：`Network/Core/` 留 1 个文件的遥测接缝 `IPacketTapSink`（原始参数直传，不含 MCP 词汇，§4.1）；事件模型、富化、hub 全在 `DFLegacy.Mcp`——给事件加字段不改 Server。
 
 ---
 
 ## 4. 抓包契约与事件模型
 
-### 4.1 Server 侧：遥测接缝（`Server/DFLegacy.Server/Tap/IPacketTapSink.cs`，唯一 1 个文件）
+### 4.1 Server 侧：遥测接缝（`Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`，唯一 1 个文件）
 
 ```csharp
 // 服务端声明"我能对外提供协议流原始数据"的端口；不含任何 MCP 概念
 public enum TapDecodeMode { None, ClientCmd, Server }  // 富化提示，按现有 LogPacket 两个重载的选择逻辑传入
+
+> 2026-09-29 修订（多端口与逐包捕获）：漏斗由单槽扩展为「单槽端口 + 注册端口」并集分发
+> （`RuntimeState.AddTapSink/RemoveTapSink`，任一 `Active` 即发布）；新增
+> `Network/Core/PacketFileLogSink.cs`（自参考项目 PacketFileLogger 迁移的逐包十六进制捕获，
+> 默认关闭，`DFLegacy:PacketCapture` 配置，64MB 轮转），与 DAF-MCP hub 并存互不挤占。
+> 统一文件日志 `Network/Core/BoundedQueueFileLoggerProvider.cs`（`DFLegacy:Logging` 配置）经
+> Microsoft.Extensions.Logging 管线全量落盘 `logs/server.log`，与包捕获分离。
+
 
 public interface IPacketTapSink
 {
@@ -162,7 +170,7 @@ public sealed record PacketTapEvent(
 public sealed class RuntimeState
 {
     private bool _tracingEnabled;                 // 组合根启动时置位（= options.EnablePacketTracing）
-    public IPacketTapSink? TapSink { get; set; }  // MCP 模块激活时由加载器注入
+    public IPacketTapSink? TapSink { get; set; }  // 单槽端口（兼容）；多端口用 AddTapSink/RemoveTapSink
     private bool TapActive => TapSink is { Active: true };
 
     public void TracePacket(RuntimeSession session, string direction,
@@ -205,7 +213,7 @@ Server/
 │   ├── DFLegacy.Server.csproj    不变（不引用 Mcp）
 │   ├── Program.cs                +1 行：McpModuleLoader.TryAttach(...)
 │   ├── Infrastructure/McpModuleLoader.cs   ← 新增，~20 行反射加载器
-│   ├── Tap/IPacketTapSink.cs     ← 新增，1 个文件（§4.1 遥测接缝）
+│   ├── Network/Core/IPacketTapSink.cs     ← 遥测接缝（§4.1；原 Tap/ 已并入 Network/Core）
 │   ├── Persistence/RuntimeState.cs  §5.1 漏斗改造（+~25 行）
 │   └── Infrastructure/ServerOptions.cs  +McpOptions{Enabled,Host,Port}（与 AdminOptions 同构，+3 属性；原 Hosting/ 已并入 Infrastructure/，见 07 §11）
 └── DFLegacy.Mcp/                 ← 新增模块项目（引用 Server + MCP SDK + AspNetCore FrameworkReference）
@@ -422,7 +430,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ### M1 · 漏斗与遥测接缝（无 MCP，可独立合入）
 
-- 新增 `Server/DFLegacy.Server/Tap/IPacketTapSink.cs`（1 个文件：接口 + `TapDecodeMode` 枚举）
+- 新增 `Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`（1 个文件：接口 + `TapDecodeMode` 枚举）
 - `RuntimeState`：`_tracingEnabled` + `TapSink` 属性 + 原始参数 Publish；`TracePacket` 增加 `rawFrame` 可选参
 - `Network/*`：按 §5.2 清单删门卫
 - `Program.cs`：`runtime._tracingEnabled = options.EnablePacketTracing` 装配（1 行）

@@ -1,7 +1,7 @@
 # 未分组已实现包格式(60A1)
 
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> 字段表来源:服务端 `GameProtocolEngine.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
+> 字段表来源:服务端分组构建器 `Network/Builders/<组>/<组>PacketBuilders.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
 > 本组收录未归入功能分组的已实现协议。
 
 ## NOTI 3 `ENUM_NOTIPACKET_USER_STATE` — 用户状态 ✅

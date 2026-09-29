@@ -1,7 +1,7 @@
 # 登录/角色选择包格式(60A1)
 
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> 字段表来源:服务端 `GameProtocolEngine.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
+> 字段表来源:服务端 `Network/Builders/Connection/ConnectionPacketBuilders.cs` 与 `Network/Builders/Characters/CharactersPacketBuilders.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
 > 本组核心是 NOTI 2 `USERINFO` 的四种变体(选角列表 / 城镇角色 / 当前角色详情 / 对端上下文);本文档详登记前三种,mode 3 见 [packet-detail-party-60cn.md](packet-detail-party-60cn.md)。
 
 ## CMD 1 `ENUM_CMDPACKET_LOGIN` — 登录 ✅

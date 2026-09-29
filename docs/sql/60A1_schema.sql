@@ -28,7 +28,7 @@
 --
 --   * 物品列不采用 86 的 item_core 99B BLOB：其成立前提是"DB 行 = 线上
 --     99B 物品结构体的逐字节暂存"（86 客户端 wire 即该结构体，库→线路
---     零映射）；60A1 的物品线路字段由 GameProtocolEngine 逐字段编码，
+--     零映射）；60A1 的物品线路字段由 Network/Builders/ 分组构建器逐字段编码，
 --     不存在可逐字节搬运的 core 结构。扁平列可查、类型安全，
 --     字节级行为由 PacketDumper golden 测试在协议层守护。
 --

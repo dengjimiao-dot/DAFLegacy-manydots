@@ -254,7 +254,7 @@ Unhandled exception. System.IO.FileNotFoundException:
    - **路径归一用例**：`\` 与 `/` 两种输入的等价性。
    - **目录回退的大小写用例**（R8）。
    - **边界用例**：条目长度非 4 字节倍数、偏移越界、路径表长度非法、`pathLength <= 0`。
-2. 在自测项目中新增 `Random/` 目录：覆盖 [06 · 三类随机](06-random-source-managed.md) 的边界——裁决随机的分布与确定性替身（`SeededRandomSource`），以及**密码学随机不得被替换**（`EntranceProtocolEngine` 的会话密钥必须仍走 `RandomNumberGenerator`）。
+2. 在自测项目中新增 `Random/` 目录：覆盖 [06 · 三类随机](06-random-source-managed.md) 的边界——裁决随机的分布与确定性替身（`SeededRandomSource`），以及**密码学随机不得被替换**（`EntranceHandshakeReplies` 的会话密钥必须仍走 `RandomNumberGenerator`）。
 3. 自测项目的现有覆盖保持，加入三平台 CI 矩阵。
 
 **判定**：自测项目在三个平台均通过——沿用仓库现有的**自建 runner**（Exe + 退出码，无测试框架，见 [03 · 5.2](03-build-release-ci.md#52-测试运行器风格的取舍)），不使用 `dotnet test`；测试运行时不需要 `Script.pvf`，也不写仓库目录之外的路径。

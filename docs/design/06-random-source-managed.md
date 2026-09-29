@@ -166,7 +166,7 @@ DFLegacy 有 `ClientRandomSeed` 的概念，但它只是**由裁决随机生成�
 
 | 位置 | 用途 | 处置 |
 | --- | --- | --- |
-| `EntranceProtocolEngine.cs:10` | `GetBytes(32)` 会话密钥材料 | **必须保持 CSPRNG**。这是密码学用途，改走伪随机会是安全退化，不是简化 |
+| `EntranceHandshakeReplies.cs:10` | `GetBytes(32)` 会话密钥材料 | **必须保持 CSPRNG**。这是密码学用途，改走伪随机会是安全退化，不是简化 |
 | `JsonGameStore.cs:5545` | 分配唯一邮件 ID（`GetInt32(1, int.MaxValue)` + 1024 次重试） | 属"唯一性分配"，非玩法裁决。建议**原样保留**，但在模块注释中记为显式例外，避免"单一入口"规则被后续改动无声破坏 |
 
 这两处说明：**参考项目的"两类"规则在 DFLegacy 必须扩成"三类"**（§4.1）。
@@ -190,7 +190,7 @@ B) DllImport("DFLegacy.RandomNative.dll")（现版写法）        → DllNotFou
 
 | 类别 | 用途 | 实现 | DFLegacy 实例 |
 | --- | --- | --- | --- |
-| **密码学随机** | 会话密钥、令牌、任何需要不可预测的字节 | `RandomNumberGenerator` | `EntranceProtocolEngine.cs:10` |
+| **密码学随机** | 会话密钥、令牌、任何需要不可预测的字节 | `RandomNumberGenerator` | `EntranceHandshakeReplies.cs:10` |
 | **服务端裁决随机** | 掉落、奖励、强化、合成、商店内容、迷宫/怪物抽取 | **本提案的单一托管实现** | 42 处调用点 / 16 文件 |
 | **客户端可复算随机** | 客户端要按同一种子复算的序列 | 客户端 LCG 的服务端复刻（本提案暂不引入，见 §7 · Q1） | **当前无** |
 | （附）唯一性分配 | 唯一 ID 生成 | 保持现状 | `JsonGameStore.cs:5545` |
@@ -232,7 +232,7 @@ public interface IDropRandomSource
 //
 // 环境约束：这里刻意不使用密码学随机——裁决随机对玩法结果的影响只需
 // 分布正确与不可预测到"玩家无法在正常游玩中利用"的程度。会话密钥等
-// 密码学材料必须继续走 RandomNumberGenerator（见 EntranceProtocolEngine）。
+// 密码学材料必须继续走 RandomNumberGenerator（见 EntranceHandshakeReplies）。
 public sealed class GameRandomSource : IDropRandomSource
 {
     public static GameRandomSource Shared { get; } = new();
@@ -396,7 +396,7 @@ GameRandomSource
 | 构建图 | `DFLegacy.Server.csproj` 的 `ProjectReference` 不含原生项目（`.slnx` 2026-09-23 修订后重新含 `.vcxproj`，不以此为准） |
 | 三平台启动 | 服务端在 win-x64 / linux-x64 / osx-arm64 均正常启动，日志 provider 字段为托管实现，无任何原生相关字段 |
 | 分布式行为不变 | 42 处调用点的分布抽样行为与改动前一致（掉落/奖励/强化/合成各抽样自测） |
-| 密码学未退化 | `git grep "RandomNumberGenerator" Server/DFLegacy.Server/` 仍命中 `Protocol/EntranceProtocolEngine.cs` |
+| 密码学未退化 | `git grep "RandomNumberGenerator" Server/DFLegacy.Server/` 仍命中 `Network/Protocol/EntranceHandshakeReplies.cs` |
 | 包内容 | 任一发布产物中不存在 `runtimes/*/native/*` |
 | 自测 | 自测项目在三平台通过，且不再使用 `GameRandomSource` 的注入委托构造器 |
 | API | `/api/status` 正常返回；后台界面 `wwwroot/admin/` 正常加载 |

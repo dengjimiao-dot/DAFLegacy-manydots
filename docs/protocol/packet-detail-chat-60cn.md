@@ -1,7 +1,7 @@
 # 聊天包格式(60A1)
 
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> 字段表来源:服务端 `GameProtocolEngine.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
+> 字段表来源:服务端 `Network/Builders/Chat/ChatPacketBuilders.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
 > 喇叭(物品 36/37)变体的实测推导、type 13/14 的 IDA 实证与标志字节语义登记于本册 CMD 17 与 NOTI 130 节（原暂存于 new-packet-formats-60cn.md，已收敛至此）。
 
 ## CMD 17 `ENUM_CMDPACKET_SEND_MESSAGE` — 发送聊天消息 ✅

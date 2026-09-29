@@ -1,7 +1,7 @@
 # 角色状态包格式(60A1)
 
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> 字段表来源:服务端 `GameProtocolEngine.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
+> 字段表来源:服务端 `Network/Builders/Characters/CharactersPacketBuilders.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
 
 ## CMD 9 `ENUM_CMDPACKET_RECOVER_STAMINA` — 疲劳度恢复(购疲劳) ✅
 

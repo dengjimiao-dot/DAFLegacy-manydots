@@ -3,7 +3,7 @@
 > - **目的**:回答"未实现的包,如何确认服务端应答回包(服务端→客户端)的字段格式与长度"。结论:不靠猜,客户端解析代码本身就是格式的权威定义——**case 内读取顺序 = 线上字段顺序,读取器游标推进量 = 字段宽度,全部推进之和 = 精确载荷长度**(帧总长 = 6 + 载荷)。
 > - **验证环境**:客户端主程序 IDA 库(ImageBase 0x400000, Hex-Rays 就绪),经 ida-pro-mcp HTTP 端点 `http://127.0.0.1:13337/mcp` 操作,文中所有地址均已在 IDB 实证。
 > - **配套工具**:`tools/extract_noti_readers.py`(批量提取某 NOTI 的读取序列);帧头与加解密实证见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> - **服务端对应物**:回包构建 `Server/DFLegacy.Server/Network/Core/GameServerPacket.cs`(6B 头自动写长度);明文回读 `Network/Core/PacketPlainText.cs`(当前保留未接入);分发 `Network/EntranceService.cs` + `Network/Protocol/GameProtocolEngine.cs`。
+> - **服务端对应物**:回包构建 `Server/DFLegacy.Server/Network/Core/GameServerPacket.cs`(6B 头自动写长度);明文回读 `Network/Core/PacketPlainText.cs`(当前保留未接入);分发 `Network/EntranceService.cs` + `Network/Dispatch/`(注册表与分发器,未命中回落 `Network/Protocol/FallbackCommandReplies.cs`)。
 
 ## 1. 核心原理
 
@@ -194,7 +194,7 @@ dstr message      // cap=0x200(512B)
 1. **`sub_419420` 不可反编译**(Hex-Rays 返回 None),一切 NOTI 分析走"跳转表 → case 区间反汇编";不要试图重建函数。
 2. **case 边界靠排序推断**,尾部 `0x42A069` 是共享 default;仅被 default 引用的 id(见 §4)没有本路径解析。
 3. **py_eval 是 exec 环境**:模块级 import/变量在函数与推导式里不可见,脚本写扁平;异常会原样回传 stderr。
-4. **u16 字段可能只取低字节**,但线上宽度仍是 2 字节——偷工减料会让后续字段全部错位(表现为黑屏/字段漂移,与 `GameProtocolEngine.cs` 中 NOTI 126 等注释的教训一致)。
+4. **u16 字段可能只取低字节**,但线上宽度仍是 2 字节——偷工减料会让后续字段全部错位(表现为黑屏/字段漂移,与分组构建器(`Network/Builders/`)中 NOTI 126 等注释的教训一致)。
 5. **type=1 与 type=0 分发器是两套 case 空间**(且 type=1 有 LUT 二次映射),不要把 CMD 号直接当 NOTI 号查。
 6. **次要路径**:解密器 `sub_776F80` 另有一个调用者 `sub_78EE00`(未调查);`sub_40D6D0` 尾部还有按状态的虚函数转发。个别包若在主路径为 default,先查这两处再下"客户端忽略"的结论。
 7. **发包(客户端→服务端)方向的格式确认是同一方法的镜像**:从打包器 `sub_8B24C0` 的调用点(xrefs)进入发送侧构造函数,读写入序列即可;帧头与加密实证见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。

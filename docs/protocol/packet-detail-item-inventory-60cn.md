@@ -1,7 +1,7 @@
 # 物品/背包包格式(60A1)
 
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> 字段表来源:服务端 `GameProtocolEngine.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
+> 字段表来源:服务端 `Network/Builders/Inventory/InventoryPacketBuilders.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
 > 大多数物品操作的最终背包变化都以 NOTI 14 增量更新呈现;全量列表走 NOTI 13。
 
 ## NOTI 13 `ENUM_NOTIPACKET_ITEM_LIST` — 全量物品列表 ✅

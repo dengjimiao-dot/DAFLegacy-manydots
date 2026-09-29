@@ -185,7 +185,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   不再用草案的 `container`。
 - **不采纳 86 的 `item_core` 99 字节 BLOB 物品模型**：其成立前提是「DB 行 = 线上 99B
   物品结构体的逐字节暂存」——86 客户端的 wire 格式就是该结构体，库→线路零映射。
-  60A1 的物品线路字段由 `GameProtocolEngine` 逐字段编码，不存在可逐字节搬运的
+  60A1 的物品线路字段由 `Network/Builders/` 分组构建器逐字段编码，不存在可逐字节搬运的
   core 结构；引入 BLOB 只会多出一层无人消费的编解码器，且列不可查（Admin 排查退化为
   hex）、单字段更新变成整包重写。60 物品 16 个字段少且稳定，扁平列 + PacketDumper
   golden 测试在协议层守护字节级行为，职责不混。

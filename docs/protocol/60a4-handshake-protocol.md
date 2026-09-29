@@ -1,7 +1,7 @@
 # DNF.exe 60A4 (DNF_ACT1_0918) 入口握手协议文档
 
 > 来源：对 `DNF_ACT1_0918/60A4/DNF.exe` 的静态逆向（2026-09-28）。
-> 用途：与本项目 `Server/DFLegacy.Server/Protocol/`（`PacketFrame` / `EntranceProtocolEngine` /
+> 用途：与本项目 `Server/DFLegacy.Server/Network/`（`PacketFrame` / `EntranceHandshakeReplies` /
 > `EntranceCrypto` / `EntranceMetadata`）做一致性核对。仅用于自有程序兼容性研究。
 >
 > ⚠️ 样本注意：本样本带 VMProtect 壳，`ChannelScript.pvf` 字符串为**脱壳者手动注入的节点**，
@@ -63,7 +63,7 @@
 | 0x9bdc34 | 发送协议 5：`proto=5, totalLen=0x1b`，CRC=0，recordCount=1，随后单独 `send` 16 字节加密载荷 |
 | 0x9bcb40 | 收包循环包装（select + recv，EWOULDBLOCK/WSAEINPROGRESS 等错误码处理） |
 
-## 4. 密钥交换（协议对 11/12，与 `EntranceProtocolEngine.CreateKeyReply` 一致）
+## 4. 密钥交换（协议对 11/12，与 `EntranceHandshakeReplies.TryCreateReply` 的协议 11 分支一致）
 
 - **客户端请求（11）**：帧总长 0x2b = 10 头 + 1 recordCount + 32 字节载荷。载荷为
   一个 C 字符串（先 `strlen`）经会话加密对象（见 §6）加密成 32 字节。
@@ -102,7 +102,7 @@
 - 0x9bca50 发送协议 9 请求后，变长大包回包由 §6 的通用流水线处理。
 - **⚠️ 样本注意**：`ChannelScript.pvf` 字符串（@0x83cc80）是脱壳者手动注入的节点，
   原版程序只加载 `Script.pvf`（@0xc1c5f8 处还有 `Script.pvf` 引用，xref @0x7d47fb）。
-  项目当前 `EntranceProtocolEngine` 以协议 5 回包引导客户端走协议 9 下载
+  项目当前 `EntranceHandshakeReplies` 以协议 5 回包引导客户端走协议 9 下载
   `ChannelScript.pvf` 的路径需在拿到原版 DNF.exe 后重新核对（原版可能直接读本地
   `Script.pvf`，或协议 9 的语义/文件名不同）。
 - 接收端还实测到一个项目未实现的协议号 **18 (0x12)**（0x9bdfa8 校验），同样走

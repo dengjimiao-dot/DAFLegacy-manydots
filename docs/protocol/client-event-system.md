@@ -119,7 +119,7 @@ payload：`{u32 featureFlags}`（0x4286A8 case 120）。
 `i == 15`（bit 15）另有特殊分支。语义与 `Network/EntranceService.cs` 现有注释一致：
 **"EVENT_INFO then selects and initializes its normal/premium fatigue-bar resources"**，
 即燃烧疲劳/普通疲劳条皮肤选择。PVF 侧对应标签 `[burning fatigue event param]`
-（解析于 `sub_76ACF0`）。服务端已实现：`GameProtocolEngine.CreateEventInfo(featureFlags)`
+（解析于 `sub_76ACF0`）。服务端已实现：`StaminaPacketBuilders.CreateEventInfo(featureFlags)`
 （`EventInfoNotification = 120`）。
 
 ## 4. 活动 UI 类与资源（均非死数据）

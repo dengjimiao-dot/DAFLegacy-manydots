@@ -36,8 +36,8 @@ DFLegacy/                                        ← 仓库根
 │   │   │
 │   │   ├── Protocol/                           [移 M0] 线路协议与数据格式     11 个 .cs / 4,470 行
 │   │   │   │                                    原独立项目 DFLegacy.Protocol 整体并入
-│   │   │   ├── GameProtocolEngine.cs            协议主引擎（119 KB）
-│   │   │   ├── EntranceProtocolEngine.cs  EntranceCrypto.cs  EntranceMetadata.cs
+│   │   │   ├── GameProtocolConstants.cs  FallbackCommandReplies.cs   帧类型/域常量 + 兜底应答表
+│   │   │   ├── EntranceHandshakeReplies.cs  EntranceMetadata.cs      入口握手应答 + 频道元数据
 │   │   │   ├── GameClientPayloadCipher.cs  GameDatagramProtocol.cs  LegacyDatagramProtocol.cs
 │   │   │   ├── PacketFrame.cs  GameServerPacket.cs  Crc32.cs
 │   │   │   └── PvfArchiveReader.cs              PVF 归档二进制解析
@@ -631,7 +631,7 @@ WinForms 启动器。**功能不跨平台，本设计只做构建解耦。**
 
 | 类别 | 实现 | DFLegacy 实例 |
 | --- | --- | --- |
-| **密码学随机** | `RandomNumberGenerator`，**必须保留** | `EntranceProtocolEngine.cs` 的会话密钥材料 |
+| **密码学随机** | `RandomNumberGenerator`，**必须保留** | `EntranceHandshakeReplies.cs` 的会话密钥材料（`EntranceSessionState.KeyMaterial`） |
 | **服务端裁决随机** | 本模块的单一托管实现（`Random.Shared`） | 42 处调用点 / 16 个文件 |
 | **客户端可复算随机** | 客户端 LCG 的服务端复刻 | **当前无实现**（是否引入见 [06 · Q1](06-random-source-managed.md#7-待确认问题)） |
 

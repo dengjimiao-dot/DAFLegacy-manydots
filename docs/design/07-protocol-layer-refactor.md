@@ -20,7 +20,7 @@ TCP(游戏协议, channel/entrance 双端口)
        │                                        pendingCeraValue / pendingFatigueReset / pendingWeaknessRecovery
        └─ 69 处具名 `request.ProtocolId` 判等   if/else 链(71 个协议号:69 具名无一复用
                                              + 组队族 CMD 10-14 区间接管)+ ≈216 个局部函数共享约 30 个闭包变量
-            ├─ GameProtocolEngine.Create*       纯函数构造回包                             [Protocol/, 保留]
+            ├─ <组>PacketBuilders.Create*        纯函数构造回包                             [Builders/, 保留]
             ├─ frame.WriteAsync(stream) ×343    直写 NetworkStream(单写者靠"都写在同一条异步流里"的纪律)
             └─ 跨会话推送                        邮件提醒/小喇叭(NOTI 130)等经 SessionRegistry 回调,
                                                 在调用者线程 `_ = Send…Async(...)` fire-and-forget 直写他连 stream
@@ -77,7 +77,7 @@ UDP(NAT 探测/保活/血量同步)
 - G2 连接会话状态对象化:`HandleClientAsync` 的局部变量收进 `ChannelSessionState` 分域状态对象,handler 只依赖自己需要的状态域。
 - G3 发送通道化:出站统一走有界 `Channel<T>` + 每连接单写者泵,单写者由**机制**保证而非纪律;跨线程事件(邮件提醒、会员到期、点券、疲劳重置)统一变为"入队事件"。
 - G4 定时器统一调度:premium 到期、翻牌截止、选择倒计时收进一个每连接调度器,事件与读帧在同一处 `WhenAny` 交织(保留现有时序语义)。
-- G5 Parser / Builder 分层:请求解析从业务分支里抽出为纯函数(现有 `TryRead*` 迁移),回包构造继续用 `GameProtocolEngine.Create*`。
+- G5 Parser / Builder 分层:请求解析从业务分支里抽出为纯函数(现有 `TryRead*` 迁移),回包构造继续用 `Network/Builders/<组>/<组>PacketBuilders.Create*`。
 - G6 可测试性:每个 handler 可独立构造、独立断言(字节级 golden 测试)。
 
 **非目标**
@@ -86,7 +86,7 @@ UDP(NAT 探测/保活/血量同步)
 - N2 不改协议核心层(`Protocol/` 现有 13 个文件)。
 - N3 不改领域逻辑行为(`Game/`、`GameWorld/` 只被调用,不被修改)。
 - N4 不实现多频道/横向扩容,仅为它留路(每连接独立缓冲、无全局锁的传输层已满足前提)。
-- N5 不动入口 AES 信道脚本协议(`EntranceProtocolEngine` 及其在 `EntranceService` 内的对应处理段)。2026-09-29 勘误:原文误引参考项目类名 `ChannelProtocolHandler`,本仓库无此符号。
+- N5 不动入口 AES 信道脚本协议(`EntranceHandshakeReplies`,原 `EntranceProtocolEngine`;及其在 `EntranceService` 内的对应处理段)。2026-09-29 勘误:原文误引参考项目类名 `ChannelProtocolHandler`,本仓库无此符号。
 
 ## 3. 设计原则(不变量)
 
@@ -115,7 +115,7 @@ UDP(NAT 探测/保活/血量同步)
 ├─ Handlers(Network/Handlers/<组>/, 新增,薄编排;大类见 4.8)┤
 │   Parser(静态 TryParse → request record)                  │
 │   → Game/ 领域函数(不动) → GameWorld/ 目录(不动)        │
-│   → GameProtocolEngine.Create*(不动)                     │
+│   → <组>PacketBuilders.Create*(不动)                    │
 ├─ Session State ──────────────────────────────────────────┐
 │   ChannelSessionState(Login/Roster/Character/Inventory/   │
 │   Skill/Quest/Dungeon/Town/Mailbox 分域)                  │
@@ -248,17 +248,17 @@ public static class MailboxParsers
 // Handler:薄编排——解析 → 调 Game/ 领域函数 → 入队回包
 public sealed class MailboxOpenHandler(...) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.MailboxOpenCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.MAILBOX_OPEN;
     public async ValueTask HandleAsync(ConnectionContext ctx, PacketFrame frame, CancellationToken ct)
     {
         if (!MailboxParsers.TryParseOpen(frame)) { await ctx.Outbound.SendAsync(...error...); return; }
         var snapshot = MailboxProjector.BuildSnapshot(ctx.State.Mailbox, ctx.State.Character);
-        await ctx.Outbound.SendAsync(GameProtocolEngine.CreateMailboxSnapshot(snapshot));
+        await ctx.Outbound.SendAsync(MailboxPacketBuilders.CreateMailboxSnapshot(snapshot));
     }
 }
 ```
 
-- `GameProtocolEngine.Create*` 全部保留原样(纯函数、已被 golden 测试覆盖)。
+- `Network/Builders/<组>/<组>PacketBuilders.Create*` 全部保留原样(纯函数、已被 golden 测试覆盖)。
 - handler 禁止持有跨连接状态;需要共享的只允许注入只读目录/存储服务。
 - **单文件上限纪律**:handler/局部 coordinator 文件超过约 800 行必须按协议或子流程拆分(partial 或子类型)。ServerS4A21 的教训:分层本身不防巨石,其 PvpRoomHandler(5,288 行)、DungeonEntryHandler(4,938 行)就是"handler 化之后再巨石化"的样例;本方案以 15 组为上限粒度、超限即拆,不允许组内再长成单文件。
 
@@ -304,7 +304,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 
 1. 会话阶段相同(U3 门槛一致)者优先同大类;
 2. 主状态域尽量不相交;跨域协议按"回包主导方"归属(任务触发物品变动,但推进与回包以 Quest 为主,归 Quest 组);
-3. 与 `Game/` 领域目录、`GameProtocolEngine.Create*` 家族前缀对齐,保持一套词汇。
+3. 与 `Game/` 领域目录、`Network/Builders/<组>/<组>PacketBuilders.Create*` 家族前缀对齐,保持一套词汇。
 
 形态约定:
 
@@ -340,6 +340,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 3. **注册组名**:小写,复合词 kebab-case(循其 `equipment-item-lock` 形态);两级 `<大类>.<组>`,大类前缀(session/progression/social/economy/world/combat)小写单词,仅用于注册与测试选择器,不落目录。
 4. **类型名**:Handler 按 `<协议名>Handler`(如 `MailboxOpenHandler`);Parser 按 `<组>Parsers`(如 `MailboxParsers`);Builder 在 R7 拆分后按 `<组>PacketBuilders`(循其 `*BodyBuilder` 词汇)。
 5. **协议号常量与枚举分向**:CMD 侧维持 `*Command` 后缀、NOTI 侧维持 `*Notification` 后缀(如 `RenameCreatureCommand` / `StaminaNotification`)——两向共用 0–255 号段且同号不同义(CMD 10 组队邀请、NOTI 10 离队播报),名称必须自带方向。R7 拆分或后续引入协议号枚举时,按方向分表并冠 `Cmd` / `Noti`(如 `CmdPacketType` / `NotiPacketType`,循参考项目 `PacketTypes` 词汇),禁止同表混装两个方向;帧类型标记常量(`CommandPacketType` / `NotificationPacketType`)是帧 Type 字节值,语义不同,维持现状命名。
+6. **Builders 子目录**:`Network/Builders/` 根只放共享基建(`PacketBodyWriter.cs`);组构建器放同名组目录(如 `Builders/Characters/CharactersPacketBuilders.cs`),非组的**流程家族**单独登记目录名——当前为 `Builders/CharacterPacket/`(登录→进城的初始化包家族 `CharacterPacketBuilders`,主文件 + 8 个功能块 partial)。流程家族与组构建器形态不同(前者持状态、构造注入目录与存储,后者为静态工厂),**同前缀的近似名必须靠目录区分**(`CharacterPacket/` 与 `Characters/` 即此约定),禁止把流程家族并入同名组目录。
 
 #### 4.8.4 预留组(未实现功能的迁移占位)
 
@@ -379,7 +380,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | 14 | Town | SET_USER_POSITION 37 / SET_USER_AREA 38 / CALL_MEMER_LIST 82 / EXCHANGE 130 / EVENT_INFO 推送 / USERINFO 推送 | 9822-9917, 11242-, 916, 482-532 | Character, Town |
 | 15 | Party | 组队族 CMD 10–14(REQUEST_PEER 10 / RESPONSE_PEER 11 / SET_PARTY_INFO 12 / LEAVE_PARTY 13 / WALKOUT_PARTY_MEMBER 14),按 4.6 族接管形态落地(单核心多壳);body 前置两字节序号,settings 子族(12/13/14)核心内分派;格式分册 `docs/protocol/packet-detail-party-60cn.md`,实现散于区间块与 `Network/PartyCoordinator.cs` | 10404 起区间块 | Character + 跨会话 SessionRegistry |
 
-> 行段为 2026-09-28 时点的参考位置,其后文件又增约 370 行、整体下移,以 `GameProtocolEngine.*Command` 常量检索为准。
+> 行段为 2026-09-28 时点的参考位置,其后文件又增约 370 行、整体下移,以 `CmdPacketType` / `NotiPacketType` 枚举检索为准。
 > 未实现功能的预留组(Trade / PersonalShop / Friends / Guilds / Pvp,组 16–20)见 4.8.4。
 
 ## 6. 迁移计划(strangler,每阶段独立 PR/可发布/可回滚)
@@ -559,7 +560,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **目录形态对齐 §4.8.3 三层镜像**:全部 `<组>Parsers` 从 `Network/Handlers/<组>/` 提升至与 Handlers 平级的 `Network/Parsers/<组>/`(Chat/Login/Characters/Mailbox/Shop/Inventory 六个同名目录;共享长度前缀读取器 ClientBodyParsers 置 Parsers 根),与参考项目 `Network/{Handlers,Parsers,Builders}` 三层形态一致。
 - **CharacterPacketBuilders 按功能块拆为 partial**:主文件保留共享编码与物品投影,功能块分为 Roster/Skills/Inventory/Initialization/Creature/Town/Mail/Premium 八个 partial 文件(单文件 41-173 行),调用点零改动。
 - **`Protocol/` 迁入 `Network/` 并按参考项目两极分治**(2026-09-29,镜 `Network/{Core,Protocol}`):
-  - `Network/Protocol/`(协议核心,字节冷冻不变):PacketFrame/GameProtocolEngine/EntranceMetadata/EntranceProtocolEngine/GameDatagramProtocol/LegacyDatagramProtocol;
+  - `Network/Protocol/`(协议核心,字节冷冻不变):PacketFrame/GameProtocolConstants/FallbackCommandReplies/EntranceHandshakeReplies/EntranceMetadata/GameDatagramProtocol/PartyWireModels/LegacyDatagramProtocol;(`GameProtocolEngine` / `EntranceProtocolEngine` 两个"引擎"名的语义化改名、组队模型独立成册,见 §11.5)
   - `Network/Core/`(通用工具统一管理):Crc32/EntranceCrypto/GameClientPayloadCipher/GameServerPacket(包基元+GamePayloadCipher 服务端加解密)/PacketNames/PacketPlainText/PvfArchiveReader(非协议格式读取工具,仅自测消费),以及自 `Tap/` 迁入的 IPacketTapSink(空目录 `Tap/` 移除);(两者后续处置见 §11.5:`PacketNames` 删除、报文名反查并入 `PacketTypes`;`PacketPlainText` 保留未接入)
   - 命名空间保持不变(`DFLegacy.Protocol`),调用点零改动;§1.3/§4.1 引用 `Protocol/` 的物理位置以本节为准,字节冻结(N2/I4)不受影响。
 - **`Persistence/` 瘦身与 `Random/` 并入 `Infrastructure/`**(2026-09-29,按职责归位):`RuntimeState`(运行态遥测/Tap 漏斗/管理快照,非持久化)→ `Infrastructure/`;`SerializedWriteStream`(每连接写串行化,唯一消费方 EntranceService 泵层)→ `Network/Core/`;随机源三文件(`GameRandomSource`/`IDropRandomSource`/`SeededRandomSource`)→ `Infrastructure/`(对标参考项目 `Infrastructure/ServerRandom`),三类随机契约仍由 06 号文档与类头注释约束。`Persistence/` 只余 `JsonGameStore`(对标参考 `Sqlite/` 存储模块);`Properties/`(SDK/IDE 约定)不动,`Services/` 已随后并入 `Infrastructure/`(见下条)。
@@ -585,6 +586,16 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **同轮处置**:`tools/gen_packet_names.py` 删除——其唯一产物即本次删除的字符串表文件,脚本内写死机器绝对路径,且输出目录 `Server/DFLegacy.Server/Protocol/` 在 R7 目录重组后已不存在(保留即等于留一个会复活已删文件的入口)。`tools/PacketDumper` 保留待重写:它是 `tools/packet_bytes.json` 黄金样本库的生成器(SelfTests 经 csproj 直接消费),价值不可弃,但不在解决方案内、仍调用 R7 前的 `GameProtocolEngine.CreateXxx` 与 `PacketPlainText`,当前不能编译。另记:`PacketTypes.cs` 的重生成脚本尚未随枚举落地(当前为一次性生成),与 PacketDumper 重写一并待补。
 - **`Services/` 并入 `Infrastructure/`**(2026-09-29,前置条件已具备):`FatigueResetService`(每日 06:00 疲劳重置)与 `WeaknessRecoveryService`(每分钟推进虚弱恢复)移入 `Infrastructure/`,空目录 `Services/` 移除;命名空间不变,调用点零改动。既定前置"R6 事件入队改造"经核实已完成——两者的通知回调在 `SelectCharacterHandler` 领租处即写目标会话 `session.Events`(`ConnectionEventKind.FatigueReset` / `WeaknessRecovered`),服务侧只经 `CharacterSessionRegistry` 转交回调,不再直写他人连接流。至此项目根只余 `Program.cs` 与 SDK 约定的 `Properties/`。
 - **组队报文模型归位与 `Builders/CharacterPacket/` 目录**(2026-09-29,按 B1 语义化):① 五个组队 TCP 报文模型(`PartyWireSlot` / `PartyInfoWireBlock` / `PartySettingsRequest` / `PeerRequestFrame` / `PeerResponseFrame`)自 `Network/Protocol/GameDatagramProtocol.cs` 移出、逐字落 `Network/Protocol/PartyWireModels.cs`——它们属频道命令面(CMD 10-14 请求体、NOTI 7-10 块),不含 UDP 数据报结构,与数据报协议同文件属误置;② 初始化包家族 `CharacterPacketBuilders`(主文件 + 8 个功能块 partial,共 718 行)自 `Network/Builders/` 根移入 `Network/Builders/CharacterPacket/`,与同目录的组构建器 `CharactersPacketBuilders`(Characters 协议组,R7 产物,527 行静态类)区分开——两者此前仅差一个字母且同在 Builders 根,易混。**Builders 目录规则随之明确:根只放共享基建(`PacketBodyWriter.cs`),子目录放组构建器与流程家族**。命名空间不变,调用点零改动;全量重建 0 错误 0 告警,SelfTests 21 套件全绿。
+- **`Network/Protocol/` 两个"引擎"名语义化(2026-09-29)**:R7 之后这两个类已不再分发(分发在 `Network/Dispatch/` 的 `GameCommandRegistry` + `GameCommandDispatcher`,单命令处理在 `Network/Handlers/<组>/`),留名 "Engine" 名不副实,故按职责拆名——**旧名 → 新名对照(本文件及全仓文档中出现的旧名一律按此表翻译)**:
+
+  | 旧名(2026-09-29 前) | 现名 | 内容 |
+  | --- | --- | --- |
+  | `GameProtocolEngine` | `GameProtocolConstants` | 帧类型标记(`CommandPacketType` / `NotificationPacketType`)与玩法域定值(疲劳上限、会员服务号、教学关标识、翻牌列数、拒绝错误码) |
+  | 同上 | `FallbackCommandReplies` | 注册表未命中时的兜底应答表(11 条旧内联分支);71 协议已全部走注册表,当前无线上路径,字节冻结 |
+  | `EntranceProtocolEngine` | `EntranceHandshakeReplies` | 入口握手应答(11/12 密钥、5/6 缓存判定、9/10 脚本、1/3 元数据)+ `EntranceSessionState` / `EntranceContent` |
+  | —(原已语义化,未动) | `EntranceMetadata` | 入口频道元数据载荷构建 |
+
+  协议号常量本身早在同轮迁入 `CmdPacketType` / `NotiPacketType`(见上条),故"引擎"里已无协议号表。整批改动 = 44 个文件的 360 处引用改写(插入与删除行数相等,纯改名)+ `GameProtocolEngine` 一拆二(101 行 → `GameProtocolConstants` 41 行 + `FallbackCommandReplies` 79 行)+ `EntranceProtocolEngine` 改名,命名空间与字节行为不变;全量重建 0 错误 0 告警,SelfTests 21 套件全绿。历史记录(CHANGELOG 日期条目、§11 早期各条、`docs/servers4a21/*` 的行号引证)保留旧名不改——它们记录的是当时的事实,按本表翻译即可。
 
 ### 11.4 遗留项
 

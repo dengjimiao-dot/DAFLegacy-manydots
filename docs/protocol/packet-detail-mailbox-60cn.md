@@ -1,7 +1,7 @@
 # 邮箱包格式(60A1)
 
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> 字段表来源:服务端 `GameProtocolEngine.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
+> 字段表来源:服务端 `Network/Builders/Mailbox/MailboxPacketBuilders.cs` 序列化器与 `EntranceService.cs` 解析器;字节示例约定见帧文档。
 
 ## CMD 99 `ENUM_CMDPACKET_MAILBOX_OPEN` — 打开邮箱 ✅
 

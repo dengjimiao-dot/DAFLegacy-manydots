@@ -5,7 +5,8 @@
 > 状态索引见 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);帧头/加解密约定见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
 > 全部字段布局于 客户端主程序 IDA 库(ImageBase 0x400000)内逐 case 验证,服务端实现见
 > `Game/Party/PartyState.cs`、`Game/Party/PartyManager.cs`、`Network/PartyCoordinator.cs` 与
-> `Protocol/GameProtocolEngine.cs`(常量/构建器/解析器)。
+> `Network/Builders/Party/PartyPacketBuilders.cs`(CMD 10-14 解析、NOTI 6-10 构建)与
+> `Network/Protocol/PartyWireModels.cs`(报文模型)。
 >
 > 与 A21(ServerS4A21)实现的差异以【差异】标注——照搬 A21 布局会在本客户端上错位。
 
@@ -215,8 +216,8 @@ NOTI 23 USER_AREA / NOTI 24 AREA_USERS 只更新已存在记录(查不到即跳�
 - `Game/Party/PartyState.cs` — 常量(4 槽、0x40 队名上限)、成员与队伍快照
 - `Game/Party/PartyManager.cs` — 建队/编辑/邀请/接受/退队/踢人/断线(线程安全)
 - `Network/PartyCoordinator.cs` — 会话投递、城镇存在表、封包编排
-- `Protocol/GameProtocolEngine.cs` — CMD 10-14 解析、NOTI 6/7/8/9/10 构建、`CreateCurrentCharacterDetails(mode:3)` 对端上下文构建
-- `Network/CharacterSessionRegistry.cs` — 跨会话封包通道(`AttachPacketChannel`)
+- `Network/Builders/Party/PartyPacketBuilders.cs` — CMD 10-14 解析、NOTI 6/7/8/9/10 构建;`CreateCurrentCharacterDetails(mode:3)` 对端上下文构建在 `Network/Builders/Characters/CharactersPacketBuilders.cs`
+- `Game/Session/CharacterSessionRegistry.cs` — 跨会话封包通道(`AttachPacketChannel`)
 - 自测:`DFLegacy.Server.SelfTests/Game/Party/PartySmokeTests.cs`
 
 ### 参考项目 TURN 式中继(per-ordered-pair)评估(2026-09-29)

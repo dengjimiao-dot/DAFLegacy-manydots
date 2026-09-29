@@ -63,6 +63,8 @@ internal static class PetsPacketBuilders
             (byte)NotiPacketType.CREATURE_STATE,
             payload.ToArray());
     }
+    // DF2008 reads both Creature life notifications as one u16 area-user id.
+    // The 13339 server names these DIED_CREATURE and REVIVAL_CREATURE.
     public static GameServerPacket CreateDiedCreature(ushort userId)
     {
         if (userId == 0)

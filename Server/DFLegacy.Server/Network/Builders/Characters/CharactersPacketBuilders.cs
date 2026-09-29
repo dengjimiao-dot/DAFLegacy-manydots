@@ -144,6 +144,9 @@ internal static class CharactersPacketBuilders
             (byte)CmdPacketType.SELECT_CHARACTER,
             payload.ToArray());
     }
+    // 13338's notification dispatcher case 48 reads five little-endian
+    // int32 values followed by two bytes: win, lose, PvP points, current
+    // rank point, next rank point, grade and grade-extension.
     public static GameServerPacket CreatePvpRecord(
         int wins,
         int losses,

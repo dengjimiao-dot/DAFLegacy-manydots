@@ -86,6 +86,8 @@ internal static class TownPacketBuilders
             (byte)NotiPacketType.AREA_USERS,
             payload.ToArray());
     }
+    /// <summary>NOTI 6 removes the town user record for the uid (reader at
+    /// 0x41B3C8 drops the map entry at 0x41B467 and cleans the scene).</summary>
     public static GameServerPacket CreateUserLeave(ushort userId)
     {
         var payload = new byte[2];

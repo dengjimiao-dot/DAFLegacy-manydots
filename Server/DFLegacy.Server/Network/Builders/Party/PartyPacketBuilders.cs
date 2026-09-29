@@ -38,6 +38,16 @@ internal static class PartyPacketBuilders
             (byte)NotiPacketType.USER_UDP_IP_PORT,
             payload.ToArray());
     }
+    /// <summary>
+    /// PARTY_INFO (NOTI 9) uses a block list in this build: u16 block count,
+    /// then per block u16 party id and u8 type. Type 0/1 carry the settings
+    /// pair the client reads at 0x41B8F9 (u8 title kind, u8 user max — kind-0
+    /// titles render from the client's local string 0x272, never from the
+    /// wire); type 0/2 carry four roster slots of u16 uid + u8 state plus
+    /// the leader slot tail byte (reader at 0x41B9CD, leader store at
+    /// 0x41BAD7); type 3 is the five-byte clear header only. There is no
+    /// trailing has-extra byte in this build.
+    /// </summary>
     public static GameServerPacket CreatePartyInfo(
         IReadOnlyList<PartyInfoWireBlock> blocks)
     {
@@ -102,6 +112,10 @@ internal static class PartyPacketBuilders
         writer.Write(titleKind);
         writer.Write(userMax);
     }
+    /// <summary>
+    /// NOTI 7 invite popup. The reader at 0x41B4C8 consumes u16 uid, u8 type,
+    /// u32 peer id and, for type 0, two more u16 state words.
+    /// </summary>
     public static GameServerPacket CreatePeerRequest(
         ushort fromUserId,
         byte requestType,
@@ -125,6 +139,11 @@ internal static class PartyPacketBuilders
             (byte)NotiPacketType.REQUEST_PEER,
             payload.ToArray());
     }
+    /// <summary>
+    /// NOTI 8 peer response ack (reader at 0x41B5F1): u16 uid, u8 type,
+    /// u32 value. The type-0 zero-value form is the party accept the inviter
+    /// needs to claim the party before the PARTY_INFO formation arrives.
+    /// </summary>
     public static GameServerPacket CreatePeerResponse(
         ushort fromUserId,
         byte responseType,
@@ -140,6 +159,10 @@ internal static class PartyPacketBuilders
             (byte)NotiPacketType.RESPONSE_PEER,
             payload.ToArray());
     }
+    /// <summary>
+    /// NOTI 10 departure notice (reader at 0x41C41A): u8 uid, u8 reason
+    /// 0..9. Reason 0/1 render the left/kicked party chat lines.
+    /// </summary>
     public static GameServerPacket CreateWalkout(ushort userId, byte reason)
     {
         // The wire uid is u8 here (reader 0x41C42F); larger ids truncate for
@@ -149,6 +172,11 @@ internal static class PartyPacketBuilders
             (byte)NotiPacketType.WALKOUT,
             [(byte)userId, reason]);
     }
+    /// <summary>
+    /// Parses SET_PARTY_INFO (CMD 12, writer at 0x7D5F86): after the two-byte
+    /// sequence number the client writes u8 title kind, a u32-prefixed custom
+    /// title when the kind is zero, and u8 user max (radio index + 2).
+    /// </summary>
     public static bool TryParseSetPartyInfo(
         ReadOnlySpan<byte> body,
         out PartySettingsRequest request)
@@ -195,6 +223,7 @@ internal static class PartyPacketBuilders
             body[7 + (int)titleLength]);
         return true;
     }
+    /// <summary>Parses REQUEST_PEER (CMD 10): u16 target uid, u8 type, u32 id.</summary>
     public static bool TryParseRequestPeer(
         ReadOnlySpan<byte> body,
         out PeerRequestFrame request)
@@ -211,6 +240,11 @@ internal static class PartyPacketBuilders
             BinaryPrimitives.ReadUInt32LittleEndian(body.Slice(5, 4)));
         return true;
     }
+    /// <summary>
+    /// Parses RESPONSE_PEER (CMD 11): u16 peer uid, u8 type, u32 value. The
+    /// client accept path writes exactly seven payload bytes with a zero type
+    /// and value (0x4FEBC0); refusals set a non-zero type or value.
+    /// </summary>
     public static bool TryParseResponsePeer(
         ReadOnlySpan<byte> body,
         out PeerResponseFrame response)
@@ -229,6 +263,14 @@ internal static class PartyPacketBuilders
     }
     public static bool IsAcceptedPeerResponse(PeerResponseFrame response) =>
         response.ResponseType == 0 && response.Value == 0;
+    /// <summary>
+    /// Party command failure replies are not the generic [0, code] form: the
+    /// reply dispatcher reads a result byte first (zero = failure) and then
+    /// one error byte at payload[1] for SET_PARTY_INFO (code 8 pops a party
+    /// message, case 0x410799), LEAVE_PARTY (code 0x12, case 0x4107D8) and
+    /// WALKOUT (code 4, case 0x410834). The trailing zero keeps the global
+    /// read cursor inside the payload.
+    /// </summary>
     public static GameServerPacket CreatePartyCommandError(
         PacketFrame request,
         byte errorCode) =>
@@ -236,6 +278,9 @@ internal static class PartyPacketBuilders
             GameProtocolEngine.CommandPacketType,
             request.ProtocolId,
             [0, errorCode, 0, 0]);
+    /// <summary>The peer commands read their error byte at payload[2]
+    /// instead: REQUEST_PEER pops a message on code 5 (case 0x4102F6) and
+    /// RESPONSE_PEER on code 1 (case 0x4104FF).</summary>
     public static GameServerPacket CreatePeerCommandError(
         PacketFrame request,
         byte errorCode) =>
@@ -243,6 +288,8 @@ internal static class PartyPacketBuilders
             GameProtocolEngine.CommandPacketType,
             request.ProtocolId,
             [0, 0, errorCode, 0]);
+    /// <summary>Parses WALKOUT_PARTY_MEMBER (CMD 14, writer at 0x8520F3):
+    /// one byte holding the selected member's roster slot index.</summary>
     public static bool TryParseWalkoutPartyMember(
         ReadOnlySpan<byte> body,
         out byte targetSlot)

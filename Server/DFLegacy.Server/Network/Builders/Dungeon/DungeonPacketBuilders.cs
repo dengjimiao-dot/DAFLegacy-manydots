@@ -47,6 +47,7 @@ internal static class DungeonPacketBuilders
             (byte)NotiPacketType.DUNGEON_PERMISSION,
             payload.ToArray());
     }
+    /// <summary>Single-block PARTY_INFO type 3: clears this party id.</summary>
     public static GameServerPacket CreatePartyClear(int partyId) =>
         PartyPacketBuilders.CreatePartyInfo(
         [

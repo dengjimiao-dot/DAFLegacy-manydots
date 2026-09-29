@@ -10,7 +10,7 @@ public sealed class SetUserPositionHandler(PartyCoordinator partyCoordinator,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.SetUserPositionCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_USER_POSITION;
 
     public string Name => "SetUserPosition";
 

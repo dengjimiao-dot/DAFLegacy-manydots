@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class UseCoinHandler(    JsonGameStore store,
     ILogger<UseCoinHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.UseCoinCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.USE_COIN;
 
     public string Name => "USE_COIN";
 

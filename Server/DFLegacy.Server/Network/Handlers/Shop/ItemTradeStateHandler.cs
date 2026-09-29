@@ -14,7 +14,7 @@ public sealed class ItemTradeStateHandler(JsonGameStore store,
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.SetItemTradeStateCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_ITEMTRADE_STATE;
 
     public string Name => "ItemTradeState";
 

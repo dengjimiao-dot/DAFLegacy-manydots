@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.MoveMapCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.MOVE_MAP;
 
     public string Name => "MOVE_MAP";
 

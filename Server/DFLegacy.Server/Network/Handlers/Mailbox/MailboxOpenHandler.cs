@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class MailboxOpenHandler(ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.MailboxOpenCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.MAILBOX_OPEN;
 
     public string Name => "MAILBOXOPEN";
 

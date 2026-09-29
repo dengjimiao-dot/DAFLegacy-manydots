@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class GiveupGameHandler(    ILogger<GiveupGameHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.GiveupGameCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.GIVEUP_GAME;
 
     public string Name => "GIVEUP_GAME";
 

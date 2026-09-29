@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class SetQuestTriggerHandler(
     ILogger<SetQuestTriggerHandler> logger,JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.SetQuestTriggerCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_QUEST_TRIGGER;
 
     public string Name => "SetQuestTrigger";
 

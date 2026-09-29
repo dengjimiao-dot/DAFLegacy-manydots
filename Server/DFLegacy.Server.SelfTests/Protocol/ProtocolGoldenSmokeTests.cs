@@ -15,19 +15,19 @@ internal static class ProtocolGoldenSmokeTests
         // R0 试点协议的线上样本必须解出声明的帧头(07 §7:样本即黄金标准)。
         var checkConnectionFrame = PacketByteSamples.DecodeFrame(samples["cmd:0"]);
         check(checkConnectionFrame.Type == GameProtocolEngine.CommandPacketType
-            && checkConnectionFrame.ProtocolId == GameProtocolEngine.CheckConnectionCommand
+            && checkConnectionFrame.ProtocolId == (byte)CmdPacketType.CHECK_CONNECTION
             && checkConnectionFrame.DeclaredCrc32 == 0x58C223BEu,
             "cmd:0 sample decodes to a CHECK_CONNECTION command frame with its original CRC");
         var exitFrame = PacketByteSamples.DecodeFrame(samples["cmd:3"]);
         check(exitFrame.Type == GameProtocolEngine.CommandPacketType
-            && exitFrame.ProtocolId == GameProtocolEngine.ExitCommand,
+            && exitFrame.ProtocolId == (byte)CmdPacketType.EXIT,
             "cmd:3 sample decodes to an EXIT command frame");
 
         // 注册表语义(07 §4.6):一号一 handler,重复注册启动期失败。
         var registry = new GameCommandRegistry();
         var exitHandler = new ExitHandler(NullLogger<ExitHandler>.Instance);
         registry.Register("session.connection", exitHandler);
-        check(registry.TryGet(GameProtocolEngine.ExitCommand, out var mounted)
+        check(registry.TryGet((byte)CmdPacketType.EXIT, out var mounted)
             && ReferenceEquals(mounted, exitHandler),
             "registry mounts EXIT by protocol id");
         check(!registry.TryGet(200, out _),
@@ -96,7 +96,7 @@ internal static class ProtocolGoldenSmokeTests
             "CHECK_CONNECTION dispatches through the new pipeline");
         var channelInfo = PacketByteSamples.DecodeServerPacket(channelStream.ToArray());
         check(channelInfo.Type == GameProtocolEngine.NotificationPacketType
-            && channelInfo.ProtocolId == GameProtocolEngine.ChannelInfoNotification,
+            && channelInfo.ProtocolId == (byte)NotiPacketType.CHANNELINFO,
             "CHECK_CONNECTION replies with a CHANNELINFO notification");
         var actualSeed = ReadChannelInfoSeed(channelInfo.Payload);
         var expectedChannelInfo = ConnectionPacketBuilders.CreateChannelInfo(

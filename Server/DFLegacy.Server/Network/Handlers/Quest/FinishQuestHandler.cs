@@ -18,7 +18,7 @@ public sealed class FinishQuestHandler(
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.FinishQuestCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.FINISH_QUEST;
 
     public string Name => "FinishQuest";
 

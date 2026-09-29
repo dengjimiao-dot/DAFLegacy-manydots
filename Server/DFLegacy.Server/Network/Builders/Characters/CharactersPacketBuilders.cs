@@ -12,13 +12,13 @@ internal static class CharactersPacketBuilders
     public static GameServerPacket CreateExchangeServerCharacterInfoReply() =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.ExchangeServerCharacterInfoCommand,
+            (byte)CmdPacketType.REQUEST_BLACKLIST,
             [1, 0]);           // result, character count
 
     public static GameServerPacket CreateDeleteCharacterReply(byte slot) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DeleteCharacterCommand,
+            (byte)CmdPacketType.DELETE_CHARACTER,
             [1, slot]);
     public static GameServerPacket CreateSelectCharacterReply(
         PacketFrame request,
@@ -36,7 +36,7 @@ internal static class CharactersPacketBuilders
         IReadOnlyDictionary<ushort, int>? questCompletionMapping = null)
     {
         if (request.Type != GameProtocolEngine.CommandPacketType
-            || request.ProtocolId != GameProtocolEngine.SelectCharacterCommand
+            || request.ProtocolId != (byte)CmdPacketType.SELECT_CHARACTER
             || request.Body.Length < 3)
         {
             throw new ArgumentException(
@@ -141,7 +141,7 @@ internal static class CharactersPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.SelectCharacterCommand,
+            (byte)CmdPacketType.SELECT_CHARACTER,
             payload.ToArray());
     }
     public static GameServerPacket CreatePvpRecord(
@@ -164,13 +164,13 @@ internal static class CharactersPacketBuilders
         writer.Write(pvpGradeExtension);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.PvpRecordNotification,
+            (byte)NotiPacketType.PVP_RECORD,
             payload.ToArray());
     }
     public static GameServerPacket CreateUserState(ushort userId, byte state) =>
         new(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserStateNotification,
+            (byte)NotiPacketType.USER_STATE,
             [(byte)userId, (byte)(userId >> 8), state]);
     public static GameServerPacket CreateEmptyUserInfo()
     {
@@ -237,7 +237,7 @@ internal static class CharactersPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserInfoNotification,
+            (byte)NotiPacketType.USERINFO,
             payload.ToArray());
     }
     public static GameServerPacket CreateCurrentCharacterInfo(
@@ -346,7 +346,7 @@ internal static class CharactersPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserInfoNotification,
+            (byte)NotiPacketType.USERINFO,
             payload.ToArray());
     }
     public static GameServerPacket CreateCurrentCharacterDetails(
@@ -511,7 +511,7 @@ internal static class CharactersPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserInfoNotification,
+            (byte)NotiPacketType.USERINFO,
             payload.ToArray());
     }
     private static byte PackGrowthType(GameCharacterSummary character)

@@ -13,7 +13,7 @@ public sealed class BuySkillHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.BuySkillCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.BUY_SKILL;
 
     public string Name => "BuySkill";
 

@@ -13,7 +13,7 @@ public sealed class DropItemHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.DropItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DROP_ITEM;
 
     public string Name => "DropItem";
 

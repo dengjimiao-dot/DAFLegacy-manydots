@@ -12,7 +12,7 @@ public sealed class SortItemHandler(JsonGameStore store,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.SortItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SORT_ITEM;
 
     public string Name => "SortItem";
 

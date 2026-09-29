@@ -21,7 +21,7 @@ public sealed class IncreaseStatusHandler(
         effect.Type is IncreaseStatusType.SkillPoints or IncreaseStatusType.Experience
             ? effect.Amount
             : checked(effect.Amount * 10);
-    public ushort ProtocolId => GameProtocolEngine.IncreaseStatusCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.INCREASE_STATUS;
 
     public string Name => "IncreaseStatus";
 

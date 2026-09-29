@@ -8,7 +8,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class DieCharacterHandler(    ILogger<DieCharacterHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.DieCharacterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DIE_CHARACTER;
 
     public string Name => "DIE_CHARACTER";
 

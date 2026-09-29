@@ -14,7 +14,7 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.RenameCreatureCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.RENAME_CREATURE;
 
     public string Name => "RenameCreature";
 

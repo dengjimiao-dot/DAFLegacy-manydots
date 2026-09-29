@@ -12,7 +12,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class ExitHandler(ILogger<ExitHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.ExitCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.EXIT;
 
     public string Name => "EXIT";
 

@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class MailboxStateHandler(JsonGameStore store) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.MailboxStateCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CHANGE_LETTER_STAT;
 
     public string Name => "MAILBOXSTATE";
 

@@ -27,7 +27,7 @@ internal static class SkillPacketBuilders
         writer.Write(secondAuxiliaryValue);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.IncreaseStatusCommand,
+            (byte)CmdPacketType.INCREASE_STATUS,
             payload.ToArray());
     }
     public static GameServerPacket CreateChangeSkillSlotReply(
@@ -35,7 +35,7 @@ internal static class SkillPacketBuilders
         byte destinationSlot) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.ChangeSkillSlotCommand,
+            (byte)CmdPacketType.CHANGE_SKILLSLOT,
             [1, sourceSlot, destinationSlot]);
     public static GameServerPacket CreateBuySkillReply(
         ushort remainingSkillPoints,
@@ -50,7 +50,7 @@ internal static class SkillPacketBuilders
         writer.Write(slot);
         writer.Write(skillId);
         writer.Write(level);
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, GameProtocolEngine.BuySkillCommand, payload.ToArray());
+        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.BUY_SKILL, payload.ToArray());
     }
     public static GameServerPacket CreateSkillInfo(
         ushort skillPoints,
@@ -79,7 +79,7 @@ internal static class SkillPacketBuilders
         writer.Write((byte)0); // no per-skill auxiliary values
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.SkillInfoNotification,
+            (byte)NotiPacketType.SKILLINFO,
             payload.ToArray());
     }
 }

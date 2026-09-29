@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class FinishLoadingHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.FinishLoadingCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.FINISH_LOADING;
 
     public string Name => "FINISH_LOADING";
 

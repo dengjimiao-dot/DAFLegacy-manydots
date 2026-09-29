@@ -10,7 +10,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class AntibotHandler(ILogger<AntibotHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.AntibotCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.ANTIBOT;
 
     public string Name => "ANTIBOT";
 

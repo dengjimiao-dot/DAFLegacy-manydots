@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class RequestPeerHandler(PartyHandlerCore core) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.RequestPeerCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.REQUEST_PEER;
 
     public string Name => "RequestPeer";
 

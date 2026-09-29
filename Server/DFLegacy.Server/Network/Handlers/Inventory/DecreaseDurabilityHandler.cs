@@ -11,7 +11,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
     ILogger<DecreaseDurabilityHandler> logger) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.DecreaseDurabilityCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DECREASE_DURABILITY;
 
     public string Name => "DecreaseDurability";
 

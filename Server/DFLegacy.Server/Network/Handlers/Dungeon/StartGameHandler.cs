@@ -12,7 +12,7 @@ public sealed class StartGameHandler(
     ILogger<StartGameHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.StartGameCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.START_GAME;
 
     public string Name => "START_GAME";
 

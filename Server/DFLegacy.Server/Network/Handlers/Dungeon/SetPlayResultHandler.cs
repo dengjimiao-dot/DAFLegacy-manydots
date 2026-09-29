@@ -17,7 +17,7 @@ public sealed class SetPlayResultHandler(
     ILogger<SetPlayResultHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.SetPlayResultCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_PLAY_RESULT;
 
     public string Name => "SET_PLAY_RESULT";
 

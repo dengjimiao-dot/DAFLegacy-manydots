@@ -95,7 +95,7 @@ internal static class FileLoggerSmokeTests
                 "channel:7001",
                 "RX",
                 GameProtocolEngine.CommandPacketType,
-                GameProtocolEngine.LoginCommand,
+                (byte)CmdPacketType.LOGIN,
                 totalLength: 12,
                 crc32: 0x58C223BE,
                 crcValid: true,

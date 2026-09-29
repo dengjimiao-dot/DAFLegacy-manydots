@@ -11,7 +11,7 @@ public sealed class UseSkillHandler(
     ServerOptions options,    SkillCatalog skillCatalog,
     ILogger<UseSkillHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.UseSkillCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.USE_SKILL;
 
     public string Name => "USE_SKILL";
 

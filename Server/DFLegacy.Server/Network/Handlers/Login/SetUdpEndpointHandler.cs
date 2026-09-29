@@ -12,7 +12,7 @@ public sealed class SetUdpEndpointHandler(
     GameplayDatagramService gameplayDatagram,
     PartyCoordinator partyCoordinator) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.SetUdpEndpointCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_UDP_IP_PORT;
 
     public string Name => "SET_UDP_IP_PORT";
 

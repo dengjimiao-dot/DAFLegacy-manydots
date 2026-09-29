@@ -13,7 +13,7 @@ public sealed class CheckConnectionHandler(ServerOptions options) : IGameCommand
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.CheckConnectionCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CHECK_CONNECTION;
 
     public string Name => "CHECK_CONNECTION";
 

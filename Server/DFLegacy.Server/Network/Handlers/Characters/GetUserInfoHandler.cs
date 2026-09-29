@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class GetUserInfoHandler(CharacterPacketBuilders builders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.GetUserInfoCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.GET_USERINFO;
 
     public string Name => "GET_USERINFO";
 

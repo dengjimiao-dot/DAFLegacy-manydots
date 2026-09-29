@@ -18,7 +18,7 @@ public sealed class DieMonsterHandler(
     ILogger<DieMonsterHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.DieMonsterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DIE_MONSTER;
 
     public string Name => "DIE_MONSTER";
 

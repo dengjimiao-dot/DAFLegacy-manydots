@@ -17,7 +17,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.BuyItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.BUY_ITEM;
 
     public string Name => "BuyItem";
 

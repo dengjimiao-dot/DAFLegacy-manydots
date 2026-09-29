@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class WalkoutPartyMemberHandler(PartyHandlerCore core) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.WalkoutPartyMemberCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.WALKOUT_PARTY_MEMBER;
 
     public string Name => "WalkoutPartyMember";
 

@@ -15,7 +15,7 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.CompoundAvatarCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.COMPOUND_AVATAR;
 
     public string Name => "CompoundAvatar";
 

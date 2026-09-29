@@ -12,7 +12,7 @@ public sealed class CreatureScriptMessageHandler(
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
 
-    public ushort ProtocolId => GameProtocolEngine.CreatureScriptMessageCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CREATURE_SCRIPT_MESSAGE;
 
     public string Name => "CREATURE_SCRIPT_MESSAGE";
 

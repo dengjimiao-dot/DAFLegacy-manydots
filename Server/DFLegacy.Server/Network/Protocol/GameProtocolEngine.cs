@@ -8,157 +8,27 @@ public static class GameProtocolEngine
 
     public const int ClearRewardCardColumnCount = 4;
     public const byte NotificationPacketType = 0;
-    public const byte CheckConnectionNotification = 0;
-    public const byte ChannelInfoNotification = 1;
-    public const byte UserInfoNotification = 2;
-    public const byte UserStateNotification = 3;
-    public const byte StaminaNotification = 4;
-    public const byte DungeonPermissionNotification = 5;
-    public const byte UserLeaveNotification = 6;
     // NOTI 7/8/9/10 are the party block: a 13-byte invite popup (case
     // 0x41B4C8), the 7-byte accept ack (case 0x41B5F1), the slot-diff party
     // roster (case 0x41B7A1) and the two-byte departure message (case
     // 0x41C41A) in DNF.exe 60A1.
-    public const byte PeerRequestNotification = 7;
-    public const byte PeerResponseNotification = 8;
-    public const byte PartyInfoNotification = 9;
-    public const byte WalkoutNotification = 10;
-    public const byte UdpPeerInfoNotification = 11;
-    public const byte MessageNotification = 12;
-    public const byte ItemListNotification = 13;
-    public const byte UpdateItemListNotification = 14;
-    public const byte SkillInfoNotification = 19;
-    public const byte AcceptableQuestListNotification = 21;
-    public const byte UserPositionNotification = 22;
-    public const byte UserAreaNotification = 23;
-    public const byte AreaUsersNotification = 24;
-    public const byte UdpHostNotification = 26;
-    public const byte EnterSelectDungeonNotification = 27;
-    public const byte DungeonInfoNotification = 28;
-    public const byte StartMapNotification = 29;
-    public const byte FinishLoadingNotification = 30;
-    public const byte EnableClearDungeonNotification = 31;
-    public const byte DieStateNotification = 32;
-    public const byte FailClearDungeonNotification = 33;
-    public const byte PlayResultNotification = 34;
-    public const byte ClearDungeonRewardNotification = 35;
-    public const byte FatigueNotification = 36;
-    public const byte ExperienceGainedNotification = 37;
-    public const byte MonsterDieNotification = 38;
     // NOTI 38's compact trailer is [reserved, champion ordinal, reserved].
     // The 13338 client uses ordinal 1..11 to play the Champion/SuperChampion
     // clear-reward animation before the card screen; 255 means no such reward.
     public const sbyte NoChampionRewardOrdinal = -1;
     public const sbyte MaximumChampionRewardOrdinal = 11;
-    public const byte GetItemNotification = 39;
-    public const byte DropItemNotification = 40;
     // 13338's notification dispatcher case 48 reads five little-endian
     // int32 values followed by two bytes: win, lose, PvP points, current
     // rank point, next rank point, grade and grade-extension.
-    public const byte PvpRecordNotification = 48;
-    public const byte CeraUpdateNotification = 53;
-    public const byte PremiumServiceNotification = 66;
-    public const byte MailboxMailListNotification = 97;
-    public const byte MailboxRemoveMailNotification = 98;
-    public const byte MailboxAlarmNotification = 99;
     // DF2008 reads both Creature life notifications as one u16 area-user id.
     // The 13339 server names these DIED_CREATURE and REVIVAL_CREATURE.
-    public const byte DiedCreatureNotification = 100;
-    public const byte CreatureRenameNotification = 101;
-    public const byte CreatureGainExperienceNotification = 102;
-    public const byte CreatureStateNotification = 103;
-    public const byte CreatureResponseNotification = 104;
-    public const byte CreatureInfoNotification = 105;
-    public const byte CreatureEvolutionNotification = 106;
-    public const byte CreatureEvoluteNotification = 106;
-    public const byte RevivalCreatureNotification = 107;
-    public const byte RenameCreatureCommand = 103;
-    public const byte HatchCreatureCommand = 105;
-    public const byte ResponseCreatureCommand = 104;
-    public const byte EventInfoNotification = 120;
-    public const byte CreatureMessageNotification = 126;
-    public const byte BossDieCheckNotification = 127;
-    public const byte CreatureScriptMessageNotification = 131;
-    public const byte MegaphoneMessageNotification = 130;
-    public const byte EnterGameWorldCompleteNotification = 136;
     public const byte CommandPacketType = 1;
-    public const byte CheckConnectionCommand = 0;
-    public const byte LoginCommand = 1;
-    public const byte SetUdpEndpointCommand = 2;
-    public const byte ExitCommand = 3;
-    public const byte SelectCharacterCommand = 4;
-    public const byte CreateCharacterCommand = 5;
-    public const byte DeleteCharacterCommand = 6;
-    public const byte ReturnSelectCharacterCommand = 7;
-    public const byte GetUserInfoCommand = 8;
-    public const byte RecoverStaminaCommand = 9;
     // CMD 10-14 are the party block: type-0 peer requests are the party
     // invite/join path of this build (RESPONSE_PEER 11 answers them;
     // SET_PARTY_INFO 12, LEAVE_PARTY 13 and the slot-indexed kick 14
     // complete it, matching PacketNames.cs and the 60CN dispatcher).
-    public const byte RequestPeerCommand = 10;
-    public const byte ResponsePeerCommand = 11;
-    public const byte SetPartyInfoCommand = 12;
-    public const byte LeavePartyCommand = 13;
-    public const byte WalkoutPartyMemberCommand = 14;
-    public const byte StartGameCommand = 15;
-    public const byte SelectDungeonCommand = 16;
-    public const byte SendMessageCommand = 17;
-    public const byte CreatureSendMessageCommand = 124;
-    public const byte CreatureScriptMessageCommand = 132;
-    public const byte DeleteItemCommand = 18;
-    public const byte MoveItemSpaceCommand = 19;
-    public const byte SortItemCommand = 20;
-    public const byte BuyItemCommand = 21;
-    public const byte SellItemCommand = 24;
-    public const byte RepairEquipmentCommand = 25;
-    public const byte SetItemTradeStateCommand = 26;
-    public const byte CompoundItemCommand = 27;
-    public const byte DisjointItemCommand = 28;
-    public const byte UseLotteryItemCommand = 29;
-    public const byte ChangeSkillSlotCommand = 30;
-    public const byte BuySkillCommand = 31;
-    public const byte IncreaseStatusCommand = 32;
-    public const byte AcceptQuestCommand = 33;
-    public const byte GiveupQuestCommand = 34;
-    public const byte SetQuestTriggerCommand = 35;
-    public const byte FinishQuestCommand = 36;
-    public const byte SetUserPositionCommand = 37;
-    public const byte SetUserAreaCommand = 38;
-    public const byte FinishLoadingCommand = 40;
-    public const byte UseSkillCommand = 41;
-    public const byte DieMonsterCommand = 42;
-    public const byte DieCharacterCommand = 43;
-    public const byte UseCoinCommand = 44;
-    public const byte GiveupGameCommand = 45;
-    public const byte GetItemCommand = 46;
-    public const byte UseStackableItemCommand = 47;
-    public const byte DungeonItemActionCommand = UseStackableItemCommand;
-    public const byte MoveMapCommand = 48;
-    public const byte SetPlayResultCommand = 49;
-    public const byte DropItemCommand = 50;
-    public const byte DecreaseDurabilityCommand = 51;
-    public const byte CeraShopBuyCommand = 67;
-    public const byte GenerateCeraTicketCommand = 68;
-    public const byte ScoreScrollStateCommand = 72;
-    public const byte CardSelectRightStateCommand = 73;
-    public const byte SelectCardCommand = 74;
-    public const byte EplpCommand = 75;
-    public const byte PrivateStorePollCommand = 82;
-    public const byte UpgradeItemCommand = 83;
-    public const byte ResetItemAttributeCommand = 84;
+    public const byte DungeonItemActionCommand = (byte)CmdPacketType.USE_STACKABLE;
     // 60CN ENUM_CMDPACKET_ANTIBOT: fire-and-forget client health report.
-    public const byte AntibotCommand = 161;
-    public const byte MailboxSendCommand = 97;
-    public const byte MailboxExtractItemCommand = 98;
-    public const byte MailboxOpenCommand = 99;
-    public const byte CompoundAvatarCommand = 102;
-    public const byte BossDieCheckCommand = 127;
-    public const byte ExchangeServerCharacterInfoCommand = 130;
-    public const byte BackToVillageCommand = 142;
-    public const byte MailboxStateCommand = 144;
-    public const byte AllDieMonsterCommand = 148;
-    public const byte TutorialCompletionCommand = 153;
     public const ushort TutorialDungeonId = 10_000;
     public const ushort TutorialMapId = 61_000;
     public const uint TutorialCompletionModule = 31;
@@ -193,7 +63,7 @@ public static class GameProtocolEngine
 
         return request.ProtocolId switch
         {
-            CheckConnectionCommand when challenge.Length == 16 => ConnectionPacketBuilders.CreateChannelInfo(
+            (byte)CmdPacketType.CHECK_CONNECTION when challenge.Length == 16 => ConnectionPacketBuilders.CreateChannelInfo(
                 "Local Channel 1"u8,
                 channelType: 1,
                 result: 1,
@@ -206,42 +76,42 @@ public static class GameProtocolEngine
             // A successful login response contains the general success byte,
             // three account flags and one trailing client-state flag. Zeroes
             // select the normal character-list path in this client build.
-            LoginCommand => new GameServerPacket(
+            (byte)CmdPacketType.LOGIN => new GameServerPacket(
                 CommandPacketType,
-                LoginCommand,
+                (byte)CmdPacketType.LOGIN,
                 [1, 0, 0, 0, 0]),
             // The 1.0.1.9 client clears a possible old game session before it
             // begins the selected-channel login flow. A one-byte true result is
             // the complete successful response consumed by its EXIT handler.
-            ExitCommand => ConnectionPacketBuilders.CreateCommandReply(request, success: true),
+            (byte)CmdPacketType.EXIT => ConnectionPacketBuilders.CreateCommandReply(request, success: true),
             // SELECT_CHARACTER uses a larger acknowledgement than the other
             // character-screen commands. It supplies the small account/town
             // state block consumed before the client leaves character select.
-            SelectCharacterCommand => CharactersPacketBuilders.CreateSelectCharacterReply(request),
+            (byte)CmdPacketType.SELECT_CHARACTER => CharactersPacketBuilders.CreateSelectCharacterReply(request),
             // CREATE_CHARACTER also consumes the command's generic one-byte
             // result. A successful result closes the creation panel and makes
             // this client refresh USERINFO.
-            CreateCharacterCommand => ConnectionPacketBuilders.CreateCommandReply(request, success: true),
+            (byte)CmdPacketType.CREATE_CHARACTER => ConnectionPacketBuilders.CreateCommandReply(request, success: true),
             // DELETE_CHARACTER success carries the deleted character slot
             // after the common result byte. The client uses that slot to
             // remove the matching character card.
-            DeleteCharacterCommand when request.Body.Length >= 3 =>
+            (byte)CmdPacketType.DELETE_CHARACTER when request.Body.Length >= 3 =>
                 CharactersPacketBuilders.CreateDeleteCharacterReply(request.Body[2]),
             // RETURN_SELECT_CHARACTER acknowledges the town-side transition.
             // The channel service follows this reply with a fresh USERINFO
             // roster after it has persisted and detached the active character.
-            ReturnSelectCharacterCommand => ConnectionPacketBuilders.CreateCommandReply(request, success: true),
+            (byte)CmdPacketType.RETURN_SELECT_CHARACTER => ConnectionPacketBuilders.CreateCommandReply(request, success: true),
             // The dungeon USE_SKILL command only needs the common success
             // acknowledgement. Its cube-item transaction is completed by a
             // following UPDATE_ITEM_LIST notification from the channel.
-            UseSkillCommand => DungeonPacketBuilders.CreateUseSkillReply(),
+            (byte)CmdPacketType.USE_SKILL => DungeonPacketBuilders.CreateUseSkillReply(),
             // GET_USERINFO is followed by an asynchronous USERINFO
             // notification rather than a command reply.
-            GetUserInfoCommand => CharactersPacketBuilders.CreateEmptyUserInfo(),
+            (byte)CmdPacketType.GET_USERINFO => CharactersPacketBuilders.CreateEmptyUserInfo(),
             // DFLegacy starts both town-side polling systems as soon as its
             // local actor is created. Their replies use compact list layouts.
-            PrivateStorePollCommand => TownPacketBuilders.CreatePrivateStorePollReply(),
-            ExchangeServerCharacterInfoCommand =>
+            (byte)CmdPacketType.CALL_MEMER_LIST => TownPacketBuilders.CreatePrivateStorePollReply(),
+            (byte)CmdPacketType.REQUEST_BLACKLIST =>
                 CharactersPacketBuilders.CreateExchangeServerCharacterInfoReply(),
             _ => null
         };

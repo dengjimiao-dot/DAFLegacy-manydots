@@ -13,7 +13,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.SelectDungeonCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SELECT_DUNGEON;
 
     public string Name => "SELECT_DUNGEON";
 

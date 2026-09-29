@@ -16,7 +16,7 @@ public sealed class GetItemHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.GetItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.GET_ITEM;
 
     public string Name => "GetItem";
 

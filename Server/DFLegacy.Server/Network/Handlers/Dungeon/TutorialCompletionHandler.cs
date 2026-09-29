@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class TutorialCompletionHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.TutorialCompletionCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CHANGE_TUTORIAL_FLAG;
 
     public string Name => "TUTORIAL_COMPLETION";
 

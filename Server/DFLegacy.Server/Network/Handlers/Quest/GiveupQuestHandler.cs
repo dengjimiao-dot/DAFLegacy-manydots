@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class GiveupQuestHandler(
     ILogger<GiveupQuestHandler> logger,JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.GiveupQuestCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.GIVEUP_QUEST;
 
     public string Name => "GiveupQuest";
 

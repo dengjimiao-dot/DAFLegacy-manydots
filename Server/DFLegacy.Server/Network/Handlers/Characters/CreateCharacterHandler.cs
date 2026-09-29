@@ -15,7 +15,7 @@ public sealed class CreateCharacterHandler(
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.CreateCharacterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CREATE_CHARACTER;
 
     public string Name => "CREATE_CHARACTER";
 

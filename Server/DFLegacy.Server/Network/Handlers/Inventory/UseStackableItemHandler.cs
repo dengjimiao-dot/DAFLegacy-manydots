@@ -31,7 +31,7 @@ public sealed class UseStackableItemHandler(
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.UseStackableItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.USE_STACKABLE;
 
     public string Name => "UseStackableItem";
 

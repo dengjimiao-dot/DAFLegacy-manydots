@@ -18,7 +18,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.CompoundItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.COMPOUND_ITEM;
 
     public string Name => "CompoundItem";
 

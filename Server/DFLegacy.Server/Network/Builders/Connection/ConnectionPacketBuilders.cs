@@ -34,7 +34,7 @@ internal static class ConnectionPacketBuilders
             [0, errorCode]);
     }
     public static GameServerPacket CreateEnterGameWorldComplete() =>
-        new(GameProtocolEngine.NotificationPacketType, GameProtocolEngine.EnterGameWorldCompleteNotification, []);
+        new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.ENTER_GAMEWORLD_COMPLETE, []);
     public static GameServerPacket CreateCheckConnection(ReadOnlySpan<byte> challenge)
     {
         if (challenge.Length != 16)
@@ -44,7 +44,7 @@ internal static class ConnectionPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CheckConnectionNotification,
+            (byte)NotiPacketType.CHECK_CONNECTION,
             challenge.ToArray());
     }
     public static GameServerPacket CreateChannelInfo(
@@ -89,7 +89,7 @@ internal static class ConnectionPacketBuilders
         writer.Write(port2);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.ChannelInfoNotification,
+            (byte)NotiPacketType.CHANNELINFO,
             payload.ToArray());
     }
 }

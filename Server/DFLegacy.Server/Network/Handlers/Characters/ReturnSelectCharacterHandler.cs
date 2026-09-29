@@ -15,7 +15,7 @@ public sealed class ReturnSelectCharacterHandler(
     PartyCoordinator partyCoordinator,
     ILogger<ReturnSelectCharacterHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.ReturnSelectCharacterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.RETURN_SELECT_CHARACTER;
 
     public string Name => "RETURN_SELECT_CHARACTER";
 

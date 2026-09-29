@@ -14,7 +14,7 @@ public sealed class SellItemHandler(JsonGameStore store,
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.SellItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SELL_ITEM;
 
     public string Name => "SellItem";
 

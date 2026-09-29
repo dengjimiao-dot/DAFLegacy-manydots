@@ -42,7 +42,7 @@ internal static class PetsPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureInfoNotification,
+            (byte)NotiPacketType.CREATURE_ITEM_LIST,
             payload.ToArray());
     }
     public static GameServerPacket CreateCreatureState(
@@ -60,7 +60,7 @@ internal static class PetsPacketBuilders
         writer.Write(state);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureStateNotification,
+            (byte)NotiPacketType.CREATURE_STATE,
             payload.ToArray());
     }
     public static GameServerPacket CreateDiedCreature(ushort userId)
@@ -78,7 +78,7 @@ internal static class PetsPacketBuilders
         writer.Write(userId);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.DiedCreatureNotification,
+            (byte)NotiPacketType.DIED_CREATURE,
             payload.ToArray());
     }
     public static GameServerPacket CreateRevivalCreature(ushort userId)
@@ -95,7 +95,7 @@ internal static class PetsPacketBuilders
         writer.Write(userId);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.RevivalCreatureNotification,
+            (byte)NotiPacketType.REVIVAL_CREATURE,
             payload.ToArray());
     }
     public static GameServerPacket CreateCreatureGainExperience(
@@ -115,7 +115,7 @@ internal static class PetsPacketBuilders
         writer.Write(cumulativeExperience);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureGainExperienceNotification,
+            (byte)NotiPacketType.GAIN_EXP_CREATURE,
             payload.ToArray());
     }
     public static GameServerPacket CreateCreatureEvolution(
@@ -133,7 +133,7 @@ internal static class PetsPacketBuilders
         writer.Write(userId);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureEvolutionNotification,
+            (byte)NotiPacketType.EVOLUTE_CREATURE,
             payload.ToArray());
     }
     public static GameServerPacket CreateCreatureRename(
@@ -156,7 +156,7 @@ internal static class PetsPacketBuilders
         PacketBodyWriter.WriteLengthPrefixedBytes(writer, nameBytes);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureRenameNotification,
+            (byte)NotiPacketType.RENAME_CREATURE,
             payload.ToArray());
     }
     public static GameServerPacket CreateCreatureResponse(ushort userId)
@@ -171,7 +171,7 @@ internal static class PetsPacketBuilders
         writer.Write(userId);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureResponseNotification,
+            (byte)NotiPacketType.RESPONSE_CREATURE,
             payload.ToArray());
     }
     public static GameServerPacket CreateHatchCreatureReply(
@@ -179,7 +179,7 @@ internal static class PetsPacketBuilders
         byte errorCode = 1) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.HatchCreatureCommand,
+            (byte)CmdPacketType.HATCH_CREATURE,
             success ? [1] : [0, errorCode]);
     public static GameServerPacket CreateRenameCreatureReply(
         bool success,
@@ -191,7 +191,7 @@ internal static class PetsPacketBuilders
         {
             return new(
                 GameProtocolEngine.CommandPacketType,
-                GameProtocolEngine.RenameCreatureCommand,
+                (byte)CmdPacketType.RENAME_CREATURE,
                 [0, errorCode]);
         }
 
@@ -202,7 +202,7 @@ internal static class PetsPacketBuilders
         writer.Write(itemSpace);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.RenameCreatureCommand,
+            (byte)CmdPacketType.RENAME_CREATURE,
             payload.ToArray());
     }
 }

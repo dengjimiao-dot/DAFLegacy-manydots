@@ -18,7 +18,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
 
     private const ushort EquippedTitleSlot = 10;
 
-    public ushort ProtocolId => GameProtocolEngine.MoveItemSpaceCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.MOVE_ITEMSPACE;
 
     public string Name => "MOVE_ITEM_SPACE";
 

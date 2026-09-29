@@ -20,7 +20,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.CeraShopBuyCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.BUY_CERASHOP_ITEM;
 
     public string Name => "CeraShopBuy";
 

@@ -11,7 +11,7 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
     ILogger<ChangeSkillSlotHandler> logger) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.ChangeSkillSlotCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CHANGE_SKILLSLOT;
 
     public string Name => "ChangeSkillSlot";
 
@@ -43,7 +43,7 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
             : await context.ReadAdjacentFrame(
                 TimeSpan.FromMilliseconds(5),
                 static raw => raw.Type == GameProtocolEngine.CommandPacketType
-                    && raw.ProtocolId == GameProtocolEngine.ChangeSkillSlotCommand,
+                    && raw.ProtocolId == (byte)CmdPacketType.CHANGE_SKILLSLOT,
                 cancellationToken);
         if (adjacentRead.DecodeFailed)
         {

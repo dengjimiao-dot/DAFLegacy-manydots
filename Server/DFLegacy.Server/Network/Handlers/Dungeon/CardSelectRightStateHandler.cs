@@ -11,7 +11,7 @@ public sealed class CardSelectRightStateHandler(    ILogger<CardSelectRightState
     private static readonly TimeSpan ClearRewardCardSelectionTimeout =
         TimeSpan.FromSeconds(4);
 
-    public ushort ProtocolId => GameProtocolEngine.CardSelectRightStateCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CARD_SELECT_RIGHT_STATE;
 
     public string Name => "CARD_SELECT_RIGHT_STATE";
 

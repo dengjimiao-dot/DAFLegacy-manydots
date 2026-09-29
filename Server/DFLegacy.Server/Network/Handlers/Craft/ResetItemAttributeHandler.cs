@@ -16,7 +16,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.ResetItemAttributeCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.RESET_ITEM_ATTR;
 
     public string Name => "ResetItemAttribute";
 

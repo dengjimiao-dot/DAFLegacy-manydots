@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class LeavePartyHandler(PartyHandlerCore core) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.LeavePartyCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.LEAVE_PARTY;
 
     public string Name => "LeaveParty";
 

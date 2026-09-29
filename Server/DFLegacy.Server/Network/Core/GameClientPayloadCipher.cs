@@ -1,3 +1,5 @@
+using DFLegacy.Server;
+
 namespace DFLegacy.Protocol;
 
 /// <summary>
@@ -21,7 +23,7 @@ public sealed class GameClientCipherState
         }
 
         var isCheckConnection = request.Type == GameProtocolEngine.CommandPacketType
-            && request.ProtocolId == GameProtocolEngine.CheckConnectionCommand;
+            && request.ProtocolId == (byte)CmdPacketType.CHECK_CONNECTION;
 
         // CHECK_CONNECTION is emitted through CNGameSocket's direct-send path
         // rather than the normal packet finalizer. Its body is plaintext and

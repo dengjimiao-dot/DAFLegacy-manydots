@@ -15,7 +15,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.UseLotteryItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.USE_LOTTERY_ITEM;
 
     public string Name => "UseLotteryItem";
 

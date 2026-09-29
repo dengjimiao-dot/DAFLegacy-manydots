@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class EplpHandler(    ILogger<EplpHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.EplpCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.EPLP_COMMAND;
 
     public string Name => "EPLP";
 

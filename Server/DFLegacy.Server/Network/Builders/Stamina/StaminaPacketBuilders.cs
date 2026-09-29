@@ -13,7 +13,7 @@ internal static class StaminaPacketBuilders
         byte partyMemberIndex = 0) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.StartGameCommand,
+            (byte)CmdPacketType.START_GAME,
             [0, GameProtocolEngine.EnterDungeonSelectionInsufficientFatigueError, partyMemberIndex]);
     public static GameServerPacket CreatePremiumServiceNotification(
         ushort action,
@@ -27,11 +27,11 @@ internal static class StaminaPacketBuilders
         writer.Write(remainSeconds);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.PremiumServiceNotification,
+            (byte)NotiPacketType.CERA_SPECIALITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateStamina(byte value) =>
-        new(GameProtocolEngine.NotificationPacketType, GameProtocolEngine.StaminaNotification, [value]);
+        new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.STAMINA, [value]);
     public static GameServerPacket CreateRecoverStaminaReply(int remainingGold)
     {
         using var payload = new MemoryStream();
@@ -40,13 +40,13 @@ internal static class StaminaPacketBuilders
         writer.Write((uint)Math.Max(0, remainingGold));
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.RecoverStaminaCommand,
+            (byte)CmdPacketType.RECOVER_STAMINA,
             payload.ToArray());
     }
     public static GameServerPacket CreateRecoverStaminaError(byte errorCode) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.RecoverStaminaCommand,
+            (byte)CmdPacketType.RECOVER_STAMINA,
             [0, errorCode]);
     public static GameServerPacket CreateFatigue(
         ushort usedFatigue = 0,
@@ -60,7 +60,7 @@ internal static class StaminaPacketBuilders
         writer.Write(premiumFatigue);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.FatigueNotification,
+            (byte)NotiPacketType.FATIGUE,
             payload.ToArray());
     }
     public static GameServerPacket CreateEventInfo(uint featureFlags = 0)
@@ -70,7 +70,7 @@ internal static class StaminaPacketBuilders
         writer.Write(featureFlags);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.EventInfoNotification,
+            (byte)NotiPacketType.EVENT_INFO,
             payload.ToArray());
     }
 }

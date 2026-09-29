@@ -45,7 +45,7 @@ internal static class HiddenDungeonQuestSmokeTests
                     && DungeonDifficultyProgression.GetMaximumDifficulty(character.DungeonProgress, 9) == 1,
                 "completed hidden quest remains visible with adventure difficulty after JSON reload");
             var request = new PacketFrame(GameProtocolEngine.CommandPacketType,
-                GameProtocolEngine.SelectCharacterCommand, 0, [0, 0, 0]);
+                (byte)CmdPacketType.SELECT_CHARACTER, 0, [0, 0, 0]);
             var packet = CharactersPacketBuilders.CreateSelectCharacterReply(request,
                 completedQuestIds: [116, 4, 42, 43, 116, 9999],
                 questCompletionMapping: quests.CompletionMapping);

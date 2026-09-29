@@ -35,7 +35,7 @@ internal static class PartyPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UdpPeerInfoNotification,
+            (byte)NotiPacketType.USER_UDP_IP_PORT,
             payload.ToArray());
     }
     public static GameServerPacket CreatePartyInfo(
@@ -88,7 +88,7 @@ internal static class PartyPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.PartyInfoNotification,
+            (byte)NotiPacketType.PARTY_INFO,
             payload.ToArray());
     }
     private static void WritePartySettings(BinaryWriter writer, byte titleKind, byte userMax)
@@ -122,7 +122,7 @@ internal static class PartyPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.PeerRequestNotification,
+            (byte)NotiPacketType.REQUEST_PEER,
             payload.ToArray());
     }
     public static GameServerPacket CreatePeerResponse(
@@ -137,7 +137,7 @@ internal static class PartyPacketBuilders
         writer.Write(value);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.PeerResponseNotification,
+            (byte)NotiPacketType.RESPONSE_PEER,
             payload.ToArray());
     }
     public static GameServerPacket CreateWalkout(ushort userId, byte reason)
@@ -146,7 +146,7 @@ internal static class PartyPacketBuilders
         // the matching lookup, which only affects the departure chat line.
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.WalkoutNotification,
+            (byte)NotiPacketType.WALKOUT,
             [(byte)userId, reason]);
     }
     public static bool TryParseSetPartyInfo(
@@ -266,7 +266,7 @@ internal static class PartyPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UdpHostNotification,
+            (byte)NotiPacketType.UDP_HOST,
             [partyIndex]);
     }
 }

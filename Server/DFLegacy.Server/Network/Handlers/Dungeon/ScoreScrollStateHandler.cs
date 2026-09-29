@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class ScoreScrollStateHandler(
     ChannelSessionSenders senders,    ILogger<ScoreScrollStateHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.ScoreScrollStateCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SCORE_SCROLL_STATE;
 
     public string Name => "SCORE_SCROLL_STATE";
 

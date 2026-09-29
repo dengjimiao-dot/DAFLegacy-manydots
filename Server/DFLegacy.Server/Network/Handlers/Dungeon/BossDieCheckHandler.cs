@@ -8,7 +8,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.BossDieCheckCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.BOSS_DIE_CHECK;
 
     public string Name => "BOSS_DIE_CHECK";
 

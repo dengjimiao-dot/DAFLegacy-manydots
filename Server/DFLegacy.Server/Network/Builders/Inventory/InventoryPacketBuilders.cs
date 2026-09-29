@@ -31,7 +31,7 @@ internal static class InventoryPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DeleteItemCommand,
+            (byte)CmdPacketType.DELETE_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateDeleteItemError(
@@ -39,14 +39,14 @@ internal static class InventoryPacketBuilders
         byte errorCode) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DeleteItemCommand,
+            (byte)CmdPacketType.DELETE_ITEM,
             [0, errorCode, listType]);
     public static GameServerPacket CreateUseStackableItemReply(
         ushort slot,
         byte listType) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.UseStackableItemCommand,
+            (byte)CmdPacketType.USE_STACKABLE,
             [
                 1,
                 (byte)slot,
@@ -58,7 +58,7 @@ internal static class InventoryPacketBuilders
         byte listType) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.UseStackableItemCommand,
+            (byte)CmdPacketType.USE_STACKABLE,
             [0, errorCode, listType]);
     public static GameServerPacket CreateItemList(
         byte listType,
@@ -91,7 +91,7 @@ internal static class InventoryPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.ItemListNotification,
+            (byte)NotiPacketType.ITEM_LIST,
             payload.ToArray());
     }
     public static GameServerPacket CreateMainItemList(
@@ -125,7 +125,7 @@ internal static class InventoryPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UpdateItemListNotification,
+            (byte)NotiPacketType.UPDATE_ITEM_LIST,
             payload.ToArray());
     }
     public static GameServerPacket CreateMoveItemSpaceReply(
@@ -146,19 +146,19 @@ internal static class InventoryPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.MoveItemSpaceCommand,
+            (byte)CmdPacketType.MOVE_ITEMSPACE,
             payload.ToArray());
     }
     public static GameServerPacket CreateSortItemReply(byte itemSpace) =>
-        new(GameProtocolEngine.CommandPacketType, GameProtocolEngine.SortItemCommand, [1, itemSpace]);
+        new(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SORT_ITEM, [1, itemSpace]);
     public static GameServerPacket CreateSortItemError(
         byte itemSpace,
         byte errorCode = 1) =>
-        new(GameProtocolEngine.CommandPacketType, GameProtocolEngine.SortItemCommand, [0, errorCode, itemSpace]);
+        new(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SORT_ITEM, [0, errorCode, itemSpace]);
     public static GameServerPacket CreateDecreaseDurabilityReply(byte slot) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DecreaseDurabilityCommand,
+            (byte)CmdPacketType.DECREASE_DURABILITY,
             [1, slot]);
 
     public static GameServerPacket CreateMainItemList(

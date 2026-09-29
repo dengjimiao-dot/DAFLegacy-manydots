@@ -14,7 +14,7 @@ internal static class ChatPacketBuilders
         ushort targetAreaUserId,
         ReadOnlySpan<byte> messageBytes) =>
         ChatPacketBuilders.CreateChatMessageNotification(
-            GameProtocolEngine.MessageNotification,
+            (byte)NotiPacketType.MESSAGE,
             messageType,
             targetAreaUserId,
             messageBytes);
@@ -23,7 +23,7 @@ internal static class ChatPacketBuilders
         ushort targetAreaUserId,
         ReadOnlySpan<byte> messageBytes) =>
         ChatPacketBuilders.CreateChatMessageNotification(
-            GameProtocolEngine.CreatureScriptMessageNotification,
+            (byte)NotiPacketType.CREATURE_SCRIPT_MESSAGE,
             messageType,
             targetAreaUserId,
             messageBytes);
@@ -32,7 +32,7 @@ internal static class ChatPacketBuilders
         ushort targetAreaUserId,
         ReadOnlySpan<byte> messageBytes) =>
         ChatPacketBuilders.CreateChatMessageNotification(
-            GameProtocolEngine.CreatureMessageNotification,
+            (byte)NotiPacketType.CREATURE_MESSAGE,
             messageType,
             targetAreaUserId,
             messageBytes);
@@ -70,7 +70,7 @@ internal static class ChatPacketBuilders
         writer.Write(messageBytes);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.MegaphoneMessageNotification,
+            (byte)NotiPacketType.MEGAPHONE_MSG,
             payload.ToArray());
     }
     private static GameServerPacket CreateChatMessageNotification(
@@ -117,7 +117,7 @@ internal static class ChatPacketBuilders
         writer.Write(messageBytes);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CreatureMessageNotification,
+            (byte)NotiPacketType.CREATURE_MESSAGE,
             payload.ToArray());
     }
 }

@@ -12,7 +12,7 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.HatchCreatureCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.HATCH_CREATURE;
 
     public string Name => "HatchCreature";
 

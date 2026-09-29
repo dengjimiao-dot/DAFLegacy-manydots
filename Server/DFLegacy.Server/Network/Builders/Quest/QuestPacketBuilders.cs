@@ -27,7 +27,7 @@ internal static class QuestPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.AcceptableQuestListNotification,
+            (byte)NotiPacketType.ACCEPTABLE_QUEST_LIST,
             payload.ToArray());
     }
     public static GameServerPacket CreateEmptyAcceptableQuestList() =>
@@ -55,7 +55,7 @@ internal static class QuestPacketBuilders
             writer.Write(item.CountOrSeed);
         }
 
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, GameProtocolEngine.AcceptQuestCommand, payload.ToArray());
+        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.ACCEPT_QUEST, payload.ToArray());
     }
     public static GameServerPacket CreateGiveupQuestReply(ushort questId)
     {
@@ -63,7 +63,7 @@ internal static class QuestPacketBuilders
         using var writer = new BinaryWriter(payload);
         writer.Write((byte)1);
         writer.Write(questId);
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, GameProtocolEngine.GiveupQuestCommand, payload.ToArray());
+        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.GIVEUP_QUEST, payload.ToArray());
     }
     public static GameServerPacket CreateSetQuestTriggerReply(
         ushort questId,
@@ -74,7 +74,7 @@ internal static class QuestPacketBuilders
         writer.Write((byte)1);
         writer.Write(questId);
         writer.Write(trigger);
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, GameProtocolEngine.SetQuestTriggerCommand, payload.ToArray());
+        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SET_QUEST_TRIGGER, payload.ToArray());
     }
     public static GameServerPacket CreateFinishQuestReply(
         ushort questId,
@@ -132,6 +132,6 @@ internal static class QuestPacketBuilders
             }
         }
 
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, GameProtocolEngine.FinishQuestCommand, payload.ToArray());
+        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.FINISH_QUEST, payload.ToArray());
     }
 }

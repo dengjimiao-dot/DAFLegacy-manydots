@@ -14,7 +14,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.RepairEquipmentCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.REPAIR_EQUIPMENT;
 
     public string Name => "RepairEquipment";
 

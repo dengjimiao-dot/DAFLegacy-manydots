@@ -177,11 +177,11 @@ internal static class AvatarCompoundSmokeTests
         selectedOption: 24);
         var failure = CraftPacketBuilders.CreateCompoundAvatarFailure();
         check(reply.Type == GameProtocolEngine.CommandPacketType
-                && reply.ProtocolId == GameProtocolEngine.CompoundAvatarCommand
+                && reply.ProtocolId == (byte)CmdPacketType.COMPOUND_AVATAR
                 && reply.Payload.SequenceEqual(Convert.FromHexString(
                     "01030003000000000001000000000000010100000000000000C3AE000000001800"))
                 && failure.Type == GameProtocolEngine.CommandPacketType
-                && failure.ProtocolId == GameProtocolEngine.CompoundAvatarCommand
+                && failure.ProtocolId == (byte)CmdPacketType.COMPOUND_AVATAR
                 && failure.Payload.SequenceEqual(Convert.FromHexString("0004")),
             "CMD102 success and failure replies match the 2008DF target-client decoder layout");
     }

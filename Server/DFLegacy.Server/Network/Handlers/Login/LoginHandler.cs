@@ -14,7 +14,7 @@ public sealed class LoginHandler(
     JsonGameStore store,
     ILogger<LoginHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.LoginCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.LOGIN;
 
     public string Name => "LOGIN";
 

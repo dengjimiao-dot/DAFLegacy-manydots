@@ -10,7 +10,7 @@ public sealed class SetUserAreaHandler(JsonGameStore store,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.SetUserAreaCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_USER_AREA;
 
     public string Name => "SetUserArea";
 

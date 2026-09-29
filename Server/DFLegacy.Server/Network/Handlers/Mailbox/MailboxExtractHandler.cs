@@ -10,7 +10,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.MailboxExtractItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.MAILBOX_EXTRACT_ITEM;
 
     public string Name => "MAILBOXEXTRACT";
 

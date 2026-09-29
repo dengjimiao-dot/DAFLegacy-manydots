@@ -34,7 +34,7 @@ internal static class ShopPacketBuilders
         writer.Write(countOrValue);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.BuyItemCommand,
+            (byte)CmdPacketType.BUY_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateCeraShopBuyReply(
@@ -72,7 +72,7 @@ internal static class ShopPacketBuilders
         writer.Write(0u);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.CeraShopBuyCommand,
+            (byte)CmdPacketType.BUY_CERASHOP_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateCeraShopBuyError(
@@ -91,7 +91,7 @@ internal static class ShopPacketBuilders
         writer.Write((ushort)0);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.CeraShopBuyCommand,
+            (byte)CmdPacketType.BUY_CERASHOP_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateCeraTicketReply(
@@ -114,7 +114,7 @@ internal static class ShopPacketBuilders
         writer.Write(ticketNumber);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.GenerateCeraTicketCommand,
+            (byte)CmdPacketType.GEN_CERATICKET,
             payload.ToArray());
     }
     public static GameServerPacket CreateCeraUpdate(bool success, uint value)
@@ -125,7 +125,7 @@ internal static class ShopPacketBuilders
         writer.Write(value);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.CeraUpdateNotification,
+            (byte)NotiPacketType.CERA,
             payload.ToArray());
     }
     public static GameServerPacket CreateSellItemReply(
@@ -143,7 +143,7 @@ internal static class ShopPacketBuilders
         writer.Write(soldCount);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.SellItemCommand,
+            (byte)CmdPacketType.SELL_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateRepairEquipmentReply(
@@ -159,7 +159,7 @@ internal static class ShopPacketBuilders
         writer.Write(slot);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.RepairEquipmentCommand,
+            (byte)CmdPacketType.REPAIR_EQUIPMENT,
             payload.ToArray());
     }
     public static GameServerPacket CreateSetItemTradeStateReply(
@@ -174,7 +174,7 @@ internal static class ShopPacketBuilders
         writer.Write((byte)0);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.SetItemTradeStateCommand,
+            (byte)CmdPacketType.SET_ITEMTRADE_STATE,
             payload.ToArray());
     }
 }

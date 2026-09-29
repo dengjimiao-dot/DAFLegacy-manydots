@@ -8,7 +8,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class AllDieMonsterHandler(    ILogger<AllDieMonsterHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.AllDieMonsterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.ALLDIE_MONSTER;
 
     public string Name => "ALLDIE_MONSTER";
 

@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class SetPartyInfoHandler(PartyHandlerCore core) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.SetPartyInfoCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SET_PARTY_INFO;
 
     public string Name => "SetPartyInfo";
 

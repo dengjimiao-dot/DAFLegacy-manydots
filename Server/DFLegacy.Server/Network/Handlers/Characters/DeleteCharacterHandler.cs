@@ -12,7 +12,7 @@ public sealed class DeleteCharacterHandler(
     JsonGameStore store,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.DeleteCharacterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DELETE_CHARACTER;
 
     public string Name => "DELETE_CHARACTER";
 

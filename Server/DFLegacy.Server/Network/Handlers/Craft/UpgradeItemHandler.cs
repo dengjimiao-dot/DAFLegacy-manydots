@@ -17,7 +17,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.UpgradeItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.UPGRADE_ITEM;
 
     public string Name => "UpgradeItem";
 

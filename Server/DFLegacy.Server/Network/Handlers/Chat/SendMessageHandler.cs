@@ -19,7 +19,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
     private const ushort ServerMegaphoneItemId = 36;
     private const ushort ChannelMegaphoneItemId = 37;
 
-    public ushort ProtocolId => GameProtocolEngine.SendMessageCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SEND_MESSAGE;
 
     public string Name => "SEND_MESSAGE";
 

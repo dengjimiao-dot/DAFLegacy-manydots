@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class SelectCardHandler(    ILogger<SelectCardHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.SelectCardCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SELECT_CARD;
 
     public string Name => "SELECT_CARD";
 

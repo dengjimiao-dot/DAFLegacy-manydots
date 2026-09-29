@@ -13,7 +13,7 @@ public sealed class CreatureSendMessageHandler(
 
     private const ushort BoboCreatureItemId = 63_023;
 
-    public ushort ProtocolId => GameProtocolEngine.CreatureSendMessageCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CREATURE_SEND_MESSAGE;
 
     public string Name => "CREATURE_SEND_MESSAGE";
 

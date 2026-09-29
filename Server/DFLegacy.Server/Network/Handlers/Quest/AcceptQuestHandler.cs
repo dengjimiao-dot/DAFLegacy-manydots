@@ -13,7 +13,7 @@ public sealed class AcceptQuestHandler(
     DungeonCatalog dungeonCatalog,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.AcceptQuestCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.ACCEPT_QUEST;
 
     public string Name => "AcceptQuest";
 

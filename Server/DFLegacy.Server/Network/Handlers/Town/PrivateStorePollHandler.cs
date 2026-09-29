@@ -3,13 +3,13 @@ using DFLegacy.Protocol;
 namespace DFLegacy.Server;
 
 /// <summary>
-/// PrivateStorePollCommand (CMD 82): the legacy fall-through answered this
+/// CmdPacketType.CALL_MEMER_LIST (CMD 82): the legacy fall-through answered this
 /// polling command with the canned private-store reply (07 §5 group 14);
 /// the handler keeps those exact bytes.
 /// </summary>
 public sealed class PrivateStorePollHandler : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.PrivateStorePollCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.CALL_MEMER_LIST;
 
     public string Name => "PRIVATE_STORE_POLL";
 

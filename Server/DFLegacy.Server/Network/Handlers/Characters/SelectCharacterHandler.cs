@@ -27,7 +27,7 @@ public sealed partial class SelectCharacterHandler(
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.SelectCharacterCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.SELECT_CHARACTER;
 
     public string Name => "SELECT_CHARACTER";
 

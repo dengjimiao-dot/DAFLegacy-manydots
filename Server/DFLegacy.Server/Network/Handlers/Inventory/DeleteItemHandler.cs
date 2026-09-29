@@ -14,7 +14,7 @@ public sealed class DeleteItemHandler(
     ILogger<DeleteItemHandler> logger) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.DeleteItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DELETE_ITEM;
 
     public string Name => "DeleteItem";
 

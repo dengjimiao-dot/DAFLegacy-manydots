@@ -10,7 +10,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
     CharacterSessionRegistry characterSessions,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.MailboxSendCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.MAILBOX_SEND;
 
     public string Name => "MAILBOXSEND";
 

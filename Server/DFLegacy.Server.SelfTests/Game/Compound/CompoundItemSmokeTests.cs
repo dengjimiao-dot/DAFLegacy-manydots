@@ -95,7 +95,7 @@ internal static class CompoundItemSmokeTests
 
     private static void CheckProtocolVectors(Action<bool, string> check)
     {
-        check(GameProtocolEngine.CompoundItemCommand == 27
+        check((byte)CmdPacketType.COMPOUND_ITEM == 27
                 && CraftPacketBuilders.TryParseCompoundItemCommand(
                     Convert.FromHexString("1500DE1301020001"),
                     out var direct)
@@ -119,7 +119,7 @@ internal static class CompoundItemSmokeTests
         ]);
         var failure = CraftPacketBuilders.CreateCompoundItemFailure(19);
         check(reply.Type == GameProtocolEngine.CommandPacketType
-                && reply.ProtocolId == GameProtocolEngine.CompoundItemCommand
+                && reply.ProtocolId == (byte)CmdPacketType.COMPOUND_ITEM
                 && reply.Payload.SequenceEqual(Convert.FromHexString(
                     "01020000008403000000090064000000010400DE0B02000000000000"))
                 && failure.Payload.SequenceEqual(Convert.FromHexString("0013")),

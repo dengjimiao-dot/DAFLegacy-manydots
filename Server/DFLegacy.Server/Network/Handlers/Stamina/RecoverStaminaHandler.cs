@@ -10,7 +10,7 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
     StaminaRecoveryCatalog staminaRecoveryCatalog,
     ILogger<RecoverStaminaHandler> logger) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.RecoverStaminaCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.RECOVER_STAMINA;
 
     public string Name => "STAMINA_RECOVER";
 

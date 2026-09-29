@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class ResponseCreatureHandler(ChannelSessionSenders senders) : IGameCommandHandler
 {
 
-    public ushort ProtocolId => GameProtocolEngine.ResponseCreatureCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.RESPONSE_CREATURE;
 
     public string Name => "ResponseCreature";
 

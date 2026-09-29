@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class BackToVillageHandler(    ILogger<BackToVillageHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
-    public ushort ProtocolId => GameProtocolEngine.BackToVillageCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.BACK_2_VILLAGE;
 
     public string Name => "BACK_2_VILLAGE";
 

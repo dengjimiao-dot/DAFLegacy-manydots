@@ -11,7 +11,7 @@ internal static class CraftPacketBuilders
 {
     public static GameServerPacket CreateGetItemSilentRejection(PacketFrame request)
     {
-        if (request.ProtocolId != GameProtocolEngine.GetItemCommand)
+        if (request.ProtocolId != (byte)CmdPacketType.GET_ITEM)
         {
             throw new ArgumentException(
                 "A silent item-pickup rejection requires a GET_ITEM request.",
@@ -45,7 +45,7 @@ internal static class CraftPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DisjointItemCommand,
+            (byte)CmdPacketType.DISJOINT_ITEM,
             payload.ToArray());
     }
     public static bool TryParseCompoundItemCommand(
@@ -114,13 +114,13 @@ internal static class CraftPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.CompoundItemCommand,
+            (byte)CmdPacketType.COMPOUND_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateCompoundItemFailure(byte errorCode) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.CompoundItemCommand,
+            (byte)CmdPacketType.COMPOUND_ITEM,
             [0, errorCode]);
     public static bool TryParseUpgradeItemCommand(
         ReadOnlySpan<byte> body,
@@ -165,7 +165,7 @@ internal static class CraftPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.UpgradeItemCommand,
+            (byte)CmdPacketType.UPGRADE_ITEM,
             payload.ToArray());
     }
     public static bool TryParseResetItemAttributeCommand(
@@ -202,13 +202,13 @@ internal static class CraftPacketBuilders
         writer.Write(operationType);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.ResetItemAttributeCommand,
+            (byte)CmdPacketType.RESET_ITEM_ATTR,
             payload.ToArray());
     }
     public static GameServerPacket CreateResetItemAttributeFailure(byte errorCode) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.ResetItemAttributeCommand,
+            (byte)CmdPacketType.RESET_ITEM_ATTR,
             [0, errorCode]);
     public static bool TryParseCompoundAvatarCommand(
         ReadOnlySpan<byte> body,
@@ -266,13 +266,13 @@ internal static class CraftPacketBuilders
         writer.Write(selectedOption);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.CompoundAvatarCommand,
+            (byte)CmdPacketType.COMPOUND_AVATAR,
             payload.ToArray());
     }
     public static GameServerPacket CreateCompoundAvatarFailure(byte errorCode = 4) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.CompoundAvatarCommand,
+            (byte)CmdPacketType.COMPOUND_AVATAR,
             [0, errorCode]);
     public static GameServerPacket CreateUseLotteryItemReply(
         ushort sourceSlot,
@@ -293,7 +293,7 @@ internal static class CraftPacketBuilders
         writer.Write(itemAttribute);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.UseLotteryItemCommand,
+            (byte)CmdPacketType.USE_LOTTERY_ITEM,
             payload.ToArray());
     }
     public static bool TryParseDropItemCommand(
@@ -333,7 +333,7 @@ internal static class CraftPacketBuilders
         writer.Write(count);
         return new GameServerPacket(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DropItemCommand,
+            (byte)CmdPacketType.DROP_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateDropItemErrorReply(
@@ -341,7 +341,7 @@ internal static class CraftPacketBuilders
         byte itemSpace) =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.DropItemCommand,
+            (byte)CmdPacketType.DROP_ITEM,
             [0, errorCode, itemSpace]);
     public static GameServerPacket CreateDropItem(
         ushort userId,
@@ -364,7 +364,7 @@ internal static class CraftPacketBuilders
         writer.Write(drop.Durability);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.DropItemNotification,
+            (byte)NotiPacketType.DROP_ITEM,
             payload.ToArray());
     }
 }

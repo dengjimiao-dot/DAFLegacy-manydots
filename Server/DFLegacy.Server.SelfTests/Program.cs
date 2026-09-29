@@ -301,7 +301,7 @@ BinaryPrimitives.WriteUInt32LittleEndian(
     (uint)notificationText.Length);
 notificationText.CopyTo(expectedMessagePayload, 7);
 Check(messageNotification.Type == GameProtocolEngine.NotificationPacketType
-    && messageNotification.ProtocolId == GameProtocolEngine.MessageNotification
+    && messageNotification.ProtocolId == (byte)NotiPacketType.MESSAGE
     && messageNotification.Payload.SequenceEqual(expectedMessagePayload),
     "2008 message notification uses type, target, u32 length and CP936 bytes without the newer extra flag");
 CheckThrows<ArgumentOutOfRangeException>(
@@ -330,7 +330,7 @@ BinaryPrimitives.WriteUInt32LittleEndian(
 capturedCreatureScript.MessageBytes.CopyTo(expectedCreatureScriptPayload, 7);
 Check(creatureScriptNotification.Type == GameProtocolEngine.NotificationPacketType
     && creatureScriptNotification.ProtocolId
-        == GameProtocolEngine.CreatureScriptMessageNotification
+        == (byte)NotiPacketType.CREATURE_SCRIPT_MESSAGE
     && creatureScriptNotification.Payload.SequenceEqual(expectedCreatureScriptPayload),
     "2008 NOTI 131 Creature script message uses type, area-user id and CP936 text");
 var creatureAutomaticMessageNotification =
@@ -353,14 +353,14 @@ capturedCreatureAutomaticMessage.MessageBytes.CopyTo(
 Check(creatureAutomaticMessageNotification.Type
         == GameProtocolEngine.NotificationPacketType
     && creatureAutomaticMessageNotification.ProtocolId
-        == GameProtocolEngine.CreatureMessageNotification
+        == (byte)NotiPacketType.CREATURE_MESSAGE
     && creatureAutomaticMessageNotification.Payload.SequenceEqual(
         expectedCreatureAutomaticMessagePayload),
     "2008 NOTI 126 Bobo automatic message uses type, authoritative area-user id and CP936 text");
 var popupNotification = ChatPacketBuilders.CreatePopupNotification(
     new byte[] { 0x41, 0x42 });
 Check(popupNotification.Type == GameProtocolEngine.NotificationPacketType
-    && popupNotification.ProtocolId == GameProtocolEngine.CreatureMessageNotification
+    && popupNotification.ProtocolId == (byte)NotiPacketType.CREATURE_MESSAGE
     && popupNotification.Payload.SequenceEqual(
         new byte[] { 0, 0, 0, 2, 0, 0, 0, 0x41, 0x42 }),
     "legacy popup notification uses CREATURE_MESSAGE type zero, target zero and a u32 CP936 length");
@@ -433,7 +433,7 @@ BinaryPrimitives.WriteInt32LittleEndian(expectedPvpRecordPayload.AsSpan(16, 4), 
 expectedPvpRecordPayload[20] = 2;
 expectedPvpRecordPayload[21] = 7;
 Check(pvpRecord.Type == GameProtocolEngine.NotificationPacketType
-    && pvpRecord.ProtocolId == GameProtocolEngine.PvpRecordNotification
+    && pvpRecord.ProtocolId == (byte)NotiPacketType.PVP_RECORD
     && pvpRecord.Payload.SequenceEqual(expectedPvpRecordPayload),
     "NOTI 48 PvP record is five little-endian int32 values followed by two bytes");
 
@@ -535,7 +535,7 @@ Check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(24, 4)) == 1, "firs
 Check(Encoding.ASCII.GetString(metadata, 56, 9) == "127.0.0.1", "channel endpoint is loopback");
 Check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(72, 4)) == 7001, "channel endpoint port");
 
-var exitRequest = new PacketFrame(1, GameProtocolEngine.ExitCommand, 0, [0x34, 0x12]);
+var exitRequest = new PacketFrame(1, (byte)CmdPacketType.EXIT, 0, [0x34, 0x12]);
 var exitReply = GameProtocolEngine.Handle(exitRequest);
 Check(exitReply is not null, "channel exit command receives a reply");
 Check(exitReply?.Type == 1 && exitReply.ProtocolId == 3, "channel reply preserves command type and id");
@@ -556,23 +556,23 @@ Check(serverCipherVector.SequenceEqual(new byte[] { 2, 1, 0 }),
 
 var returnSelectRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.ReturnSelectCharacterCommand,
+    (byte)CmdPacketType.RETURN_SELECT_CHARACTER,
     0,
     [0x35, 0x12]);
 var returnSelectReply = GameProtocolEngine.Handle(returnSelectRequest);
 Check(returnSelectReply is not null
     && returnSelectReply.Type == GameProtocolEngine.CommandPacketType
-    && returnSelectReply.ProtocolId == GameProtocolEngine.ReturnSelectCharacterCommand
+    && returnSelectReply.ProtocolId == (byte)CmdPacketType.RETURN_SELECT_CHARACTER
     && returnSelectReply.Payload.SequenceEqual(new byte[] { 1 }),
     "town return-to-character-selection command receives the required success acknowledgement");
 
 var useSkillRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.UseSkillCommand,
+    (byte)CmdPacketType.USE_SKILL,
     0,
     [0x36, 0x12, 0x2A, 0x01, 0x00]);
 var useSkillReply = GameProtocolEngine.Handle(useSkillRequest);
-Check(GameProtocolEngine.UseSkillCommand == 41
+Check((byte)CmdPacketType.USE_SKILL == 41
     && useSkillReply is not null
     && useSkillReply.Type == GameProtocolEngine.CommandPacketType
     && useSkillReply.ProtocolId == 41
@@ -580,7 +580,7 @@ Check(GameProtocolEngine.UseSkillCommand == 41
     "dungeon USE_SKILL receives the common success acknowledgement");
 var privateStorePollRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.PrivateStorePollCommand,
+    (byte)CmdPacketType.CALL_MEMER_LIST,
     0,
     [0x37, 0x00]);
 var privateStorePollReply = GameProtocolEngine.Handle(privateStorePollRequest);
@@ -595,7 +595,7 @@ Check(privateStorePollReply is not null
     "DFLegacy private-store polling receives the required empty list layout");
 var exchangeCharacterInfoRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.ExchangeServerCharacterInfoCommand,
+    (byte)CmdPacketType.REQUEST_BLACKLIST,
     0,
     [0x38, 0x00]);
 var exchangeCharacterInfoReply = GameProtocolEngine.Handle(exchangeCharacterInfoRequest);
@@ -607,7 +607,7 @@ var deleteItemReply = InventoryPacketBuilders.CreateDeleteItemReply(
     0,
     [new GameItemConsumptionEntry(8, 2)]);
 Check(deleteItemReply.Type == GameProtocolEngine.CommandPacketType
-    && deleteItemReply.ProtocolId == GameProtocolEngine.DeleteItemCommand
+    && deleteItemReply.ProtocolId == (byte)CmdPacketType.DELETE_ITEM
     && deleteItemReply.Payload.SequenceEqual(
         new byte[] { 1, 0, 1, 8, 0, 2, 0, 0, 0 }),
     "material transaction success reports the amount consumed from its slot");
@@ -621,7 +621,7 @@ var lotteryReply = CraftPacketBuilders.CreateUseLotteryItemReply(
     countOrValue: 1,
     instanceValue: 1_000);
 Check(lotteryReply.Type == GameProtocolEngine.CommandPacketType
-    && lotteryReply.ProtocolId == GameProtocolEngine.UseLotteryItemCommand
+    && lotteryReply.ProtocolId == (byte)CmdPacketType.USE_LOTTERY_ITEM
     && lotteryReply.Payload.SequenceEqual(
     new byte[]
     {
@@ -639,7 +639,7 @@ var increaseStatusReply = SkillPacketBuilders.CreateIncreaseStatusReply(
     statusType: 0,
     amount: 20);
 Check(increaseStatusReply.Type == GameProtocolEngine.CommandPacketType
-    && increaseStatusReply.ProtocolId == GameProtocolEngine.IncreaseStatusCommand
+    && increaseStatusReply.ProtocolId == (byte)CmdPacketType.INCREASE_STATUS
     && increaseStatusReply.Payload.SequenceEqual(
     new byte[]
     {
@@ -736,7 +736,7 @@ var disjointReply = CraftPacketBuilders.CreateDisjointItemReply(
         new GameDisjointRewardEntry(74, 3_035, 1)
     ]);
 Check(disjointReply.Type == GameProtocolEngine.CommandPacketType
-    && disjointReply.ProtocolId == GameProtocolEngine.DisjointItemCommand
+    && disjointReply.ProtocolId == (byte)CmdPacketType.DISJOINT_ITEM
     && disjointReply.Payload.SequenceEqual(
     new byte[]
     {
@@ -751,14 +751,14 @@ Check(disjointReply.Type == GameProtocolEngine.CommandPacketType
 
 var createCharacterRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.CreateCharacterCommand,
+    (byte)CmdPacketType.CREATE_CHARACTER,
     0,
     [0x02, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, (byte)'1', (byte)'3']);
 var createCharacterReply = GameProtocolEngine.Handle(createCharacterRequest);
 Check(createCharacterReply is not null, "create-character command receives a reply");
 Check(
     createCharacterReply?.Type == GameProtocolEngine.CommandPacketType
-    && createCharacterReply.ProtocolId == GameProtocolEngine.CreateCharacterCommand,
+    && createCharacterReply.ProtocolId == (byte)CmdPacketType.CREATE_CHARACTER,
     "create-character reply preserves command type and id");
 Check(createCharacterReply?.Payload.SequenceEqual(new byte[] { 1 }) == true,
     "create-character reply reports success");
@@ -767,26 +767,26 @@ Check(duplicateCharacterReply.Payload.SequenceEqual(new byte[] { 0, 2 }),
     "create-character failure carries the legacy error code");
 var deleteCharacterRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.DeleteCharacterCommand,
+    (byte)CmdPacketType.DELETE_CHARACTER,
     0,
     [0x04, 0x00, 0x03]);
 var deleteCharacterReply = GameProtocolEngine.Handle(deleteCharacterRequest);
 Check(deleteCharacterReply is not null
     && deleteCharacterReply.Type == GameProtocolEngine.CommandPacketType
-    && deleteCharacterReply.ProtocolId == GameProtocolEngine.DeleteCharacterCommand
+    && deleteCharacterReply.ProtocolId == (byte)CmdPacketType.DELETE_CHARACTER
     && deleteCharacterReply.Payload.SequenceEqual(new byte[] { 1, 3 }),
     "delete-character success echoes the deleted slot required by the client");
 
 var selectCharacterRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.SelectCharacterCommand,
+    (byte)CmdPacketType.SELECT_CHARACTER,
     0,
     [0x03, 0x00, 0x00]);
 var selectCharacterReply = GameProtocolEngine.Handle(selectCharacterRequest);
 Check(selectCharacterReply is not null, "select-character command receives a reply");
 Check(
     selectCharacterReply?.Type == GameProtocolEngine.CommandPacketType
-    && selectCharacterReply.ProtocolId == GameProtocolEngine.SelectCharacterCommand,
+    && selectCharacterReply.ProtocolId == (byte)CmdPacketType.SELECT_CHARACTER,
     "select-character reply preserves command type and id");
 Check(selectCharacterReply?.Payload.Length == 42,
     "select-character reply has the exact DFLegacy state-block length");
@@ -869,7 +869,7 @@ var currentCharacterInfo = CharactersPacketBuilders.CreateCurrentCharacterInfo(
     userId: 1);
 Check(
     currentCharacterInfo.Type == GameProtocolEngine.NotificationPacketType
-    && currentCharacterInfo.ProtocolId == GameProtocolEngine.UserInfoNotification,
+    && currentCharacterInfo.ProtocolId == (byte)NotiPacketType.USERINFO,
     "current character is sent as a USERINFO notification");
 Check(currentCharacterInfo.Payload.Length == 56,
     "mode-zero current-character record has the exact mapped layout");
@@ -918,7 +918,7 @@ Check(currentCharacterWithCreatureAppearance.Payload.Length == 61
             1
         }),
     "mode-zero USERINFO carries the equipped Creature item id, name, and wire-active state used to register its map object");
-Check(GameProtocolEngine.ResponseCreatureCommand == 104,
+Check((byte)CmdPacketType.RESPONSE_CREATURE == 104,
     "DFLegacy RESPONSE_CREATURE uses old-client command 104 rather than evolute notification 106");
 
 var currentCharacterWithTitleAppearance = CharactersPacketBuilders.CreateCurrentCharacterInfo(
@@ -947,7 +947,7 @@ Check(currentWeaponAppearance.Payload.Length == 60
 
 var currentCharacterDetails = CharactersPacketBuilders.CreateCurrentCharacterDetails(userId: 1);
 Check(currentCharacterDetails.Type == GameProtocolEngine.NotificationPacketType
-    && currentCharacterDetails.ProtocolId == GameProtocolEngine.UserInfoNotification,
+    && currentCharacterDetails.ProtocolId == (byte)NotiPacketType.USERINFO,
     "full current-character data uses USERINFO notification two");
 Check(currentCharacterDetails.Payload.Length == 97,
     "mode-one current-character data has the exact DFLegacy layout");
@@ -1077,7 +1077,7 @@ Check(currentCharacterWithCreature.Payload.AsSpan(94).SequenceEqual(
 
 var userState = CharactersPacketBuilders.CreateUserState(userId: 1, state: 0);
 Check(userState.Type == GameProtocolEngine.NotificationPacketType
-    && userState.ProtocolId == GameProtocolEngine.UserStateNotification,
+    && userState.ProtocolId == (byte)NotiPacketType.USER_STATE,
     "town state uses USER_STATE notification three");
 Check(userState.Payload.SequenceEqual(new byte[] { 1, 0, 0 }),
     "town state identifies the local character and keeps its normal state");
@@ -1085,7 +1085,7 @@ Check(userState.Payload.SequenceEqual(new byte[] { 1, 0, 0 }),
 var itemList = InventoryPacketBuilders.CreateItemList(
     0,
     [new GameInventoryEntry(3, 27093, 1, Durability: 1000)]);
-Check(itemList.ProtocolId == GameProtocolEngine.ItemListNotification,
+Check(itemList.ProtocolId == (byte)NotiPacketType.ITEM_LIST,
     "inventory initialization uses ITEM_LIST notification thirteen");
 Check(itemList.Payload.Length == 15,
     "one compact inventory record has the exact mapped length");
@@ -1117,7 +1117,7 @@ var creatureInfo = PetsPacketBuilders.CreateCreatureInfo(
         NoCharge: true)
 ]);
 Check(creatureInfo.Type == GameProtocolEngine.NotificationPacketType
-    && creatureInfo.ProtocolId == GameProtocolEngine.CreatureInfoNotification
+    && creatureInfo.ProtocolId == (byte)NotiPacketType.CREATURE_ITEM_LIST
     && creatureInfo.Payload.SequenceEqual(
         new byte[]
         {
@@ -1134,13 +1134,13 @@ var creatureState = PetsPacketBuilders.CreateCreatureState(
     creatureUid: 0x11223344,
     state: 3);
 Check(creatureState.Type == GameProtocolEngine.NotificationPacketType
-    && creatureState.ProtocolId == GameProtocolEngine.CreatureStateNotification
+    && creatureState.ProtocolId == (byte)NotiPacketType.CREATURE_STATE
     && creatureState.Payload.SequenceEqual(
         new byte[] { 0x44, 0x33, 0x22, 0x11, 3, 0, 0, 0 }),
     "DFLegacy Creature state notification 103 carries the Creature uid and state as u32 values");
 var creatureResponse = PetsPacketBuilders.CreateCreatureResponse(userId: 1);
 Check(creatureResponse.Type == GameProtocolEngine.NotificationPacketType
-    && creatureResponse.ProtocolId == GameProtocolEngine.CreatureResponseNotification
+    && creatureResponse.ProtocolId == (byte)NotiPacketType.RESPONSE_CREATURE
     && creatureResponse.Payload.SequenceEqual(new byte[] { 1, 0 }),
     "DFLegacy Creature response notification 104 carries the area user id as u16");
 Check(PetsPacketBuilders.CreateHatchCreatureReply(success: true).Payload.SequenceEqual(
@@ -1161,7 +1161,7 @@ var creatureRenameNotification = PetsPacketBuilders.CreateCreatureRename(
     userId: 1,
     nameBytes: [0xCD, 0xC3, 0xD7, 0xD3]);
 Check(creatureRenameNotification.ProtocolId
-        == GameProtocolEngine.CreatureRenameNotification
+        == (byte)NotiPacketType.RENAME_CREATURE
     && creatureRenameNotification.Payload.SequenceEqual(
         new byte[] { 1, 0, 4, 0, 0, 0, 0xCD, 0xC3, 0xD7, 0xD3 }),
     "Creature rename notification 101 carries the area user id and GBK length-prefixed name");
@@ -1229,7 +1229,7 @@ var emptyCargo = InventoryPacketBuilders.CreateItemList(2, [], listParameter: 8)
 Check(emptyCargo.Payload.SequenceEqual(new byte[] { 2, 8, 0, 0, 0 }),
     "personal cargo carries its additional list parameter");
 var upgradedCargo = InventoryPacketBuilders.CreateItemList(2, [], listParameter: 24);
-Check(upgradedCargo.ProtocolId == GameProtocolEngine.ItemListNotification
+Check(upgradedCargo.ProtocolId == (byte)NotiPacketType.ITEM_LIST
     && upgradedCargo.Payload.SequenceEqual(new byte[] { 2, 24, 0, 0, 0 }),
     "warehouse upgrades refresh target client notification 13 with the absolute u16 capacity");
 Check(CharacterWarehouseProgression.CapacitySteps.SequenceEqual(
@@ -1378,7 +1378,7 @@ finally
 
 var mailboxOpen = MailboxPacketBuilders.CreateMailboxOpenReply();
 Check(mailboxOpen.Type == GameProtocolEngine.CommandPacketType
-    && mailboxOpen.ProtocolId == GameProtocolEngine.MailboxOpenCommand
+    && mailboxOpen.ProtocolId == (byte)CmdPacketType.MAILBOX_OPEN
     && mailboxOpen.Payload.SequenceEqual(new byte[] { 1, 0, 0 }),
     "mailbox open reply carries success and the signed not-loaded count");
 var mailboxList = MailboxPacketBuilders.CreateMailboxList(
@@ -1399,7 +1399,7 @@ var mailboxList = MailboxPacketBuilders.CreateMailboxList(
         State: 2)
 ]);
 Check(mailboxList.Type == GameProtocolEngine.NotificationPacketType
-    && mailboxList.ProtocolId == GameProtocolEngine.MailboxMailListNotification
+    && mailboxList.ProtocolId == (byte)NotiPacketType.MAILBOX_MAIL_LIST
     && mailboxList.Payload.Length == 72
     && mailboxList.Payload[0] == 1
     && mailboxList.Payload[1] == 0
@@ -1484,7 +1484,7 @@ var mailboxExtract = MailboxPacketBuilders.CreateMailboxExtractReply(0x11223344)
 Check(mailboxExtract.Payload.SequenceEqual(new byte[] { 1, 0x44, 0x33, 0x22, 0x11 }),
     "mail extraction reply returns the removed mail id");
 var mailboxState = MailboxPacketBuilders.CreateMailboxStateReply(0x11223344, 2);
-Check(mailboxState.ProtocolId == GameProtocolEngine.MailboxStateCommand
+Check(mailboxState.ProtocolId == (byte)CmdPacketType.CHANGE_LETTER_STAT
     && mailboxState.Payload.SequenceEqual(
         new byte[] { 1, 0x44, 0x33, 0x22, 0x11, 2, 0 }),
     "mail state reply echoes the id and two-byte DFLegacy state");
@@ -1493,7 +1493,7 @@ Check(MailboxPacketBuilders.CreateMailboxAlarm(2).Payload.SequenceEqual(new byte
 var equipmentUpdate = InventoryPacketBuilders.CreateUpdateItemList(
     3,
     [new GameInventoryEntry(18, 24032, 1, 0, 1000, 0)]);
-Check(equipmentUpdate.ProtocolId == GameProtocolEngine.UpdateItemListNotification
+Check(equipmentUpdate.ProtocolId == (byte)NotiPacketType.UPDATE_ITEM_LIST
     && equipmentUpdate.Payload.SequenceEqual(
         new byte[] { 3, 1, 0, 18, 0, 0xE0, 0x5D, 1, 0, 0, 0, 0, 0xE8, 3, 0 }),
     "55 list-three update carries one complete worn-equipment record");
@@ -1510,7 +1510,7 @@ var moveItemReply = InventoryPacketBuilders.CreateMoveItemSpaceReply(
     movedCount: 1,
     destinationListType: 3,
     destinationSlot: 9);
-Check(moveItemReply.ProtocolId == GameProtocolEngine.MoveItemSpaceCommand
+Check(moveItemReply.ProtocolId == (byte)CmdPacketType.MOVE_ITEMSPACE
     && moveItemReply.Payload.SequenceEqual(
         new byte[] { 1, 0, 13, 0, 1, 0, 0, 0, 3, 9, 0 }),
     "DFLegacy move-item reply carries both list/slot endpoints and the moved count");
@@ -1524,7 +1524,7 @@ Check(rejectedMoveReply.Payload.SequenceEqual(
         new byte[] { 1, 0, 76, 0, 0, 0, 0, 0, 0, 8, 0 }),
     "a rejected DFLegacy inventory move is completed as a zero-count success reply");
 var sortItemReply = InventoryPacketBuilders.CreateSortItemReply(0);
-Check(sortItemReply.ProtocolId == GameProtocolEngine.SortItemCommand
+Check(sortItemReply.ProtocolId == (byte)CmdPacketType.SORT_ITEM
     && sortItemReply.Payload.SequenceEqual(new byte[] { 1, 0 }),
     "DFLegacy sort-item success completes the pending main-inventory operation");
 Check(InventoryPacketBuilders.CreateSortItemReply(2).Payload.SequenceEqual(new byte[] { 1, 2 }),
@@ -1612,16 +1612,16 @@ Check(buyItemReply.Payload.Length == 25
     && BinaryPrimitives.ReadUInt32LittleEndian(
         buyItemReply.Payload.AsSpan(21, 4)) == 1,
     "DF2008 command-21 success reply carries all four wallets and the purchased item tuple");
-Check(GameProtocolEngine.UseStackableItemCommand == 47
+Check((byte)CmdPacketType.USE_STACKABLE == 47
     && GameProtocolEngine.DungeonItemActionCommand
-        == GameProtocolEngine.UseStackableItemCommand,
+        == (byte)CmdPacketType.USE_STACKABLE,
     "DFLegacy USE_STACKABLE command id matches the client enum table");
-Check(GameProtocolEngine.GetItemCommand == 46
-    && GameProtocolEngine.GetItemNotification == 39,
+Check((byte)CmdPacketType.GET_ITEM == 46
+    && (byte)NotiPacketType.GET_ITEM == 39,
     "DFLegacy ground-item pickup uses command 46 and notification 39");
 var getItemRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.GetItemCommand,
+    (byte)CmdPacketType.GET_ITEM,
     0,
     new byte[] { 0x34, 0x12 });
 Check(CraftPacketBuilders.CreateGetItemSilentRejection(getItemRequest).Payload.SequenceEqual(
@@ -1679,7 +1679,7 @@ var ceraShopBuyReply = ShopPacketBuilders.CreateCeraShopBuyReply(
         new GameCeraShopReward(3037, 50),
         new GameCeraShopReward(18012, 1)
     ]);
-Check(ceraShopBuyReply.ProtocolId == GameProtocolEngine.CeraShopBuyCommand
+Check(ceraShopBuyReply.ProtocolId == (byte)CmdPacketType.BUY_CERASHOP_ITEM
     && ceraShopBuyReply.Payload.Length == 40
     && ceraShopBuyReply.Payload[0] == 1
     && ceraShopBuyReply.Payload[1] == 0
@@ -1719,7 +1719,7 @@ Check(ceraShopBuyError.Payload.Length == 20
         ceraShopBuyError.Payload.AsSpan(6, 4)) == 100001,
     "DFLegacy Cera-shop error reply keeps the client catalog index in range");
 var ceraTicket = ShopPacketBuilders.CreateCeraTicketReply("DFLegacy", 7);
-Check(ceraTicket.ProtocolId == GameProtocolEngine.GenerateCeraTicketCommand
+Check(ceraTicket.ProtocolId == (byte)CmdPacketType.GEN_CERATICKET
     && ceraTicket.Payload.SequenceEqual(
         new byte[]
         {
@@ -1765,7 +1765,7 @@ Check(parsedCeraShopRequest
         .GetValue(parsedCeraShopProduct!)! == 140032,
     "DFLegacy command 67 parses gift mode, product count and seven-byte product rows");
 var ceraUpdate = ShopPacketBuilders.CreateCeraUpdate(true, 1_000_000);
-Check(ceraUpdate.ProtocolId == GameProtocolEngine.CeraUpdateNotification
+Check(ceraUpdate.ProtocolId == (byte)NotiPacketType.CERA
     && ceraUpdate.Payload.SequenceEqual(
         new byte[] { 1, 0x40, 0x42, 0x0F, 0 }),
     "55 Cera wallet notification carries success and the full 32-bit balance");
@@ -1793,7 +1793,7 @@ Check(highGoldSellReply.Payload.Length == 10
     && BinaryPrimitives.ReadUInt16LittleEndian(
         highGoldSellReply.Payload.AsSpan(8, 2)) == 500,
     "sell-item reply preserves the full gold balance and exact item mutation");
-Check(GameProtocolEngine.RepairEquipmentCommand == 25
+Check((byte)CmdPacketType.REPAIR_EQUIPMENT == 25
     && ShopPacketBuilders.CreateRepairEquipmentReply(
             48_650,
             3,
@@ -1807,7 +1807,7 @@ Check(GameProtocolEngine.RepairEquipmentCommand == 25
             9, 0
         }),
     "DFLegacy repair reply carries success, updated gold, item space and slot");
-Check(GameProtocolEngine.DecreaseDurabilityCommand == 51
+Check((byte)CmdPacketType.DECREASE_DURABILITY == 51
     && InventoryPacketBuilders.CreateDecreaseDurabilityReply(9)
         .Payload.SequenceEqual(new byte[] { 1, 9 }),
     "DFLegacy durability-use reply carries the equipped slot selected by the client");
@@ -5370,7 +5370,7 @@ finally
 var skillInfo = SkillPacketBuilders.CreateSkillInfo(
     500,
     [new GameSkillEntry(5, 20), new GameSkillEntry(8, 20)]);
-Check(skillInfo.ProtocolId == GameProtocolEngine.SkillInfoNotification,
+Check(skillInfo.ProtocolId == (byte)NotiPacketType.SKILLINFO,
     "skill initialization uses SKILLINFO notification nineteen");
 Check(skillInfo.Payload.SequenceEqual(new byte[] { 0xF4, 0x01, 2, 0, 5, 20, 1, 8, 20, 0 }),
     "skill initialization preserves SP and slot/id/level records");
@@ -5379,7 +5379,7 @@ Check(StaminaPacketBuilders.CreateStamina(100).Payload.SequenceEqual(new byte[] 
 var deadState = DungeonPacketBuilders.CreateDieState(0x1234, isAlive: false);
 var revivedState = DungeonPacketBuilders.CreateDieState(0x1234, isAlive: true);
 Check(deadState.Type == GameProtocolEngine.NotificationPacketType
-        && deadState.ProtocolId == GameProtocolEngine.DieStateNotification
+        && deadState.ProtocolId == (byte)NotiPacketType.DIE_STATE
         && deadState.Payload.SequenceEqual(new byte[] { 0x34, 0x12, 0 }),
     "DFLegacy DIE_STATE encodes the target user and dead state");
 Check(revivedState.Payload.SequenceEqual(new byte[] { 0x34, 0x12, 1 }),
@@ -5430,16 +5430,16 @@ Check(!CharacterInventoryPlanner.TryConsumeRevivalCoin(
 Check(StaminaPacketBuilders.CreateStamina(100).Encode().SequenceEqual(
         new byte[] { 0, 4, 7, 0, 0, 0, 0x47 }),
     "DFLegacy stamina notification has the exact encrypted seven-byte wire layout");
-Check(GameProtocolEngine.FailClearDungeonNotification == 33,
+Check((byte)NotiPacketType.FAIL_CLEAR_DUNGEON == 33,
     "DFLegacy notification thirty-three is FAIL_CLEAR_DUNGEON, not weakness state");
 Check(DungeonPacketBuilders.CreateFailClearDungeon(100).Payload.SequenceEqual(new byte[] { 100 })
     && DungeonPacketBuilders.CreateFailClearDungeon(100).ProtocolId == 33,
     "FAIL_CLEAR_DUNGEON carries the silent stamina state used after town actor rebuilds");
 var recoverStaminaReply = StaminaPacketBuilders.CreateRecoverStaminaReply(8_457);
 var recoverStaminaError = StaminaPacketBuilders.CreateRecoverStaminaError(22);
-Check(GameProtocolEngine.RecoverStaminaCommand == 9
+Check((byte)CmdPacketType.RECOVER_STAMINA == 9
     && recoverStaminaReply.Type == GameProtocolEngine.CommandPacketType
-    && recoverStaminaReply.ProtocolId == GameProtocolEngine.RecoverStaminaCommand
+    && recoverStaminaReply.ProtocolId == (byte)CmdPacketType.RECOVER_STAMINA
     && recoverStaminaReply.Payload.SequenceEqual(
         new byte[] { 1, 0x09, 0x21, 0, 0 })
     && recoverStaminaError.Payload.SequenceEqual(new byte[] { 0, 22 }),
@@ -5490,7 +5490,7 @@ var parsedStaminaRecoveryCosts = StaminaRecoveryCatalog.Parse(
 Check(parsedStaminaRecoveryCosts.SequenceEqual(new[] { 0, 505, 11_543 }),
     "stamina recovery costs parse from the DF2008 server-parameter section");
 var fatigue = StaminaPacketBuilders.CreateFatigue();
-Check(fatigue.ProtocolId == GameProtocolEngine.FatigueNotification
+Check(fatigue.ProtocolId == (byte)NotiPacketType.FATIGUE
     && fatigue.Payload.SequenceEqual(new byte[] { 0, 0, 0x9C, 0, 0, 0 }),
     "DFLegacy fatigue notification carries used, maximum, and premium values");
 var blackDiamondFatigue = StaminaPacketBuilders.CreateFatigue(
@@ -5501,7 +5501,7 @@ Check(blackDiamondFatigue.Payload.SequenceEqual(new byte[] { 0, 0, 0xBC, 0, 0x20
 var enterDungeonSelectionFatigueError =
     StaminaPacketBuilders.CreateEnterDungeonSelectionInsufficientFatigueReply();
 Check(enterDungeonSelectionFatigueError.Type == GameProtocolEngine.CommandPacketType
-        && enterDungeonSelectionFatigueError.ProtocolId == GameProtocolEngine.StartGameCommand
+        && enterDungeonSelectionFatigueError.ProtocolId == (byte)CmdPacketType.START_GAME
         && enterDungeonSelectionFatigueError.Payload.SequenceEqual(new byte[] { 0, 0x16, 0 }),
     "DFLegacy CMD 15 rejects an exhausted solo member with the old-client fatigue layout");
 Check(DungeonFatigueRules.CanEnterNewDungeon(
@@ -5515,12 +5515,12 @@ Check(DungeonFatigueRules.CanEnterNewDungeon(
         maximumFatigue: GameProtocolEngine.BlackDiamondMaximumFatigue),
     "new dungeon entry requires at least one remaining normal or black-diamond fatigue point");
 var eventInfo = StaminaPacketBuilders.CreateEventInfo();
-Check(eventInfo.ProtocolId == GameProtocolEngine.EventInfoNotification
+Check(eventInfo.ProtocolId == (byte)NotiPacketType.EVENT_INFO
     && eventInfo.Payload.SequenceEqual(new byte[] { 0, 0, 0, 0 }),
     "DFLegacy event-info notification initializes the ordinary fatigue-bar mode");
 var dungeonPermissions = DungeonPacketBuilders.CreateDungeonPermissions(
     [new GameDungeonPermissionEntry(1, 1), new GameDungeonPermissionEntry(9, 3)]);
-Check(dungeonPermissions.ProtocolId == GameProtocolEngine.DungeonPermissionNotification,
+Check(dungeonPermissions.ProtocolId == (byte)NotiPacketType.DUNGEON_PERMISSION,
     "dungeon initialization uses notification five");
 Check(dungeonPermissions.Payload.SequenceEqual(
         new byte[] { 2, 0, 1, 0, 1, 9, 0, 3 }),
@@ -5563,17 +5563,17 @@ Check(QuestPacketBuilders.CreateEmptyAcceptableQuestList().Payload.SequenceEqual
 Check(QuestPacketBuilders.CreateAcceptableQuestList([1, 1016]).Payload.SequenceEqual(
         new byte[] { 2, 1, 0, 0xF8, 0x03 }),
     "acceptable quest notification uses a u8 count followed by u16 ids");
-Check(GameProtocolEngine.AcceptQuestCommand == 33
-    && GameProtocolEngine.GiveupQuestCommand == 34
-    && GameProtocolEngine.SetQuestTriggerCommand == 35
-    && GameProtocolEngine.FinishQuestCommand == 36,
+Check((byte)CmdPacketType.ACCEPT_QUEST == 33
+    && (byte)CmdPacketType.GIVEUP_QUEST == 34
+    && (byte)CmdPacketType.SET_QUEST_TRIGGER == 35
+    && (byte)CmdPacketType.FINISH_QUEST == 36,
     "quest command ids match the DFLegacy command-name table");
-Check(GameProtocolEngine.SellItemCommand == 24
-    && GameProtocolEngine.SetItemTradeStateCommand == 26
-    && GameProtocolEngine.DisjointItemCommand == 28
-    && GameProtocolEngine.ChangeSkillSlotCommand == 30
-    && GameProtocolEngine.StartGameCommand == 15
-    && GameProtocolEngine.DeleteItemCommand == 18,
+Check((byte)CmdPacketType.SELL_ITEM == 24
+    && (byte)CmdPacketType.SET_ITEMTRADE_STATE == 26
+    && (byte)CmdPacketType.DISJOINT_ITEM == 28
+    && (byte)CmdPacketType.CHANGE_SKILLSLOT == 30
+    && (byte)CmdPacketType.START_GAME == 15
+    && (byte)CmdPacketType.DELETE_ITEM == 18,
     "DFLegacy conflicting item and skill command ids are selected");
 Check(QuestPacketBuilders.CreateAcceptQuestReply(1016, 3).Payload.SequenceEqual(
         new byte[] { 1, 0xF8, 0x03, 3, 0, 0, 0, 0 }),
@@ -5641,27 +5641,27 @@ Check(QuestPacketBuilders.CreateFinishQuestReply(
         0, 35, 1
     }),
     "class-change finish reply uses the client chain branch and includes PVF skill removals and grants");
-Check(GameProtocolEngine.SetUserPositionCommand == 37
-    && GameProtocolEngine.SetUserAreaCommand == 38
-    && GameProtocolEngine.FinishLoadingCommand == 40
-    && GameProtocolEngine.GiveupGameCommand == 45
-    && GameProtocolEngine.BackToVillageCommand == 142,
+Check((byte)CmdPacketType.SET_USER_POSITION == 37
+    && (byte)CmdPacketType.SET_USER_AREA == 38
+    && (byte)CmdPacketType.FINISH_LOADING == 40
+    && (byte)CmdPacketType.GIVEUP_GAME == 45
+    && (byte)CmdPacketType.BACK_2_VILLAGE == 142,
     "town command ids match the DFLegacy command-name table");
 var townUser = new GameTownUser(1, 474, 234, 5);
 var userPosition = TownPacketBuilders.CreateUserPosition(townUser);
-Check(userPosition.ProtocolId == GameProtocolEngine.UserPositionNotification,
+Check(userPosition.ProtocolId == (byte)NotiPacketType.USER_POSITION,
     "town movement uses USER_POSITION notification twenty-two");
 Check(userPosition.Payload.SequenceEqual(
         new byte[] { 1, 0, 0xDA, 0x01, 0xEA, 0, 5, 100, 0 }),
     "USER_POSITION uses uid/x/y/direction/movement-value layout");
 var userArea = TownPacketBuilders.CreateUserArea(2, 5, townUser);
-Check(userArea.ProtocolId == GameProtocolEngine.UserAreaNotification,
+Check(userArea.ProtocolId == (byte)NotiPacketType.USER_AREA,
     "town transition uses USER_AREA notification twenty-three");
 Check(userArea.Payload.SequenceEqual(
         new byte[] { 1, 0, 2, 5, 0xDA, 0x01, 0xEA, 0, 5, 1 }),
     "USER_AREA uses the DFLegacy uid/town/area/x/y/direction/active layout");
 var areaUsers = TownPacketBuilders.CreateAreaUsers(2, 5, [townUser]);
-Check(areaUsers.ProtocolId == GameProtocolEngine.AreaUsersNotification,
+Check(areaUsers.ProtocolId == (byte)NotiPacketType.AREA_USERS,
     "town initialization uses AREA_USERS notification twenty-four");
 Check(areaUsers.Payload.SequenceEqual(
         new byte[] { 2, 5, 1, 0, 1, 0, 0xDA, 0x01, 0xEA, 0, 5, 1 }),
@@ -5705,7 +5705,7 @@ var udpPeerInfo = PartyPacketBuilders.CreateUdpPeerInfo(
             3,
             1472)
     ]);
-Check(udpPeerInfo.ProtocolId == GameProtocolEngine.UdpPeerInfoNotification
+Check(udpPeerInfo.ProtocolId == (byte)NotiPacketType.USER_UDP_IP_PORT
         && udpPeerInfo.Payload.SequenceEqual(
             new byte[]
             {
@@ -5746,7 +5746,7 @@ var bossDieCheckRejected = DungeonPacketBuilders.CreateBossDieCheck(
     success: false,
     allBossesReported: false,
     errorCode: 2);
-Check(bossDieCheckPending.ProtocolId == GameProtocolEngine.BossDieCheckNotification
+Check(bossDieCheckPending.ProtocolId == (byte)NotiPacketType.BOSS_DIE_CHECK
         && bossDieCheckPending.Payload.SequenceEqual(new byte[] { 1, 0, 4, 0 })
         && bossDieCheckComplete.Payload.SequenceEqual(new byte[] { 1, 1, 4, 0 })
         && bossDieCheckRejected.Payload.SequenceEqual(new byte[] { 0, 2 }),
@@ -5786,11 +5786,11 @@ Check(GameDatagramProtocol.TryReadBlock(setHpFrame, out var parsedSetHpFrame, ou
         && parsedSetHpFrame.Application.SequenceEqual(setHpApplication),
     "MTUPD type 2 frame round-trips the DFLegacy sequence/length/sender header");
 var enterSelectDungeon = DungeonPacketBuilders.CreateEnterSelectDungeon(true, []);
-Check(enterSelectDungeon.ProtocolId == GameProtocolEngine.EnterSelectDungeonNotification
+Check(enterSelectDungeon.ProtocolId == (byte)NotiPacketType.START_GAME
     && enterSelectDungeon.Payload.SequenceEqual(new byte[] { 1, 0 }),
     "dungeon-gate entry uses the exact DFLegacy quest/item-party-slot layout");
 var dungeonInfo = DungeonPacketBuilders.CreateDungeonInfo(1, 0, 0, 2, 1);
-Check(dungeonInfo.ProtocolId == GameProtocolEngine.DungeonInfoNotification
+Check(dungeonInfo.ProtocolId == (byte)NotiPacketType.DUNGEON_INFO
     && dungeonInfo.Payload.SequenceEqual(new byte[] { 1, 0, 0, 0, 2, 1, 0, 0 }),
     "DUNGEON_INFO uses the fixed eight-byte DFLegacy layout");
 var alternateMazeDungeonInfo = DungeonPacketBuilders.CreateDungeonInfo(6, 1, 1, 4, 3);
@@ -5804,7 +5804,7 @@ Check(GameProtocolEngine.TutorialDungeonId == 10_000
     "tutorial DUNGEON_INFO uses reserved id 10000 without a PVF dungeon lookup");
 var tutorialStartMap = DungeonPacketBuilders.CreateTutorialStartMap();
 Check(GameProtocolEngine.TutorialMapId == 61_000
-        && tutorialStartMap.ProtocolId == GameProtocolEngine.StartMapNotification
+        && tutorialStartMap.ProtocolId == (byte)NotiPacketType.START_MAP
         && tutorialStartMap.Payload.SequenceEqual(
         new byte[]
         {
@@ -5828,7 +5828,7 @@ Check(tutorialMonsters.Select(monster => monster.UniqueId)
             ((ushort)1026, (ushort)334)
         ]),
     "tutorial runtime state keeps the four actor ids and drop coordinates independent of PVF");
-Check(GameProtocolEngine.TutorialCompletionCommand == 153
+Check((byte)CmdPacketType.CHANGE_TUTORIAL_FLAG == 153
         && DungeonPacketBuilders.IsTutorialCompletionModule(
             new byte[] { 0, 0, 31, 0, 0, 0 })
         && !DungeonPacketBuilders.IsTutorialCompletionModule(
@@ -5837,7 +5837,7 @@ Check(GameProtocolEngine.TutorialCompletionCommand == 153
             new byte[] { 31, 0, 0, 0 }),
     "tutorial completion recognizes only command 153 module 31 at the client body offset");
 var emptyStartMap = DungeonPacketBuilders.CreateEmptyStartMap(0, 0, 1);
-Check(emptyStartMap.ProtocolId == GameProtocolEngine.StartMapNotification
+Check(emptyStartMap.ProtocolId == (byte)NotiPacketType.START_MAP
     && emptyStartMap.Payload.SequenceEqual(
         new byte[] { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0 }),
     "START_MAP carries a complete first-visit room with empty runtime lists");
@@ -5845,7 +5845,7 @@ var cachedStartMap = DungeonPacketBuilders.CreateCachedStartMap(
     3,
     4,
     0x1234_5678);
-Check(cachedStartMap.ProtocolId == GameProtocolEngine.StartMapNotification
+Check(cachedStartMap.ProtocolId == (byte)NotiPacketType.START_MAP
         && cachedStartMap.Payload.SequenceEqual(
             new byte[] { 3, 4, 0x78, 0x56, 0x34, 0x12, 0 }),
     "START_MAP state zero reuses the client's coordinate-scoped room snapshot");
@@ -5967,11 +5967,11 @@ Check(DungeonPacketBuilders.CreateFinishLoading().Payload.Length == 0,
     "finish-loading notification has no payload in this client build");
 var enterGameWorldComplete = ConnectionPacketBuilders.CreateEnterGameWorldComplete();
 Check(enterGameWorldComplete.ProtocolId
-        == GameProtocolEngine.EnterGameWorldCompleteNotification
+        == (byte)NotiPacketType.ENTER_GAMEWORLD_COMPLETE
     && enterGameWorldComplete.Payload.Length == 0,
     "DFLegacy enter-game-world-complete notification 136 releases town input locks");
 var monsterDie = DungeonPacketBuilders.CreateMonsterDie(2);
-Check(monsterDie.ProtocolId == GameProtocolEngine.MonsterDieNotification
+Check(monsterDie.ProtocolId == (byte)NotiPacketType.DIE_MONSTER
     && monsterDie.Payload.SequenceEqual(
         new byte[] { 2, 0, 0, 0, byte.MaxValue, 0 }),
     "MONSTER_DIE commits a runtime actor death with DFLegacy empty drop metadata");
@@ -6006,7 +6006,7 @@ catch (ArgumentOutOfRangeException)
 Check(noChampionRewardOrdinalRejected,
     "MONSTER_DIE rejects Champion reward animation ordinals above the 13338 limit");
 var goldPickup = DungeonPacketBuilders.CreateGoldItemPickup(7, 1, 1_050);
-Check(goldPickup.ProtocolId == GameProtocolEngine.GetItemNotification
+Check(goldPickup.ProtocolId == (byte)NotiPacketType.GET_ITEM
     && goldPickup.Payload.SequenceEqual(
         new byte[]
         {
@@ -6018,7 +6018,7 @@ Check(goldPickup.ProtocolId == GameProtocolEngine.GetItemNotification
         }),
     "GET_ITEM gold notification carries four DFLegacy party settlement records");
 var inventoryPickup = DungeonPacketBuilders.CreateInventoryItemPickup(7, 1, 9);
-Check(inventoryPickup.ProtocolId == GameProtocolEngine.GetItemNotification
+Check(inventoryPickup.ProtocolId == (byte)NotiPacketType.GET_ITEM
     && inventoryPickup.Payload.SequenceEqual(
         new byte[] { 7, 0, 1, 0, 0, 0, 0, 0, 1, 0, 9, 0 }),
     "GET_ITEM direct item pickup carries zero routing rolls, recipient and inventory slot");
@@ -6321,7 +6321,7 @@ var creatureExperienceNotification =
     PetsPacketBuilders.CreateCreatureGainExperience(7, 0x11223344);
 Check(creatureExperienceNotification.Type == GameProtocolEngine.NotificationPacketType
     && creatureExperienceNotification.ProtocolId
-        == GameProtocolEngine.CreatureGainExperienceNotification
+        == (byte)NotiPacketType.GAIN_EXP_CREATURE
     && creatureExperienceNotification.Payload.SequenceEqual(
         new byte[] { 7, 0x44, 0x33, 0x22, 0x11 }),
     "DF2008 NOTI 102 serializes only Creature level u8 and cumulative experience u32");
@@ -6329,12 +6329,12 @@ var diedCreatureNotification = PetsPacketBuilders.CreateDiedCreature(1);
 var revivalCreatureNotification = PetsPacketBuilders.CreateRevivalCreature(1);
 Check(diedCreatureNotification.Type == GameProtocolEngine.NotificationPacketType
     && diedCreatureNotification.ProtocolId
-        == GameProtocolEngine.DiedCreatureNotification
+        == (byte)NotiPacketType.DIED_CREATURE
     && diedCreatureNotification.Payload.SequenceEqual(new byte[] { 1, 0 })
     && revivalCreatureNotification.Type
         == GameProtocolEngine.NotificationPacketType
     && revivalCreatureNotification.ProtocolId
-        == GameProtocolEngine.RevivalCreatureNotification
+        == (byte)NotiPacketType.REVIVAL_CREATURE
     && revivalCreatureNotification.Payload.SequenceEqual(new byte[] { 1, 0 }),
     "DF2008 NOTI 100/107 carry only the area-user id u16 used by the old Creature map object");
 var characterExperienceNotification =
@@ -6346,7 +6346,7 @@ var characterExperienceNotification =
         skillPoints: 5_220);
 Check(characterExperienceNotification.Type == GameProtocolEngine.NotificationPacketType
     && characterExperienceNotification.ProtocolId
-        == GameProtocolEngine.ExperienceGainedNotification
+        == (byte)NotiPacketType.EXP
     && characterExperienceNotification.Payload.SequenceEqual(
         new byte[]
         {
@@ -6361,7 +6361,7 @@ var creatureEvolutionNotification =
     PetsPacketBuilders.CreateCreatureEvolution(2, 0x1234);
 Check(creatureEvolutionNotification.Type == GameProtocolEngine.NotificationPacketType
     && creatureEvolutionNotification.ProtocolId
-        == GameProtocolEngine.CreatureEvolutionNotification
+        == (byte)NotiPacketType.EVOLUTE_CREATURE
     && creatureEvolutionNotification.Payload.SequenceEqual(
         new byte[] { 2, 0x34, 0x12 }),
     "DF2008 NOTI 106 serializes evolution Creature id u8 before user id u16");
@@ -6877,7 +6877,7 @@ var dropItemNotification = CraftPacketBuilders.CreateDropItem(
     474,
     234,
     new GameDungeonDrop(7, 3_176, 2, 0, 1, ItemAttr: 4));
-Check(dropItemNotification.ProtocolId == GameProtocolEngine.DropItemNotification
+Check(dropItemNotification.ProtocolId == (byte)NotiPacketType.DROP_ITEM
     && dropItemNotification.Payload.SequenceEqual(
     new byte[]
     {
@@ -6888,7 +6888,7 @@ Check(dropItemNotification.ProtocolId == GameProtocolEngine.DropItemNotification
     "DROP_ITEM keeps the DFLegacy item-attr byte before stack count/add-info");
 var capturedDropItemBody = Convert.FromHexString(
     "1E000001F000001A0001000000");
-Check(GameProtocolEngine.DropItemCommand == 50
+Check((byte)CmdPacketType.DROP_ITEM == 50
     && CraftPacketBuilders.TryParseDropItemCommand(
         capturedDropItemBody,
         out var capturedDropItem)
@@ -6899,12 +6899,12 @@ Check(GameProtocolEngine.DropItemCommand == 50
     && capturedDropItem.Count == 1,
     "CMD 50 parses the captured DFLegacy dungeon item-drop request");
 var dropItemReply = CraftPacketBuilders.CreateDropItemReply(0, 26, 1);
-Check(dropItemReply.ProtocolId == GameProtocolEngine.DropItemCommand
+Check(dropItemReply.ProtocolId == (byte)CmdPacketType.DROP_ITEM
     && dropItemReply.Payload.SequenceEqual(
         new byte[] { 1, 0, 0x1A, 0, 1, 0, 0, 0 }),
     "CMD 50 success echoes item space, source slot and removed count");
 var dropItemError = CraftPacketBuilders.CreateDropItemErrorReply(23, 0);
-Check(dropItemError.ProtocolId == GameProtocolEngine.DropItemCommand
+Check(dropItemError.ProtocolId == (byte)CmdPacketType.DROP_ITEM
     && dropItemError.Payload.SequenceEqual(new byte[] { 0, 23, 0 }),
     "CMD 50 failure includes the item space needed to release the client lock");
 
@@ -7072,7 +7072,7 @@ Check(lastBossDecision.Reason == DungeonRoomClearReason.LastBossDefeated
                 secondTrailingNormalActor.UniqueId
             }),
     "the last real boss selects the remaining monsters but waits for their native death confirmations");
-Check(bossDieCheckComplete.ProtocolId == GameProtocolEngine.BossDieCheckNotification
+Check(bossDieCheckComplete.ProtocolId == (byte)NotiPacketType.BOSS_DIE_CHECK
         && bossDieCheckComplete.Payload.SequenceEqual(new byte[] { 1, 1, 4, 0 }),
     "boss cascade uses NOTI 127 so the solo client runs its native ALLDIE_MONSTER path");
 var finalCascadeDeathDecision = DungeonRoomClearRules.Evaluate(
@@ -7102,7 +7102,7 @@ Check(!noBossPartialDecision.ShouldEnableClear
         && noBossCompleteDecision.ForcedMonsterIds.Length == 0,
     "a boss map without a real boss requires every monster to die normally");
 var playResult = DungeonPacketBuilders.CreatePlayResult(1, 25, 31, 33);
-Check(playResult.ProtocolId == GameProtocolEngine.PlayResultNotification
+Check(playResult.ProtocolId == (byte)NotiPacketType.PLAY_RESULT
     && playResult.Payload.SequenceEqual(
         new byte[] { 1, 0, 0, 0, 0 }),
     "PLAY_RESULT follows the five-byte DFLegacy score-flag layout");
@@ -7137,7 +7137,7 @@ var clearDungeonReward = DungeonPacketBuilders.CreateClearDungeonReward(
     freeItemId: 12054,
     goldCardEnabled: true,
     goldItemId: 12055);
-Check(clearDungeonReward.ProtocolId == GameProtocolEngine.ClearDungeonRewardNotification
+Check(clearDungeonReward.ProtocolId == (byte)NotiPacketType.CLEAR_DUNGEON_REWARD
     && clearDungeonReward.Payload.Length == 102
     && clearDungeonReward.Payload[0] == 1
     && clearDungeonReward.Payload[38] == 2
@@ -7194,12 +7194,12 @@ Check(blackDiamondClearDungeonReward.Payload.Length == 114
     "black diamond uses a zero-gold first record and the automatic equipment bonus as its second record");
 var scoreScrollState = DungeonPacketBuilders.CreateScoreScrollStateReply();
 Check(scoreScrollState.Type == GameProtocolEngine.CommandPacketType
-    && scoreScrollState.ProtocolId == GameProtocolEngine.ScoreScrollStateCommand
+    && scoreScrollState.ProtocolId == (byte)CmdPacketType.SCORE_SCROLL_STATE
     && scoreScrollState.Payload.SequenceEqual(new byte[] { 1 }),
     "SCORE_SCROLL_STATE acknowledges the DFLegacy card-start request");
 var cardSelectRightState = DungeonPacketBuilders.CreateCardSelectRightState();
 Check(cardSelectRightState.Type == GameProtocolEngine.CommandPacketType
-    && cardSelectRightState.ProtocolId == GameProtocolEngine.CardSelectRightStateCommand
+    && cardSelectRightState.ProtocolId == (byte)CmdPacketType.CARD_SELECT_RIGHT_STATE
     && cardSelectRightState.Payload.SequenceEqual(
         new byte[] { 1, 1, 0, 255, 255, 255, 255, 255, 255 }),
     "CARD_SELECT_RIGHT_STATE returns success followed by all four DFLegacy party-slot rights");
@@ -7207,7 +7207,7 @@ var selectCardReply = DungeonPacketBuilders.CreateSelectCardReply(
     freeCardIndex: 3,
     goldCardIndex: null);
 Check(selectCardReply.Type == GameProtocolEngine.CommandPacketType
-    && selectCardReply.ProtocolId == GameProtocolEngine.SelectCardCommand
+    && selectCardReply.ProtocolId == (byte)CmdPacketType.SELECT_CARD
     && selectCardReply.Payload.SequenceEqual(
         new byte[]
         {
@@ -7261,7 +7261,7 @@ Check(!noAutomaticFreeCardIndex.HasValue,
     "clear-reward timeout does not invent a card when all four free columns are occupied");
 var eplpReply = DungeonPacketBuilders.CreateEplpReply(1, 2);
 Check(eplpReply.Type == GameProtocolEngine.CommandPacketType
-    && eplpReply.ProtocolId == GameProtocolEngine.EplpCommand
+    && eplpReply.ProtocolId == (byte)CmdPacketType.EPLP_COMMAND
     && eplpReply.Payload.SequenceEqual(new byte[] { 1, 1, 2 }),
     "EPLP confirms the DFLegacy return-to-town state and option");
 
@@ -7277,13 +7277,13 @@ Check(decodedChallenge.SequenceEqual(challenge), "notification transform preserv
 
 var checkCommand = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.CheckConnectionCommand,
+    (byte)CmdPacketType.CHECK_CONNECTION,
     0,
     [0, 0, .. challenge]);
 var channelInfo = GameProtocolEngine.Handle(checkCommand, challenge);
 Check(channelInfo?.Type == GameProtocolEngine.NotificationPacketType,
     "check-connection command produces a notification");
-Check(channelInfo?.ProtocolId == GameProtocolEngine.ChannelInfoNotification,
+Check(channelInfo?.ProtocolId == (byte)NotiPacketType.CHANNELINFO,
     "check-connection command produces CHANNELINFO notification one");
 Check(channelInfo?.Payload.Length == 58,
     "CHANNELINFO contains the complete DFLegacy channel descriptor");
@@ -7338,7 +7338,7 @@ var clientCipherState = new GameClientCipherState();
 var rawCheckBody = new byte[10];
 var rawCheck = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.CheckConnectionCommand,
+    (byte)CmdPacketType.CHECK_CONNECTION,
     Crc32.Compute(rawCheckBody),
     rawCheckBody);
 Check(clientCipherState.TryDecode(rawCheck, out var decodedRawCheck)
@@ -7357,7 +7357,7 @@ var checkCipherSeed = 0x1234u;
 GameClientPayloadCipher.Encrypt(encryptedCheckWireBody.AsSpan(2), ref checkCipherSeed);
 var encryptedRawCheck = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.CheckConnectionCommand,
+    (byte)CmdPacketType.CHECK_CONNECTION,
     Crc32.Compute(encryptedCheckPlainBody),
     encryptedCheckWireBody);
 var encryptedCheckCipherState = new GameClientCipherState();
@@ -7377,7 +7377,7 @@ Check(capturedClientCipherState.TryDecode(rawCheck, out _),
     "captured session accepts the direct CHECK_CONNECTION");
 var capturedLogin = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.LoginCommand,
+    (byte)CmdPacketType.LOGIN,
     0xFD14BAC5,
     capturedLoginBody);
 Check(capturedClientCipherState.TryDecode(capturedLogin, out var decodedCapturedLogin),
@@ -7406,19 +7406,19 @@ Check(capturedClientCipherState.TryDecode(capturedProtocol8, out var decodedProt
     "captured DFLegacy short command re-anchors its independent seed");
 
 var loginReply = GameProtocolEngine.Handle(decodedLogin);
-Check(loginReply?.ProtocolId == GameProtocolEngine.LoginCommand, "login command receives a reply");
+Check(loginReply?.ProtocolId == (byte)CmdPacketType.LOGIN, "login command receives a reply");
 Check(loginReply?.Payload.SequenceEqual(new byte[] { 1, 0, 0, 0, 0 }) == true,
     "login reply selects the normal character-list path");
 
 var userInfoRequest = new PacketFrame(
     GameProtocolEngine.CommandPacketType,
-    GameProtocolEngine.GetUserInfoCommand,
+    (byte)CmdPacketType.GET_USERINFO,
     0,
     [0x34, 0x12, 0xFF, 0xFF, 0x02]);
 var emptyUserInfo = GameProtocolEngine.Handle(userInfoRequest);
 Check(emptyUserInfo?.Type == GameProtocolEngine.NotificationPacketType,
     "GET_USERINFO produces a notification");
-Check(emptyUserInfo?.ProtocolId == GameProtocolEngine.UserInfoNotification,
+Check(emptyUserInfo?.ProtocolId == (byte)NotiPacketType.USERINFO,
     "GET_USERINFO produces USERINFO notification two");
 Check(emptyUserInfo?.Payload.SequenceEqual(new byte[] { 2, 0, 0 }) == true,
     "empty USERINFO selects the visible character-list mode");

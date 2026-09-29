@@ -59,18 +59,18 @@ public sealed class PartyHandlerCore(
 
             (partyResult, partyErrorCode) = request.ProtocolId switch
             {
-                GameProtocolEngine.SetPartyInfoCommand => parsedSettings
+                (byte)CmdPacketType.SET_PARTY_INFO => parsedSettings
                     ? (partyCoordinator.SetPartyInfo(partyIdentity, partySettings), (byte)8)
                     : (PartyOpResult.Fail("malformed_set_party_info"), (byte)0),
-                GameProtocolEngine.LeavePartyCommand =>
+                (byte)CmdPacketType.LEAVE_PARTY =>
                     (partyCoordinator.LeaveParty(partyIdentity), (byte)0x12),
-                GameProtocolEngine.WalkoutPartyMemberCommand => parsedWalkoutSlot
+                (byte)CmdPacketType.WALKOUT_PARTY_MEMBER => parsedWalkoutSlot
                     ? (partyCoordinator.Kick(partyIdentity, walkoutSlot), (byte)4)
                     : (PartyOpResult.Fail("malformed_walkout"), (byte)0),
-                GameProtocolEngine.RequestPeerCommand => parsedPeerRequest
+                (byte)CmdPacketType.REQUEST_PEER => parsedPeerRequest
                     ? (partyCoordinator.RequestPeer(partyIdentity, peerRequest), (byte)5)
                     : (PartyOpResult.Fail("malformed_request_peer"), (byte)0),
-                GameProtocolEngine.ResponsePeerCommand => parsedPeerResponse
+                (byte)CmdPacketType.RESPONSE_PEER => parsedPeerResponse
                     ? (partyCoordinator.RespondPeer(partyIdentity, peerResponse), (byte)1)
                     : (PartyOpResult.Fail("malformed_response_peer"), (byte)0),
                 _ => (PartyOpResult.Fail("unknown_party_command"), (byte)0),
@@ -89,9 +89,9 @@ public sealed class PartyHandlerCore(
 
         var partyIsSettingsFamily =
             request.ProtocolId
-                is GameProtocolEngine.SetPartyInfoCommand
-                or GameProtocolEngine.LeavePartyCommand
-                or GameProtocolEngine.WalkoutPartyMemberCommand;
+                is (byte)CmdPacketType.SET_PARTY_INFO
+                or (byte)CmdPacketType.LEAVE_PARTY
+                or (byte)CmdPacketType.WALKOUT_PARTY_MEMBER;
         GameServerPacket partyReply;
         if (partyResult.Ok)
         {

@@ -16,7 +16,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.DisjointItemCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.DISJOINT_ITEM;
 
     public string Name => "DisjointItem";
 

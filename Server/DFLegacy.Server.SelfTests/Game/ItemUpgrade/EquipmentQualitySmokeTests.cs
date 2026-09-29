@@ -116,7 +116,7 @@ internal static class EquipmentQualitySmokeTests
             (byte)ItemAttributeModificationFailure.UnsupportedItem);
         check(success.Type == GameProtocolEngine.CommandPacketType
                 && success.ProtocolId
-                    == GameProtocolEngine.ResetItemAttributeCommand
+                    == (byte)CmdPacketType.RESET_ITEM_ATTR
                 && success.Payload.SequenceEqual(
                     Convert.FromHexString("014900100000000200"))
                 && resealSuccess.Payload.SequenceEqual(

@@ -12,7 +12,7 @@ internal static class TownPacketBuilders
     public static GameServerPacket CreatePrivateStorePollReply() =>
         new(
             GameProtocolEngine.CommandPacketType,
-            GameProtocolEngine.PrivateStorePollCommand,
+            (byte)CmdPacketType.CALL_MEMER_LIST,
             [
                 1,             // result
                 0, 0,          // local store state
@@ -35,7 +35,7 @@ internal static class TownPacketBuilders
         writer.Write(movementValue);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserPositionNotification,
+            (byte)NotiPacketType.USER_POSITION,
             payload.ToArray());
     }
     public static GameServerPacket CreateUserArea(
@@ -54,7 +54,7 @@ internal static class TownPacketBuilders
         writer.Write((byte)1); // active town actor
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserAreaNotification,
+            (byte)NotiPacketType.USER_AREA,
             payload.ToArray());
     }
     public static GameServerPacket CreateAreaUsers(
@@ -83,7 +83,7 @@ internal static class TownPacketBuilders
 
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.AreaUsersNotification,
+            (byte)NotiPacketType.AREA_USERS,
             payload.ToArray());
     }
     public static GameServerPacket CreateUserLeave(ushort userId)
@@ -92,7 +92,7 @@ internal static class TownPacketBuilders
         BinaryPrimitives.WriteUInt16LittleEndian(payload, userId);
         return new GameServerPacket(
             GameProtocolEngine.NotificationPacketType,
-            GameProtocolEngine.UserLeaveNotification,
+            (byte)NotiPacketType.USER_LEAVE,
             payload);
     }
 }

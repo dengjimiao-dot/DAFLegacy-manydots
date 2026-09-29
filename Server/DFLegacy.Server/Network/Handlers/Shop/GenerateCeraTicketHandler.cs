@@ -12,7 +12,7 @@ public sealed class GenerateCeraTicketHandler(ILogger<GenerateCeraTicketHandler>
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
-    public ushort ProtocolId => GameProtocolEngine.GenerateCeraTicketCommand;
+    public ushort ProtocolId => (byte)CmdPacketType.GEN_CERATICKET;
 
     public string Name => "GenerateCeraTicket";
 

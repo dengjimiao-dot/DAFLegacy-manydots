@@ -1729,7 +1729,7 @@ Check(ceraTicket.ProtocolId == GameProtocolEngine.GenerateCeraTicketCommand
             7, 0, 0, 0
         }),
     "DFLegacy command 68 returns the length-prefixed Cera web ticket");
-var ceraShopParser = typeof(EntranceService).GetMethod(
+var ceraShopParser = typeof(ShopParsers).GetMethod(
     "TryReadCeraShopPurchase",
     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 object?[] ceraShopParserArguments =

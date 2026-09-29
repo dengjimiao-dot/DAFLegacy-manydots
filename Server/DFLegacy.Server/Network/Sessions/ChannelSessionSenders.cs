@@ -42,8 +42,7 @@ public sealed class ChannelSessionSenders(
     {
         if (context.State.Character.Active is null
             || !context.State.Character.Active.IsWeakened
-            || HasActivePremiumService(
-                context,
+            || HasActivePremiumService(context,
                 GameProtocolEngine.BlackDiamondServiceType))
         {
             return DungeonWeaknessPolicy.FullStamina;
@@ -1589,4 +1588,69 @@ public async Task SendMainInventoryMoveDeltaAsync(
             .First();
     }
 
+public async Task SendPremiumServiceInfoAsync(
+    ConnectionContext context,
+    byte serviceType,
+    uint remainSeconds,
+    CancellationToken cancellationToken = default)
+{
+    if (remainSeconds == 0)
+    {
+        context.State.Premium.ExpiryUnix.TryRemove(serviceType, out _);
+    }
+    else
+    {
+        var expiryUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            + (long)remainSeconds;
+        context.State.Premium.ExpiryUnix[serviceType] = expiryUnix;
+    }
+
+    var premiumNotification =
+        GameProtocolEngine.CreatePremiumServiceNotification(
+            action: GameProtocolEngine.PremiumServiceUpdateAction,
+            serviceType,
+            remainSeconds);
+    await context.Outbound.SendAsync(premiumNotification, "PREMIUM_INFO", cancellationToken);
+
+    if (serviceType == GameProtocolEngine.BlackDiamondServiceType
+        && context.State.Character.Active is not null
+        && context.State.Dungeon.CurrentDungeonId == 0)
+    {
+        var appearance = builders.CreateTownAppearancePacket(
+            context.State.Character.Active,
+            context.State.Character.LocalUserId,
+            context.State.Inventory.Equipped.Values,
+            context.State.Inventory.Creature.Values,
+            HasActivePremiumService(context,
+                GameProtocolEngine.BlackDiamondServiceType));
+        await context.Outbound.SendAsync(appearance, "PREMIUM_INFO", cancellationToken);
+        await SendTownFatigueStateAsync(context, cancellationToken);
+    }
+}
+
+public async Task SendTownFatigueStateAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    Interlocked.Exchange(ref context.State.Weakness.PendingFatigueReset, 0);
+    // AREA_USERS constructs the town HUD. EVENT_INFO then selects
+    // and initializes its normal/premium fatigue-bar resources.
+    var eventInfo = GameProtocolEngine.CreateEventInfo();
+    await context.Outbound.SendAsync(eventInfo, "TOWN_STAMINA", cancellationToken);
+
+    var premiumFatigue = HasActivePremiumService(
+            context,
+            GameProtocolEngine.BlackDiamondServiceType)
+        ? GameProtocolEngine.BlackDiamondBonusFatigue
+        : (ushort)0;
+    var maximumFatigue = checked((ushort)(
+        GameProtocolEngine.DefaultMaximumFatigue + premiumFatigue));
+    var fatigue = GameProtocolEngine.CreateFatigue(
+        usedFatigue: Math.Min(
+            context.State.Character.Active?.UsedFatigue ?? 0,
+            maximumFatigue),
+        maximumFatigue: maximumFatigue,
+        premiumFatigue: premiumFatigue);
+    await context.Outbound.SendAsync(fatigue, "TOWN_STAMINA", cancellationToken);
+}
 }

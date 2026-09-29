@@ -25,6 +25,7 @@ DungeonClearExperienceSmokeTests.Run(Check);
 ItemSealingSmokeTests.Run(Check);
 AntibotReportSmokeTests.Run(Check);
 MegaphoneSmokeTests.Run(Check);
+await ProtocolGoldenSmokeTests.RunAsync(Check);
 PartySmokeTests.Run(Check);
 await CompoundItemSmokeTests.RunAsync(Check);
 await EquipmentQualitySmokeTests.RunAsync(Check);

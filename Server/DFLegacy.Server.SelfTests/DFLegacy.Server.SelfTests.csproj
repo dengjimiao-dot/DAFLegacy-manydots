@@ -9,4 +9,7 @@
     <ProjectReference Include="../DFLegacy.Server/DFLegacy.Server.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="../../tools/packet_bytes.json" Link="packet_bytes.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

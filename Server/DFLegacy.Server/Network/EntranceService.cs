@@ -38,6 +38,7 @@ public sealed class EntranceService(
     ClearRewardGenerator clearRewardGenerator,
     GameplayDatagramService gameplayDatagram,
     ScriptFileSystem scripts,
+    ILoggerFactory loggerFactory,
     ILogger<EntranceService> logger) : BackgroundService
 {
     private const ushort RiverLetheItemId = 3;
@@ -59,6 +60,12 @@ public sealed class EntranceService(
     private const string LevelUpCouponLevelLimitMessage = "角色已达到最大Lv上限";
     private readonly List<TcpListener> _listeners = [];
     private readonly object _contentGate = new();
+    // Protocol-layer dispatch (07 §4.6): mounted command handlers take over
+    // their protocol exclusively; unmounted ids keep flowing through the
+    // legacy branch chain until their group migrates.
+    private readonly GameCommandRegistry _gameCommands =
+        BuildGameCommandRegistry(options, loggerFactory);
+    private readonly GameCommandDispatcher _gameCommandDispatcher = new(logger);
     private EntranceContent? _content;
     private static readonly Encoding ClientEncoding = CreateClientEncoding();
     private static readonly GameSkillEntry[] DebugSwordmanSkills =
@@ -115,12 +122,36 @@ public sealed class EntranceService(
         (8, 100)
     ];
 
+    // Assembly of the dispatch table (07 §4.6): handler construction is
+    // manual because every dependency is already a constructor parameter
+    // here; a duplicate registration throws before any listener starts.
+    private static GameCommandRegistry BuildGameCommandRegistry(
+        ServerOptions options,
+        ILoggerFactory loggerFactory)
+    {
+        var registry = new GameCommandRegistry();
+        registry.Register("session.connection", new CheckConnectionHandler(options));
+        registry.Register("session.connection", new ExitHandler(loggerFactory.CreateLogger<ExitHandler>()));
+        registry.Register("session.connection", new AntibotHandler(loggerFactory.CreateLogger<AntibotHandler>()));
+        return registry;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!options.Entrance.Enabled)
         {
             logger.LogWarning("Entrance listener is disabled.");
             return;
+        }
+
+        // Startup listing of the mounted dispatch table (07 §4.6): one line
+        // per registered group so a mis-mounted protocol is visible at boot.
+        foreach (var group in _gameCommands.Entries.GroupBy(entry => entry.Group))
+        {
+            logger.LogInformation(
+                "Game command group {Group} mounted: {Handlers}",
+                group.Key,
+                string.Join(", ", group.Select(entry => $"{entry.Handler.Name}({entry.Handler.ProtocolId})")));
         }
 
         var address = IPAddress.Parse(options.Entrance.Host);
@@ -329,9 +360,45 @@ public sealed class EntranceService(
                 "Entrance client {SessionId} connected from {Remote} on local port {Port}",
                 runtimeSession.Id, remote, localPort);
 
+            using var stream = new SerializedWriteStream(client.GetStream());
+            // Protocol-layer per-connection plumbing (07 §4.2/§4.4): the
+            // outbound queue pumps every handler send through the
+            // single-writer channel; the context replaces the former
+            // closure world for handlers migrated off the legacy chain.
+            // Declared before the try so teardown drains the pump before
+            // the stream is disposed.
+            var outboundQueue = new OutboundQueue(
+                stream,
+                runtimeSession,
+                packet => LogPacket("TX", runtimeSession, packet),
+                logger,
+                disconnecting: serverToken);
+            var connectionContext = new ConnectionContext(
+                runtimeSession,
+                remoteEndpoint,
+                isChannelPort,
+                new ChannelSessionState(),
+                outboundQueue,
+                logger,
+                serverToken);
+
             try
             {
-                using var stream = new SerializedWriteStream(client.GetStream());
+                async Task<bool> TryDispatchGameCommandAsync(PacketFrame frame)
+                {
+                    if (frame.Type != GameProtocolEngine.CommandPacketType
+                        || !_gameCommands.TryGet(frame.ProtocolId, out var handler))
+                    {
+                        return false;
+                    }
+
+                    return await _gameCommandDispatcher.TryDispatchAsync(
+                        connectionContext,
+                        frame,
+                        handler,
+                        serverToken);
+                }
+
                 // Cross-session delivery channel: PartyCoordinator queues
                 // packets here from other sessions' read loops; the write
                 // itself stays on this connection's serialized stream.
@@ -2586,6 +2653,11 @@ public sealed class EntranceService(
 
                     if (isChannelPort)
                     {
+                        if (await TryDispatchGameCommandAsync(request))
+                        {
+                            continue;
+                        }
+
                         if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.LoginCommand)
                         {
@@ -12720,6 +12792,11 @@ public sealed class EntranceService(
                         continue;
                     }
 
+                    if (await TryDispatchGameCommandAsync(request))
+                    {
+                        continue;
+                    }
+
                     var reply = EntranceProtocolEngine.Handle(request, protocolSession, LoadContent());
                     if (reply is null)
                     {
@@ -12743,6 +12820,9 @@ public sealed class EntranceService(
             }
             finally
             {
+                // Complete the outbound channel and drain the pump before the
+                // stream is disposed, so no queued frame tears (07 §4.4).
+                await outboundQueue.DisposeAsync();
                 if (activeCharacter is not null)
                 {
                     try

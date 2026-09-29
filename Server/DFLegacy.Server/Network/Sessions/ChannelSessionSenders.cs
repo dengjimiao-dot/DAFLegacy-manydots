@@ -14,6 +14,7 @@ public sealed class ChannelSessionSenders(
     JsonGameStore store,
     ItemCatalog itemCatalog,
     CharacterStatCatalog characterStatCatalog,
+    PartyCoordinator partyCoordinator,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
     PvpExperienceCatalog pvpExperienceCatalog,
@@ -1653,4 +1654,74 @@ public async Task SendTownFatigueStateAsync(
         premiumFatigue: premiumFatigue);
     await context.Outbound.SendAsync(fatigue, "TOWN_STAMINA", cancellationToken);
 }
+
+    // ---- Town presence and scene-transition senders (migrated verbatim
+    // for the R4 Town group).
+
+public void PublishTownPresence(ConnectionContext context)
+{
+    if (context.State.Character.Active is null)
+    {
+        return;
+    }
+
+    var appearance = builders.CreateTownAppearancePacket(
+        context.State.Character.Active,
+        context.State.Character.LocalUserId,
+        context.State.Inventory.Equipped.Values,
+        context.State.Inventory.Creature.Values,
+        HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType));
+    partyCoordinator.PublishTownPresence(
+        new PartyPresenceUpdate(
+            context.Runtime.Id,
+            context.State.Character.Active.Id,
+            context.State.Login.AccountUid,
+            context.State.Character.LocalUserId,
+            context.State.Character.Active.Name,
+            (byte)Math.Clamp(context.State.Character.Active.Level, (byte)1, byte.MaxValue),
+            (byte)Math.Clamp(context.State.Character.Active.Job, byte.MinValue, byte.MaxValue),
+            context.State.Character.TownId,
+            context.State.Character.AreaId,
+            context.State.Character.X,
+            context.State.Character.Y,
+            context.State.Character.Direction),
+        appearance);
+}
+
+public async Task SendEnterGameWorldCompleteAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    // USERINFO locks keyboard and mouse commands at priority
+    // two. DFLegacy notification 136 clears both locks after the
+    // local actor has been constructed by AREA_USERS.
+    var gameWorldComplete =
+        GameProtocolEngine.CreateEnterGameWorldComplete();
+    await context.Outbound.SendAsync(gameWorldComplete, "TOWN_NOTI", cancellationToken);
+}
+
+public async Task SendSilentTownStaminaStateAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null || context.State.Dungeon.CurrentDungeonId != 0)
+    {
+        return;
+    }
+
+    // AREA_USERS recreates the town actor with empty stamina.
+    // NOTI 33 restores a normal town actor without a recovery
+    // sound, but its client handler also fills current HP/MP.
+    // It must therefore never be sent while inside a dungeon.
+    var stamina = context.State.Character.Active.IsWeakened
+        && !HasActivePremiumService(
+            context,
+            GameProtocolEngine.BlackDiamondServiceType)
+            ? GameProtocolEngine.CreateStamina(
+                context.State.Character.Active.WeaknessRecovery)
+            : GameProtocolEngine.CreateFailClearDungeon(
+                DungeonWeaknessPolicy.FullStamina);
+    await context.Outbound.SendAsync(stamina, "TOWN_NOTI", cancellationToken);
+}
+
 }

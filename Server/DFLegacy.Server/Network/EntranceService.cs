@@ -214,6 +214,39 @@ public sealed class EntranceService(
             _sessionSenders));
         registry.Register("economy.shop", new GenerateCeraTicketHandler(
             loggerFactory.CreateLogger<GenerateCeraTicketHandler>()));
+        registry.Register("world.pets", new RenameCreatureHandler(
+            store,
+            itemCatalog,
+            loggerFactory.CreateLogger<RenameCreatureHandler>(),
+            _characterPacketBuilders));
+        registry.Register("world.pets", new HatchCreatureHandler(
+            store,
+            itemCatalog,
+            loggerFactory.CreateLogger<HatchCreatureHandler>(),
+            _characterPacketBuilders));
+        registry.Register("world.pets", new ResponseCreatureHandler(_sessionSenders));
+        registry.Register("world.town", new SetUserPositionHandler(
+            partyCoordinator,
+            _characterPacketBuilders,
+            _sessionSenders));
+        registry.Register("world.town", new SetUserAreaHandler(
+            store,
+            partyCoordinator,
+            _characterPacketBuilders,
+            _sessionSenders));
+        registry.Register("world.town", new PrivateStorePollHandler());
+        registry.Register("world.town", new ExchangeServerCharacterInfoHandler());
+        {
+            // Party family (07 §4.6 族接管): one shared core, five thin shells.
+            var partyCore = new PartyHandlerCore(
+                partyCoordinator,
+                loggerFactory.CreateLogger<PartyHandlerCore>());
+            registry.Register("social.party", new RequestPeerHandler(partyCore));
+            registry.Register("social.party", new ResponsePeerHandler(partyCore));
+            registry.Register("social.party", new SetPartyInfoHandler(partyCore));
+            registry.Register("social.party", new LeavePartyHandler(partyCore));
+            registry.Register("social.party", new WalkoutPartyMemberHandler(partyCore));
+        }
         registry.Register("economy.inventory", new SortItemHandler(
             store,
             itemCatalog,
@@ -363,6 +396,7 @@ public sealed class EntranceService(
             store,
             itemCatalog,
             characterStatCatalog,
+            partyCoordinator,
             questCatalog,
             dungeonCatalog,
             pvpExperienceCatalog,
@@ -707,35 +741,8 @@ public sealed class EntranceService(
                 // coordinator so same-area residents can see and invite this
                 // character. The appearance packet is built here because only
                 // this connection owns the equipped-item dictionaries.
-                void PublishTownPresence()
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    var appearance = CreateTownAppearancePacket(
-                        session.Character.Active,
-                        session.Character.LocalUserId,
-                        session.Inventory.Equipped.Values,
-                        session.Inventory.Creature.Values,
-                        HasActivePremiumService(GameProtocolEngine.BlackDiamondServiceType));
-                    partyCoordinator.PublishTownPresence(
-                        new PartyPresenceUpdate(
-                            runtimeSession.Id,
-                            session.Character.Active.Id,
-                            session.Login.AccountUid,
-                            session.Character.LocalUserId,
-                            session.Character.Active.Name,
-                            (byte)Math.Clamp(session.Character.Active.Level, (byte)1, byte.MaxValue),
-                            (byte)Math.Clamp(session.Character.Active.Job, byte.MinValue, byte.MaxValue),
-                            session.Character.TownId,
-                            session.Character.AreaId,
-                            session.Character.X,
-                            session.Character.Y,
-                            session.Character.Direction),
-                        appearance);
-                }
+                void PublishTownPresence() =>
+                    _sessionSenders.PublishTownPresence(connectionContext);
 
                 GameSkillEntry[] GetCurrentGameSkills() => _sessionSenders.GetCurrentGameSkills(connectionContext);
 
@@ -948,21 +955,8 @@ public sealed class EntranceService(
                     await SendEquippedCreatureDeathAsync(forceDeathNotification);
                 }
 
-                async Task SendEquippedCreatureResponseAsync()
-                {
-                    if (session.Character.Active is null
-                        || !session.Inventory.Creature.ContainsKey(
-                            CharacterCreatureInventoryLayout.EquippedCreatureSlot))
-                    {
-                        return;
-                    }
-
-                    var creatureResponse =
-                        GameProtocolEngine.CreateCreatureResponse(session.Character.LocalUserId);
-                    await creatureResponse.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, creatureResponse);
-                }
+                Task SendEquippedCreatureResponseAsync() =>
+                    _sessionSenders.SendEquippedCreatureResponseAsync(connectionContext, serverToken);
 
                 Task SaveCurrentLocationAsync(CancellationToken cancellationToken) =>
                     SessionLocationPersistence.SaveCurrentLocationAsync(
@@ -1092,28 +1086,8 @@ public sealed class EntranceService(
                     session.Weakness.StaminaStateInitialized = true;
                 }
 
-                async Task SendSilentTownStaminaStateAsync()
-                {
-                    if (session.Character.Active is null || session.Dungeon.CurrentDungeonId != 0)
-                    {
-                        return;
-                    }
-
-                    // AREA_USERS recreates the town actor with empty stamina.
-                    // NOTI 33 restores a normal town actor without a recovery
-                    // sound, but its client handler also fills current HP/MP.
-                    // It must therefore never be sent while inside a dungeon.
-                    var stamina = session.Character.Active.IsWeakened
-                        && !HasActivePremiumService(
-                            GameProtocolEngine.BlackDiamondServiceType)
-                            ? GameProtocolEngine.CreateStamina(
-                                session.Character.Active.WeaknessRecovery)
-                            : GameProtocolEngine.CreateFailClearDungeon(
-                                DungeonWeaknessPolicy.FullStamina);
-                    await stamina.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, stamina);
-                }
+                Task SendSilentTownStaminaStateAsync() =>
+                    _sessionSenders.SendSilentTownStaminaStateAsync(connectionContext, serverToken);
 
                 Task SendTownFatigueStateAsync() =>
                     _sessionSenders.SendTownFatigueStateAsync(connectionContext, serverToken);
@@ -1305,17 +1279,8 @@ public sealed class EntranceService(
                         grant.Level);
                 }
 
-                async Task SendEnterGameWorldCompleteAsync()
-                {
-                    // USERINFO locks keyboard and mouse commands at priority
-                    // two. DFLegacy notification 136 clears both locks after the
-                    // local actor has been constructed by AREA_USERS.
-                    var gameWorldComplete =
-                        GameProtocolEngine.CreateEnterGameWorldComplete();
-                    await gameWorldComplete.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, gameWorldComplete);
-                }
+                Task SendEnterGameWorldCompleteAsync() =>
+                    _sessionSenders.SendEnterGameWorldCompleteAsync(connectionContext, serverToken);
 
                 async Task<(bool Saved, bool[] Granted)> SaveClearRewardEquipmentAsync(
                     int targetGold,
@@ -2292,210 +2257,6 @@ public sealed class EntranceService(
 
 
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId ==
-                                GameProtocolEngine.RenameCreatureCommand)
-                        {
-                            var parsedRename = TryReadRenameCreature(
-                                request.Body,
-                                out var renameCardSlot,
-                                out var renameItemSpace,
-                                out var renameNameBytes);
-                            var requestedCreatureName = parsedRename
-                                ? ClientEncoding.GetString(renameNameBytes)
-                                : string.Empty;
-                            var renameFailure = string.Empty;
-                            CharacterCreatureRenamePlan renamePlan = null!;
-                            var validRename = session.Character.Active is not null
-                                && parsedRename
-                                && renameItemSpace == 7
-                                && CharacterCreatureInventoryPlanner.TryRename(
-                                    session.Inventory.Creature,
-                                    renameCardSlot,
-                                    requestedCreatureName,
-                                    itemCatalog,
-                                    out renamePlan,
-                                    out renameFailure);
-                            if (!validRename)
-                            {
-                                var renameError =
-                                    GameProtocolEngine.CreateRenameCreatureReply(
-                                        success: false,
-                                        errorCode: 4);
-                                await renameError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, renameError);
-                                logger.LogWarning(
-                                    "Rejected Creature rename itemSpace={ItemSpace}, cardSlot={CardSlot}, parsed={Parsed}: {Failure}.",
-                                    renameItemSpace,
-                                    renameCardSlot,
-                                    parsedRename,
-                                    session.Character.Active is null
-                                        ? "no active character"
-                                        : renameFailure);
-                                continue;
-                            }
-
-                            var renamingCharacter = session.Character.Active!;
-                            var savedRename = await store.SaveCharacterItemSpacesAsync(
-                                session.Login.AccountName,
-                                renamingCharacter.Id,
-                                session.Currency.Gold,
-                                session.Inventory.Main.Values,
-                                session.Inventory.Equipped.Values,
-                                session.Inventory.Warehouse.Values,
-                                serverToken,
-                                avatarInventory: session.Inventory.Avatar.Values,
-                                creatureInventory: renamePlan.Inventory.Values);
-                            if (savedRename is null)
-                            {
-                                var renameError =
-                                    GameProtocolEngine.CreateRenameCreatureReply(
-                                        success: false,
-                                        errorCode: 2);
-                                await renameError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, renameError);
-                                logger.LogWarning(
-                                    "Could not persist Creature rename using card slot {CardSlot} for character {CharacterId}.",
-                                    renameCardSlot,
-                                    renamingCharacter.Id);
-                                continue;
-                            }
-
-                            session.Character.Active = savedRename;
-                            session.Inventory.Creature = renamePlan.Inventory;
-                            var renameNotification =
-                                GameProtocolEngine.CreateCreatureRename(
-                                    session.Character.LocalUserId,
-                                    EncodeCreatureName(
-                                        renamePlan.CreatureName,
-                                        session.Inventory.Creature[
-                                            CharacterCreatureInventoryLayout
-                                                .EquippedCreatureSlot].ItemId));
-                            await renameNotification.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, renameNotification);
-
-                            var renameReply =
-                                GameProtocolEngine.CreateRenameCreatureReply(
-                                    success: true,
-                                    renameCardSlot,
-                                    renameItemSpace);
-                            await renameReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, renameReply);
-                            foreach (var creaturePacket in CreateCreatureInventoryPackets(
-                                         session.Inventory.Creature.Values))
-                            {
-                                await creaturePacket.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, creaturePacket);
-                            }
-
-                            logger.LogInformation(
-                                "Renamed equipped Creature uid={CreatureUid} to {CreatureName} using card slot {CardSlot} for character {CharacterId}.",
-                                renamePlan.CreatureUid,
-                                renamePlan.CreatureName,
-                                renameCardSlot,
-                                session.Character.Active.Id);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId ==
-                                GameProtocolEngine.ResponseCreatureCommand)
-                        {
-                            await SendEquippedCreatureResponseAsync();
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.HatchCreatureCommand)
-                        {
-                            var parsedHatch = TryReadHatchCreature(
-                                request.Body,
-                                out var hatchItemSpace,
-                                out var hatchSlot);
-                            var hatchFailure = string.Empty;
-                            CharacterCreatureHatchPlan hatchPlan = null!;
-                            var validHatch = session.Character.Active is not null
-                                && parsedHatch
-                                && hatchItemSpace == 7
-                                && CharacterCreatureInventoryPlanner.TryHatch(
-                                    session.Inventory.Creature,
-                                    hatchSlot,
-                                    itemCatalog,
-                                    out hatchPlan,
-                                    out hatchFailure);
-                            if (!validHatch)
-                            {
-                                var hatchError = GameProtocolEngine.CreateHatchCreatureReply(
-                                    success: false,
-                                    errorCode: 4);
-                                await hatchError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, hatchError);
-                                logger.LogWarning(
-                                    "Rejected Creature hatch itemSpace={ItemSpace}, slot={Slot}, parsed={Parsed}: {Failure}.",
-                                    hatchItemSpace,
-                                    hatchSlot,
-                                    parsedHatch,
-                                    session.Character.Active is null
-                                        ? "no active character"
-                                        : hatchFailure);
-                                continue;
-                            }
-
-                            var hatchingCharacter = session.Character.Active!;
-                            var savedHatch = await store.SaveCharacterItemSpacesAsync(
-                                session.Login.AccountName,
-                                hatchingCharacter.Id,
-                                session.Currency.Gold,
-                                session.Inventory.Main.Values,
-                                session.Inventory.Equipped.Values,
-                                session.Inventory.Warehouse.Values,
-                                serverToken,
-                                avatarInventory: session.Inventory.Avatar.Values,
-                                creatureInventory: hatchPlan.Inventory.Values);
-                            if (savedHatch is null)
-                            {
-                                var hatchError = GameProtocolEngine.CreateHatchCreatureReply(
-                                    success: false,
-                                    errorCode: 2);
-                                await hatchError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, hatchError);
-                                logger.LogWarning(
-                                    "Could not persist Creature hatch at slot {Slot} for character {CharacterId}.",
-                                    hatchSlot,
-                                    hatchingCharacter.Id);
-                                continue;
-                            }
-
-                            session.Character.Active = savedHatch;
-                            session.Inventory.Creature = hatchPlan.Inventory;
-                            var hatchReply = GameProtocolEngine.CreateHatchCreatureReply(
-                                success: true);
-                            await hatchReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, hatchReply);
-                            foreach (var creaturePacket in CreateCreatureInventoryPackets(
-                                         session.Inventory.Creature.Values))
-                            {
-                                await creaturePacket.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, creaturePacket);
-                            }
-
-                            logger.LogInformation(
-                                "Hatched Creature egg {EggItemId} into {CreatureItemId} at slot {Slot} for character {CharacterId}.",
-                                hatchPlan.EggItemId,
-                                hatchPlan.CreatureItemId,
-                                hatchPlan.Slot,
-                                session.Character.Active.Id);
-                            continue;
-                        }
 
 
 
@@ -2511,115 +2272,9 @@ public sealed class EntranceService(
 
 
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.SetUserPositionCommand)
-                        {
-                            // DNF 1.0.1.9 SET_USER_POSITION is:
-                            // sequence, int16 x, int16 y, byte direction,
-                            // uint16 movement value. Establishing AREA_USERS
-                            // here is what enables the local map's town-exit
-                            // trigger to emit SET_USER_AREA.
-                            if (request.Body.Length >= 9)
-                            {
-                                session.Character.X = BinaryPrimitives.ReadInt16LittleEndian(
-                                    request.Body.AsSpan(2, sizeof(short)));
-                                session.Character.Y = BinaryPrimitives.ReadInt16LittleEndian(
-                                    request.Body.AsSpan(4, sizeof(short)));
-                                session.Character.Direction = request.Body[6];
-                                session.Character.MovementValue = BinaryPrimitives.ReadUInt16LittleEndian(
-                                    request.Body.AsSpan(7, sizeof(ushort)));
-                            }
 
-                            // Movement is only mirrored while the actor is a
-                            // town entity; dungeon-run positions stay private.
-                            if (session.Dungeon.CurrentDungeonId == 0 && !session.Dungeon.InSelection)
-                            {
-                                partyCoordinator.UpdatePresencePosition(
-                                    runtimeSession.Id,
-                                    session.Character.X,
-                                    session.Character.Y,
-                                    session.Character.Direction);
-                            }
 
-                            // The local client already owns its movement.
-                            // Re-sending USER_POSITION or AREA_USERS on every
-                            // one-second update makes it rebuild the area and
-                            // snaps the character back. Seed the roster once
-                            // when entering the town session, then only retain
-                            // subsequent coordinates server-side.
-                            if (!session.Character.AreaRosterInitialized)
-                            {
-                                var townUser = new GameTownUser(
-                                    session.Character.LocalUserId,
-                                    session.Character.X,
-                                    session.Character.Y,
-                                    session.Character.Direction);
 
-                                var areaUsers = GameProtocolEngine.CreateAreaUsers(
-                                    session.Character.TownId,
-                                    session.Character.AreaId,
-                                    [townUser]);
-                                await areaUsers.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, areaUsers);
-                                session.Character.AreaRosterInitialized = true;
-                                await SendTownFatigueStateAsync();
-                                await SendTownAppearanceAsync(waitForTownActor: true);
-                                await SendEnterGameWorldCompleteAsync();
-                                PublishTownPresence();
-                            }
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.SetUserAreaCommand)
-                        {
-                            // sequence, byte town, byte area, int16 x, int16 y
-                            if (request.Body.Length >= 8)
-                            {
-                                session.Character.TownId = request.Body[2];
-                                session.Character.AreaId = request.Body[3];
-                                session.Character.X = BinaryPrimitives.ReadInt16LittleEndian(
-                                    request.Body.AsSpan(4, sizeof(short)));
-                                session.Character.Y = BinaryPrimitives.ReadInt16LittleEndian(
-                                    request.Body.AsSpan(6, sizeof(short)));
-                            }
-
-                            await SaveCurrentLocationAsync(serverToken);
-
-                            var townUser = new GameTownUser(
-                                session.Character.LocalUserId,
-                                session.Character.X,
-                                session.Character.Y,
-                                session.Character.Direction);
-                            var userArea = GameProtocolEngine.CreateUserArea(
-                                session.Character.TownId,
-                                session.Character.AreaId,
-                                townUser);
-                            await userArea.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, userArea);
-
-                            // USER_AREA deliberately ignores the local user;
-                            // AREA_USERS commits the local scene transition but
-                            // recreates the town actor with stamina zero. Rebuild
-                            // its projections, then restore stamina through the
-                            // client's silent NOTI 33 path.
-                            var areaUsers = GameProtocolEngine.CreateAreaUsers(
-                                session.Character.TownId,
-                                session.Character.AreaId,
-                                [townUser]);
-                            await areaUsers.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, areaUsers);
-                            session.Character.AreaRosterInitialized = true;
-                            await SendTownFatigueStateAsync();
-                            await SendTownAppearanceAsync(waitForTownActor: true);
-                            await SendSilentTownStaminaStateAsync();
-                            await SendEnterGameWorldCompleteAsync();
-                            PublishTownPresence();
-                            continue;
-                        }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.RecoverStaminaCommand)
@@ -2783,119 +2438,6 @@ public sealed class EntranceService(
                         // sequence number before every command body, so the
                         // parsers below read fields from offset 2.
                         // -----------------------------------------------------
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId is >= 10 and <= 14)
-                        {
-                            var partyIdentity = session.Character.Active is null
-                                ? null
-                                : new PartyMemberIdentity(
-                                    runtimeSession.Id,
-                                    session.Character.Active.Id,
-                                    session.Login.AccountUid,
-                                    session.Character.LocalUserId,
-                                    session.Character.Active.Name,
-                                    (byte)Math.Clamp(session.Character.Active.Level, (byte)1, byte.MaxValue),
-                                    (byte)Math.Clamp(session.Character.Active.Job, byte.MinValue, byte.MaxValue));
-                            if (partyIdentity is null)
-                            {
-                                // Padded so the client's error-code readers
-                                // stay inside the payload (see
-                                // CreatePeerCommandError).
-                                var identityError = GameProtocolEngine.CreatePeerCommandError(
-                                    request,
-                                    errorCode: 0);
-                                await identityError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, identityError);
-                                continue;
-                            }
-
-                            // A malformed party body must never kill the
-                            // connection — parse and dispatch defensively.
-                            PartyOpResult partyResult;
-                            byte partyErrorCode;
-                            try
-                            {
-                                var parsedSettings = GameProtocolEngine.TryParseSetPartyInfo(
-                                    request.Body,
-                                    out var partySettings);
-                                var parsedPeerRequest = GameProtocolEngine.TryParseRequestPeer(
-                                    request.Body,
-                                    out var peerRequest);
-                                var parsedPeerResponse = GameProtocolEngine.TryParseResponsePeer(
-                                    request.Body,
-                                    out var peerResponse);
-                                var parsedWalkoutSlot = GameProtocolEngine.TryParseWalkoutPartyMember(
-                                    request.Body,
-                                    out var walkoutSlot);
-
-                                (partyResult, partyErrorCode) = request.ProtocolId switch
-                                {
-                                    GameProtocolEngine.SetPartyInfoCommand => parsedSettings
-                                        ? (partyCoordinator.SetPartyInfo(partyIdentity, partySettings), (byte)8)
-                                        : (PartyOpResult.Fail("malformed_set_party_info"), (byte)0),
-                                    GameProtocolEngine.LeavePartyCommand =>
-                                        (partyCoordinator.LeaveParty(partyIdentity), (byte)0x12),
-                                    GameProtocolEngine.WalkoutPartyMemberCommand => parsedWalkoutSlot
-                                        ? (partyCoordinator.Kick(partyIdentity, walkoutSlot), (byte)4)
-                                        : (PartyOpResult.Fail("malformed_walkout"), (byte)0),
-                                    GameProtocolEngine.RequestPeerCommand => parsedPeerRequest
-                                        ? (partyCoordinator.RequestPeer(partyIdentity, peerRequest), (byte)5)
-                                        : (PartyOpResult.Fail("malformed_request_peer"), (byte)0),
-                                    GameProtocolEngine.ResponsePeerCommand => parsedPeerResponse
-                                        ? (partyCoordinator.RespondPeer(partyIdentity, peerResponse), (byte)1)
-                                        : (PartyOpResult.Fail("malformed_response_peer"), (byte)0),
-                                    _ => (PartyOpResult.Fail("unknown_party_command"), (byte)0),
-                                };
-                            }
-                            catch (Exception exception)
-                            {
-                                logger.LogWarning(
-                                    exception,
-                                    "Party command {ProtocolId} from {CharacterId} threw; replying failure.",
-                                    request.ProtocolId,
-                                    partyIdentity.CharacterId);
-                                partyResult = PartyOpResult.Fail("party_command_exception");
-                                partyErrorCode = 0;
-                            }
-
-                            var partyIsSettingsFamily =
-                                request.ProtocolId
-                                    is GameProtocolEngine.SetPartyInfoCommand
-                                    or GameProtocolEngine.LeavePartyCommand
-                                    or GameProtocolEngine.WalkoutPartyMemberCommand;
-                            GameServerPacket partyReply;
-                            if (partyResult.Ok)
-                            {
-                                partyReply = GameProtocolEngine.CreateCommandReply(
-                                    request,
-                                    success: true);
-                            }
-                            else
-                            {
-                                partyReply = partyIsSettingsFamily
-                                    ? GameProtocolEngine.CreatePartyCommandError(
-                                        request,
-                                        partyErrorCode)
-                                    : GameProtocolEngine.CreatePeerCommandError(
-                                        request,
-                                        partyErrorCode);
-                            }
-
-                            await partyReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, partyReply);
-                            if (!partyResult.Ok)
-                            {
-                                logger.LogInformation(
-                                    "Rejected party command {ProtocolId} for {CharacterId}: {Reason}.",
-                                    request.ProtocolId,
-                                    partyIdentity.CharacterId,
-                                    partyResult.Reason);
-                            }
-
-                            continue;
-                        }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.SelectDungeonCommand)
@@ -4887,51 +4429,7 @@ public sealed class EntranceService(
         && (CharacterInventoryLayout.IsQuickSlot(sourceSlot)
             || CharacterInventoryLayout.IsQuickSlot(destinationSlot));
 
-    private static bool TryReadHatchCreature(
-        byte[] body,
-        out byte itemSpace,
-        out ushort slot)
-    {
-        itemSpace = 0;
-        slot = 0;
-        if (body.Length < 5)
-        {
-            return false;
-        }
 
-        itemSpace = body[2];
-        slot = BinaryPrimitives.ReadUInt16LittleEndian(body.AsSpan(3, 2));
-        return true;
-    }
-
-    private static bool TryReadRenameCreature(
-        byte[] body,
-        out ushort cardSlot,
-        out byte itemSpace,
-        out byte[] nameBytes)
-    {
-        cardSlot = 0;
-        itemSpace = 0;
-        nameBytes = [];
-        const int fixedLength = 9;
-        if (body.Length < fixedLength)
-        {
-            return false;
-        }
-
-        cardSlot = BinaryPrimitives.ReadUInt16LittleEndian(body.AsSpan(2, 2));
-        itemSpace = body[4];
-        var nameLength = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(5, 4));
-        if (nameLength is 0 or > 12
-            || nameLength > int.MaxValue
-            || body.Length != fixedLength + (int)nameLength)
-        {
-            return false;
-        }
-
-        nameBytes = body.AsSpan(fixedLength, (int)nameLength).ToArray();
-        return !nameBytes.Contains((byte)0);
-    }
 
     private bool IsEquipmentItem(ushort itemId) => itemCatalog.IsEquipment(itemId);
 

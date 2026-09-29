@@ -6657,7 +6657,7 @@ Check(sortedCreatureInventory[0].CountOrValue == 4
     && sortedCreatureInventory[238].CreatureLevel == 7,
     "Creature sorting compacts each native region independently and never moves equipped slots 238 through 241");
 
-var renameCreatureParser = typeof(EntranceService).GetMethod(
+var renameCreatureParser = typeof(PetsParsers).GetMethod(
     "TryReadRenameCreature",
     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 object?[] renameCreatureArguments =

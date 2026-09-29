@@ -55,19 +55,21 @@
 
 默认入口：<http://127.0.0.1:8081/admin/index.html>。
 
-- 给指定角色发送邮件，可附金币和一项物品附件，区分普通物品、装扮与宠物蛋。
+- 给指定角色发送邮件，可附金币和一项物品附件，区分普通物品、装扮与宠物蛋；另可同时向收件角色的账号发放点券（账号级即时到账，不是邮件附件，规则见 `ADMIN_API.md` §5.2.7）。
 - 给在线角色发送消息或弹窗，或向当前在线角色广播；消息支持类型选择。
 - 设置角色可进入的副本最高难度。
 - 查看角色在线状态，从已加载 PVF 中搜索物品和选择副本。
 
 ## 已知缺口
 
-- **多人组队** 已落地雏形（组队创建、邀请、接受、退队、踢人及成员互见的协议链路，格式与实现见 `docs/protocol/packet-detail-party-60cn.md`）；完整流程的真机复测仍在推进，多人进同一副本的协同编队尚未完成。
+- **多人组队** 已落地雏形（组队创建、邀请、接受、退队、踢人、成员互见与队伍聊天的协议链路，格式与实现见 `docs/protocol/packet-detail-party-60cn.md`、`docs/protocol/packet-detail-chat-60cn.md`）；完整流程的真机复测仍在推进，多人进同一副本的协同编队尚未完成。**队伍名**：6 条预设文案由客户端本地渲染；自定义名经 NOTI 9 设置段 kind==0 的 dstr（u32 长度 + CP936 文本）原生下发，所有客户端直接显示、无需补丁（2026-09-30 更正：该通道为本客户端原生协议，先前的 type 4 扩展方案因误读设置段读取端而撤销）；改名请求携带的容量字节可能越界（客户端回读自存队伍记录），服务端按"建队取默认 4、改设置保留原容量"修正。
 - **玩家交易** 尚未实现玩家之间的物品、金币交易及双方确认流程。
 - **私人商店** 尚未实现摆摊、商品展示及玩家购买流程。
 - **社交与公会** 尚未实现好友、黑名单及完整的公会系统；战场、公会战等玩法尚未实现和验证。
 - **决斗场** 已有决斗经验、等级及记录同步，尚未实现房间、准备、对战及结算流程。
 - **数据持久化** 当前采用 JSON 文件，尚未接入数据库，不支持多实例共享写入。
+
+上述为尚未实现的功能；已完成但待真机复测、未定论与存在争议的事项登记在 [PENDING.md](PENDING.md)。
 
 上述协议类缺口的迁移组位、命名与归属预留见 [docs/design/07-protocol-layer-refactor.md](docs/design/07-protocol-layer-refactor.md) 的 §4.8.4；存储缺口由 [docs/design/08-sqlite-storage.md](docs/design/08-sqlite-storage.md) 承载。
 
@@ -129,6 +131,9 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 | `Experience.MonsterMultiplier` | 逐只怪物经验倍率，默认 `1.0`。 |
 | `Experience.ClearMultiplier` | 通关基础经验及评分奖励倍率，默认 `1.0`。 |
 | `EnablePacketTracing` | 协议包跟踪开关，用于排查客户端交互问题。 |
+| `Logging.Enabled` | 统一文件日志（`logs/server.log`）开关，默认 `false`；需留存诊断记录时置 `true`。关闭时不注册日志提供器，连日志目录都不会创建。 |
+| `Logging.Directory` / `Logging.FileName` | 日志落盘位置，默认 `logs/server.log`，相对路径以服务端程序目录为基准。 |
+| `Logging.MaximumFileBytes` | 单文件字节上限，超过即轮转为同名 `.1` 文件；`0` 表示不轮转。 |
 
 默认 TCP 端口为 `2311`、`7001`、`8080`，管理 HTTP 为 `8081`；默认 UDP 端口为 `2311`、`7002`、`7003`。更改网络配置时，应同步检查启动器与频道地址。
 
@@ -155,7 +160,7 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 
 启动器会安装发布目录中的 `ijl15.dll`，首次替换已有模块时保留 `ijl15.original.dll`，缺少客户端 `Config.ini` 时复制默认配置。IJL15 补丁只修改当前进程内存，不改写磁盘上的 PE；Launcher 启动器本身不读写客户端进程内存。
 
-客户端目录中的 `Config.ini` 提供以下常用设置：
+客户端目录中的 `Config.ini` 提供以下常用设置（`[Features]` 每个键对应一个功能开关，`[CeraPurchaseGate]` 对应点券商城门控分项；缺失的键使用默认值，功能清单见 `Client/DFLegacy.Ijl15/src/ijl15_config.cpp` 的默认值表）：
 
 ```ini
 [Resolution]
@@ -168,6 +173,28 @@ ScaleFilter=native
 [Features]
 EnablePerformanceOverlay=1
 EnableMouseWheel=1
+DisableDebuggerDetection=1
+AllowMultipleClientInstances=1
+DisableStartupMinimize=1
+SinglePermanentAvatarPeriodOption=1
+EnableCustomStackableUseMode1=1
+RemoveCustomPopupAnnouncementTitle=1
+UseExternalDnfStringTable=1
+FixMailboxArchiveRefresh=1
+BypassCeraPurchaseRestrictions=1
+ForcePlainTextLogs=1
+DisableType16ChatMessageSound=1
+RedirectClientOutputPaths=0
+
+[CeraPurchaseGate]
+LegacySaleWindow=1
+PerCharacterLimit=1
+CharacterLevel=1
+ClientInventoryCapacity=0
+JobCompatibility=0
+CurrencyBalance=0
+RequiredOption=0
+GiftEligibility=0
 ```
 
 窗口大小只改变外层缩放，内部渲染保持 `640×480`。`ScaleFilter` 支持 `native`、`point`/`nearest`、`linear` 和 `anisotropic`。两个功能开关分别控制性能信息覆盖层与鼠标滚轮支持，设为 `0` 关闭。修改后重启客户端生效。

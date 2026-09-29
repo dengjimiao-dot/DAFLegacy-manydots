@@ -360,7 +360,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - 预留组启用时同步 4.8.2 大类表与 §5 分组表,README「已知缺口」对应条目随之收敛。
 - 数据持久化缺口(JSON → SQLite)不在本档范围,由 08 号文档承载。
 
-## 5. 分组映射(71 协议号 → 15 个 handler 组;大类归属见 4.8.2,组名定名见 4.8.3)
+## 5. 分组映射(72 协议号 → 15 个 handler 组;大类归属见 4.8.2,组名定名见 4.8.3)
 
 | # | 组(Network/Handlers/<组>/) | 协议(CMD, 60CN 号) | 现状行段(EntranceService.cs) | 触及状态域 |
 | --- | --- | --- | --- | --- |
@@ -373,7 +373,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | 7 | Quest | ACCEPT 33 / GIVEUP 34 / TRIGGER 35 / FINISH 36 | 3898-4740, 14018- | Quest, Inventory |
 | 8 | Skill | CHANGE_SKILLSLOT 30 / BUY_SKILL 31 / INCREASE_STATUS 32(状态点分配) | 5438-5640 | Skill, Currency |
 | 9 | Inventory | DELETE 18 / MOVE 19 / SORT 20 / USE_STACKABLE 47 / DECREASE_DUR 51 | 5760-5855, 6062-7194, 7196-8004, 9738-9820 | Inventory |
-| 10 | Shop | BUY 21 / SELL 24 / REPAIR 25 / CERA 67 / GEN_CERATICKET 68 / ITEMTRADE_STATE 26 | 8006-8942, 9483-9568 | Inventory, Currency, Mailbox |
+| 10 | Shop | BUY 21 / SELL 24 / REPAIR 25 / CERA 66(刷新查询) / CERA 67 / GEN_CERATICKET 68 / ITEMTRADE_STATE 26 | 8006-8942, 9483-9568 | Inventory, Currency, Mailbox |
 | 11 | Craft | COMPOUND 27 / DISJOINT 28 / LOTTERY 29 / UPGRADE 83 / RESET 84 / COMPOUND_AVATAR 102 / GET 46 / DROP 50 | 4740-5170, 9112-9481, 11242-11620 | Inventory, Dungeon |
 | 12 | Pets | HATCH 105 / RENAME 103 / RESPONSE 104 + NOTI 100-107 | 5857-6062, 697, 7514 | Inventory(creature), Weakness |
 | 13 | Dungeon | START_GAME 15 / SELECT_DUNGEON 16 / FINISH_LOADING 40 / MOVE_MAP 48 / DIE_MONSTER 42 / ALLDIE 148 / DIE_CHAR 43 / USE_COIN 44 / GIVEUP 45 / BACK_2_VILLAGE 142 / PLAY_RESULT 49 / 计分卷/翻牌 72-74 / EPLP 75(结算) / BOSS_DIE 127 / TUTORIAL 153 / USE_SKILL 41 | 9822 端-12171 区间多个段 | Dungeon, Character, Quest, Inventory |
@@ -434,7 +434,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 
 ## 10. ServerS4A21 对照(2026-09-29 复审)
 
-> 本节数据 2026-09-29 按两侧工作区现状重新实测(命令统计,非目测),取代 2026-09-28 首轮实测。上轮以来本项目侧因 FIX-01/FIX-02(整理物品方案回滚)与 DAF-MCP 抓包网关落地(ADD-05)发生代码漂移;参考项目侧 Builders/Parsers 有文件合并(220/86 → 182/83,聚合出多 builder 文件),文件组织仍在演进,引用数字以本节当期实测为准。包级字段差异见[对比文档](../servers4a21/comparison-vs-servers4a21.md),功能覆盖差距见[功能回填计划](../servers4a21/feature-backfill-plan-vs-s4a21.md)。
+> 本节数据 2026-09-29 按两侧工作区现状重新实测(命令统计,非目测),取代 2026-09-28 首轮实测。上轮以来本项目侧因 FIX-01/FIX-02(整理物品方案回滚,见 PENDING.md P-21)与 DAF-MCP 抓包网关落地(ADD-05)发生代码漂移;参考项目侧 Builders/Parsers 有文件合并(220/86 → 182/83,聚合出多 builder 文件),文件组织仍在演进,引用数字以本节当期实测为准。包级字段差异见[对比文档](../servers4a21/comparison-vs-servers4a21.md),功能覆盖差距见[功能回填计划](../servers4a21/feature-backfill-plan-vs-s4a21.md)。
 
 ### 10.1 规模与协议处理形态对照(实测)
 
@@ -571,7 +571,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **`ChannelSessionSenders` 按功能块拆为 partial**(2026-09-29):2,697 行单文件拆为 10 个 partial(36-619 行,均低于 §4.7 上限)——主文件(共享状态读取与内容缓存)与 Social/Mailbox/Quest/Skill/Inventory/Creature/Town/Dungeon/DungeonRewards 九块;类名与全部调用点零改动。附记:其中的纯规划器(精灵移动规划簇、库存空间校验族)为 `Game/<域>/` 规划的候选归位对象,待后续触及相应域时再迁,当前以 partial 形态保持零改动。
 - **R6 增量**(2026-09-29):旧 ANTIBOT 分支与兜底三元死路径清除;5 个跨线程 `Interlocked` 标志全部改为 `session.Events` 事件入队(租约回调生产、泵层原排空点按事件分派),对应状态字段自 Mailbox/Premium/Weakness 域移除。`EntranceService.cs` 14,832 → 1,918 行;注册表 74 项(71 协议 + 组队族 5 壳)。
 - **R6 遗留(唯一未完成项)**:4 处 `Task.WhenAny(读帧, Task.Delay(deadline))` 定时点收编 `ConnectionTimerScheduler` 并归并为泵层单调度点(07 §4.5);该变更改变运行时定时触发路径,按 §7.5/§8 要求须在真机上做 premium 到期/翻牌截止/选择与死亡倒计时的时序对拍后方可视为完成。
-- **统一日志系统 + 逐包捕获 + 工具拆分**(2026-09-29,自参考项目 `FileLogger.cs`/`PacketFileLogger.cs`/`BoundedAsyncLogQueue.cs` 迁移,变体:DI 而非全局静态——回应 §10.3 对全局静态 FileLogger 的批评):`Network/Core/BoundedQueueFileLoggerProvider`(ILoggerProvider,有界队列 8192 + 单后台消费者 + 排空退出)统一落盘 `logs/server.log`,与简单控制台共享同一批 ILogger 事件;`Network/Core/PacketFileLogSink`(IPacketTapSink,默认关闭,`DFLegacy:PacketCapture` 配置,64MB 轮转)挂既有 Tap 漏斗;漏斗扩为多端口并集(`RuntimeState.AddTapSink/RemoveTapSink`,MCP hub 与包捕获并存);`HexDump.ToSpacedHex` 自 LogPacket 拆出为 Core 共享工具(加解密/明文解码工具已在 Core,日志层仅做排版);`LoggingOptions`/`PacketCaptureOptions` 入 `Infrastructure/ServerOptions`;新自测套件 `file-logger`(队列丢包/落盘/轮转/捕获/多端口分发)。
+- **统一日志系统 + 逐包捕获 + 工具拆分**(2026-09-29,自参考项目 `FileLogger.cs`/`PacketFileLogger.cs`/`BoundedAsyncLogQueue.cs` 迁移,变体:DI 而非全局静态——回应 §10.3 对全局静态 FileLogger 的批评):`Network/Core/BoundedQueueFileLoggerProvider`(ILoggerProvider,有界队列 8192 + 单后台消费者 + 排空退出)统一落盘 `logs/server.log`,与简单控制台共享同一批 ILogger 事件;`Network/Core/PacketFileLogSink`(IPacketTapSink,默认关闭,`DFLegacy:PacketCapture` 配置,64MB 轮转)挂既有 Tap 漏斗;漏斗扩为多端口并集(`RuntimeState.AddTapSink/RemoveTapSink`,MCP hub 与包捕获并存);`HexDump.ToSpacedHex` 自 LogPacket 拆出为 Core 共享工具(加解密/明文解码工具已在 Core,日志层仅做排版);`LoggingOptions`/`PacketCaptureOptions` 入 `Infrastructure/ServerOptions`;新自测套件 `file-logger`(队列丢包/落盘/轮转/捕获/多端口分发)。**后续调整**:`DFLegacy:Logging.Enabled` 默认改为 `false`——关闭时组合根不注册提供器、不建日志目录与后台消费任务(见 `CHANGELOG.md` ADD-08)。
 - **`Hosting/` 并入 `Infrastructure/`,会话注册表入 `Game/Session/`**(2026-09-29,镜参考项目 `Infrastructure/` 与 `Game/Session/SessionDirectory`):`ServerOptions`/`PathResolver`/`AdminApiModels` → `Infrastructure/`;`CharacterSessionRegistry` → `Game/Session/`;空目录 `Hosting/` 移除。命名空间不变,调用点零改动。`Properties/` 为 SDK/IDE 约定(`AssemblyInfo.cs` 的 InternalsVisibleTo 与 launchSettings.json),不动;`Services/`(疲劳重置/虚弱恢复后台循环)已随后并入 `Infrastructure/`(见下条)。
 - **共享助手归口**:ChannelSessionSenders 承接库存移动发送器/精灵移动规划簇/库存空间校验族(FindFreeInventorySlot/TryGetInventorySpace/IsInventorySlotValid/兼容槽与部分堆叠搜索)、SendPremiumServiceInfo/SendTownFatigueState;CreatureInventoryMovePlan 迁至 Game/Inventory/。
 - **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;其后的按子流程拆分已于同轮完成(四个 partial,见 §11.4)。
@@ -599,7 +599,10 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 
 ### 11.4 遗留项
 
-- **协议迁移**:已全部完成(71/71 协议挂载);纯规划器已归位 `Game/Inventory/`(空间校验族 + 精灵移动规划簇,senders 留薄委托);`MoveItemSpaceHandler` 已按子流程拆为四个 partial 文件(742/155/195/134 行,均低于 §4.7 上限)。
+> 本节为机制与逐项证据的详细登记;汇总索引见根目录 `PENDING.md`。
+
+- **协议迁移**:已全部完成(71/71 协议挂载;2026-09-29 另补 CMD 66 点券刷新查询入 `economy.shop`,注册表现 75 项——`grep -c "registry.Register(" Network/EntranceService.cs`,见下条与 `CHANGELOG.md` ADD-09);纯规划器已归位 `Game/Inventory/`(空间校验族 + 精灵移动规划簇,senders 留薄委托);`MoveItemSpaceHandler` 已按子流程拆为四个 partial 文件(742/155/195/134 行,均低于 §4.7 上限)。**2026-09-29 首轮真机冒烟修正**:R1 迁移 `SelectCharacterHandler` 时装备归位循环 4 处 `continue;` 被误写为 `return;`,R3 迁移 `CeraShopBuyHandler` 时同源误写 7 处,均按旧实现改回(根因、抓包证据与遗留见 `CHANGELOG.md` FIX-03)——§11 各条"逐字迁移"表述应读作"以旧实现快照为基线并逐段对拍核对",不以行数相等自证。
+- **CMD 66(点券刷新查询)挂载**(2026-09-29,`economy.shop`):`Network/Handlers/Shop/CeraQueryHandler.cs` —— 请求体仅 seq(抓包恒 2B),应答复用既有 `ShopPacketBuilders.CreateCeraUpdate` 推送 NOTI 53(`[u8 flag][u32 cera]`),不产生命令型回包;未选角时静默忽略。客户端侧证据:发送器 `sub_85E1E0`(`BeginPacket(66)`→`EndPacket`)由按钮 `sub_864E10` 调用,NOTI 53 case `0x4255BA` 按同一布局读值(登记见 `client-function-register-60cn.md` §1/§5)。自测:`protocol-golden` 增三条断言(未选角不回包、选角后回包字节与既有推送同源)。
 - **R6 定时器收编(唯一未完成的机制项)**:现状实现在 `Network/EntranceService.cs` 泵层读循环顶部(L1247 起的 `while` 内,`pendingPacketRead` 同一段 `if/else-if` 链),四处形状相同——`await Task.WhenAny(pendingPacketRead, Task.Delay(remaining, serverToken))`,超时后 `request` 保持 null,执行到期动作再 `continue` 重新武装:
 
   | # | 位置(2026-09-29 时点) | 触发状态(写入点) | 到期动作 |
@@ -609,6 +612,6 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
   | 3 | `EntranceService.cs:1331` | `Dungeon.CardSelectionDeadline`(CardSelectRightStateHandler 设 4s) | 自动翻牌/回城 |
   | 4 | `EntranceService.cs:1378` | `Premium.ExpiryUnix`(租约回调写入) | 到期服务 `SendPremiumServiceInfoAsync(type, 0)` |
 
-  **收编方案(07 §4.5 既定设计)**:泵层合并为一个 `Task.WhenAny(readTask, eventsTask)`,四处 deadline 写入点(共约 12 处赋值/清空,分布于 StartGame/DieCharacter/CardSelectRightState/SelectDungeon/MoveMap/UseCoin/ReturnSelectCharacter 各 handler 与 `ChannelSessionSenders.Dungeon`)改为 `context.Timers.Register(due, 入队 ConnectionEvent)`;已作废的旧定时器靠到期事件内的二次校验(如 DeathTimeout 的 Generation 比对)空转。改动本身有限,但**触发时刻由"`Task.Delay` 到期"变为"调度器到期 + 下一次 `WhenAny` 唤醒"**,极端交错下可能存在亚帧级差异,**按 §7.5 必须真机对拍(premium 到期/翻牌截止/选择与死亡倒计时,误差 < 1 读帧周期)后方可视为完成**;未复测前不实施,以免失去现行实现的已知时序基线。
-- **真机冒烟复测**:全部 71 协议的字节级等价性由 golden 样本与内联检查守护,但真机全流程回归(登录→选角→进城→聊天→买卖/修理→接交任务→学技能→副本全程→结算翻牌→回城→邮件,§7.4 清单)未做——这是当前最大的未验证面,建议合入 `main` 前补做;未复测的结论一律按"待真机确认"登记。
-- **数据面归属(候选缺陷,待真机复现)**:`GameplayDatagramService` 的 UDP 端点学习按 TCP 源 IP 整体赋予(`ObserveEndpoint`),同机双开或同一 NAT 出口下多会话互相覆盖端点映射,中继转发可能错位;判定条件、修复方向与验证要求见 `docs/protocol/packet-detail-party-60cn.md`「第二轮复核补记」第 2 条。未复现前不改(现行实现是单会话场景的已知良好基线)。
+  **收编方案(07 §4.5 既定设计)**:泵层合并为一个 `Task.WhenAny(readTask, eventsTask)`,四处 deadline 写入点(共约 12 处赋值/清空,分布于 StartGame/DieCharacter/CardSelectRightState/SelectDungeon/MoveMap/UseCoin/ReturnSelectCharacter 各 handler 与 `ChannelSessionSenders.Dungeon`)改为 `context.Timers.Register(due, 入队 ConnectionEvent)`;已作废的旧定时器靠到期事件内的二次校验(如 DeathTimeout 的 Generation 比对)空转。改动本身有限,但**触发时刻由"`Task.Delay` 到期"变为"调度器到期 + 下一次 `WhenAny` 唤醒"**,极端交错下可能存在亚帧级差异,**按 §7.5 必须真机对拍(premium 到期/翻牌截止/选择与死亡倒计时,误差 < 1 读帧周期)后方可视为完成**;未复测前不实施,以免失去现行实现的已知时序基线。**2026-09-29 三轮冒烟未产生对拍样本**(选图停留 2.4s、翻牌 0.2s/1.6s 均在期限内,无死亡与会员到期),基线采集需专项动作:①进副本后停在选图界面 ≥30s(选择倒计时到期);②停在翻牌界面 ≥4s(自动翻牌);③副本内死亡后不复活(死亡倒计时);④经后台把会员到期设在数分钟后(到期推送)。四项在抓包中都可直接读出"截止时刻与实际动作时刻"的差值,即为 §7.5 的对拍基准。
+- **真机冒烟复测**:全部 71 协议的字节级等价性由 golden 样本与内联检查守护,但真机全流程回归(登录→选角→进城→聊天→买卖/修理→接交任务→学技能→副本全程→结算翻牌→回城→邮件,§7.4 清单)未做——这是当前最大的未验证面,建议合入 `main` 前补做;未复测的结论一律按"待真机确认"登记。**2026-09-29 首轮冒烟记录**:入口握手与频道面登录/名册/端点上报(CMD 1/8/2)经抓包核对正常,断点出现在选角——`CMD 4` 无任何下行,根因为迁移期控制流误写(见 `CHANGELOG.md` FIX-03,共 11 处 `continue;`→`return;`);修复已重建通过并经整段对拍复核,冒烟需在修复后的构建上重跑,全部协议仍为待真机确认。**2026-09-29 修复后二轮冒烟(修复构建 md5 `8c524475…`,两次独立登录)**:登录→选角→进城**已通过**——`CMD 4` 后应答与城镇初始化包族齐出,`NOTI 136 ENTER_GAMEWORLD_COMPLETE` 到达(seq 51/132),进城后移动/聊天(含喇叭)/组队/点券购买/删物品均正常,CRC 与线长无异常;**2026-09-29 三轮冒烟(同日 20:30–20:48,会话 `1b34f634`)**:补覆盖清单——城镇/系统面(CMD 37/38/82/130/132)、背包(19/20/18/47/51/46)、商店买卖(21/24,计费与 `ItemCatalog` 逐笔一致)、体力恢复(9)、技能槽互换(30)、副本两次进图:一次完整通关(15/16/28/29/40/41/42/46/48/127/148/49/72/73/74/75,含翻牌与结算)与一次放弃回城(45)、邮件打开与改状态/删除(99/144)。全环无 CRC 失效、无缺失应答(除有意静默的 66/160/37/161),业务应答均 result=01。**仍未覆盖**:修理 25、任务 33-36、买技能 31/状态点 32、邮件发送 97/附件提取 98、点券商城其余 6 类商品分支与多商品同批、宠物 103-105、合成族 27/28/29/50/83/84/102、`CMD 19` 的仓库-装扮-精灵分支、组队与多人副本(需双客户端);逐项证据见 `CHANGELOG.md` FIX-03「真机复测」三轮记录。
+- **数据面归属(候选缺陷,待真机复现)**:`GameplayDatagramService` 的 UDP 端点学习按 TCP 源 IP 整体赋予(`ObserveEndpoint`),同机双开或同一 NAT 出口下多会话互相覆盖端点映射,中继转发可能错位;判定条件、修复方向与验证要求见 `docs/protocol/packet-detail-party-60cn.md`「第二轮复核补记」第 3 条。未复现前不改(现行实现是单会话场景的已知良好基线)。**2026-09-29 IDA 复核已定论归属键**(客户端收包分派 `sub_907EC0` 按帧内槽位字节选对端,源 ip:port 仅用于不可靠块的地址学习;全链证据见 `docs/protocol/packet-detail-party-60cn.md`「第二轮复核补记」第 1 条与 `client-function-register-60cn.md` §4),故 per-ordered-pair 迁移无必要;`sub_907EC0` 的槽位查表同时要求该槽位已存在对端对象,而队友对端对象的唯一创建源是 NOTI 2 mode 3(我方当前不发),多人副本数据面的前置缺口由此定位于 mode 3 快照而非中继拓扑(见该分册同节第 2 条)。

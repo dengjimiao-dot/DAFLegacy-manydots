@@ -51,6 +51,17 @@
 
 回包字节(示例):`00 42 0D 00 00 00 DE D6 96 D4 93 D2 D6`
 
+## CMD 66 `ENUM_CMDPACKET_CERA` — 点券刷新查询 ✅
+
+点券商城界面的「刷新点券」按钮。**请求无字段**,仅帧头与 seq 前缀(抓包 body 恒 2 字节)。
+
+**应答不产生命令型回包**:服务端按当前余额推送 **NOTI 53**(`ShopPacketBuilders.CreateCeraUpdate(success: true, value)`),与余额变更时的推送是同一报文;客户端 NOTI 53 case(0x4255BA)按 `[u8 flag][u32 cera]` 读取并刷新点券显示,`flag != 0` 不触发提示行。
+
+- 未选角时不应答(客户端只在游戏内商城界面发送)。
+- 客户端发送器 `sub_85E1E0`(`BeginPacket(66)` → `EndPacket`,无载荷),按钮调用点 `sub_864E10`。
+
+发包字节(抓包示例):`01 42 0C 00 00 00 D8 38 53 FC EB 00`(`EB 00` 为 seq)
+
 ## 未实现(仅状态)
 
-- CMD 66 `ENUM_CMDPACKET_CERA`:❌(此版 66 的 NOTI 位被 CERA_SPECIALITEM 占用)
+- 本分册余下未实现条目见状态索引 [client-packet-enums-60cn.md](client-packet-enums-60cn.md);CMD 66 已于 2026-09-29 实现(见上节)。

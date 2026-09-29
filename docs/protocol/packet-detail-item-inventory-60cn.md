@@ -6,7 +6,7 @@
 
 ## NOTI 13 `ENUM_NOTIPACKET_ITEM_LIST` — 全量物品列表 ✅
 
-`CreateItemList`;登录、拉取列表及整理物品等全量刷新回本包。整理必须回全量列表:客户端 NOTI 14 处理器对 listType≠3 只做"忽略 0xFFFF + 新增播报"(IDA 0x41D34F/0x41D769),无法表达整排搬迁(见根目录 [CHANGELOG.md](../../CHANGELOG.md) FIX-02)。
+`CreateItemList`;登录、拉取列表及整理物品等全量刷新回本包。整理必须回全量列表:客户端 NOTI 14 处理器对 listType≠3 只做"忽略 0xFFFF + 新增播报"(IDA 0x41D34F/0x41D769),无法表达整排搬迁(见根目录 [PENDING.md](../../PENDING.md) P-21)。
 
 | 偏移 | 宽度 | 字段 | 说明 |
 |---:|---:|---|---|
@@ -80,7 +80,7 @@
 | 0 | u16 | seq | |
 | 2 | u8 | space | 背包空间类型 |
 
-**应答**:成功 2B `[1, space]`;错误 3B `[0, errorCode, space]`。随后推 NOTI 13 全量列表(客户端增量通道无法表达整排搬迁,见根目录 [CHANGELOG.md](../../CHANGELOG.md) FIX-02)。
+**应答**:成功 2B `[1, space]`;错误 3B `[0, errorCode, space]`。随后推 NOTI 13 全量列表(客户端增量通道无法表达整排搬迁,见根目录 [PENDING.md](../../PENDING.md) P-21)。
 
 发包字节(示例):`01 14 0C 00 00 00 BE 23 C2 58 01 00` *
 

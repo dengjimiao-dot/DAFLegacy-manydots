@@ -83,7 +83,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 
 | CMD ID | 发包(客户端→服务端) | 状态 | NOTI ID | 回包(服务端→客户端) | 状态 | 配对说明 |
 |---:|---|---|---:|---|---|---|
-| 17 | `ENUM_CMDPACKET_SEND_MESSAGE` | ✅ | 12 | `ENUM_NOTIPACKET_MESSAGE` | ✅ | 普通聊天回显/广播(13/14/15=喇叭变体) |
+| 17 | `ENUM_CMDPACKET_SEND_MESSAGE` | ✅ | 12 | `ENUM_NOTIPACKET_MESSAGE` | ✅ | 普通聊天回显/广播;type 2/11=队伍聊天(城镇/副本,按名册投递),13/14/15=喇叭变体(见 [packet-detail-chat-60cn.md](packet-detail-chat-60cn.md)) |
 | 124 | `ENUM_CMDPACKET_CREATURE_SEND_MESSAGE` | ✅ | 126 | `ENUM_NOTIPACKET_CREATURE_MESSAGE` | ✅ | 宠物聊天(126 兼弹窗) |
 | 132 | `ENUM_CMDPACKET_CREATURE_SCRIPT_MESSAGE` | ✅ | 131 | `ENUM_NOTIPACKET_CREATURE_SCRIPT_MESSAGE` | ✅ | 宠物脚本消息 |
 | — | — | — | 130 | `ENUM_NOTIPACKET_MEGAPHONE_MSG` | ✅ | 大喇叭广播(物品 36/37;格式见 [packet-detail-chat-60cn.md](packet-detail-chat-60cn.md)) |
@@ -113,7 +113,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 |---:|---|---|---:|---|---|---|
 | 67 | `ENUM_CMDPACKET_BUY_CERASHOP_ITEM` | ✅ | 53 | `ENUM_NOTIPACKET_CERA` | ✅ | 点券商城购买→余额更新 |
 | 68 | `ENUM_CMDPACKET_GEN_CERATICKET` | ✅ | 53 | `ENUM_NOTIPACKET_CERA` | ✅ | 生成点券票据→余额更新 |
-| 66 | `ENUM_CMDPACKET_CERA` | ❌ | 66 | `ENUM_NOTIPACKET_CERA_SPECIALITEM` | ✅ | ⚠此版66=CERA_SPECIALITEM,服务端66发会员服务 |
+| 66 | `ENUM_CMDPACKET_CERA` | ✅ | 53 | `ENUM_NOTIPACKET_CERA` | ✅ | 点券商城「刷新点券」按钮(请求体仅 seq)→ NOTI 53 余额回推;此版 66 的 NOTI 位被 CERA_SPECIALITEM 占用,服务端用 66 发会员服务通知 |
 
 ### 合成/强化 → [格式详情](packet-detail-compound-upgrade-60cn.md)
 
@@ -248,7 +248,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 
 | CMD ID | 发包(客户端→服务端) | 状态 | NOTI ID | 回包(服务端→客户端) | 状态 | 配对说明 |
 |---:|---|---|---:|---|---|---|
-| 12 | `ENUM_CMDPACKET_SET_PARTY_INFO` | ✅ | 9 | `ENUM_NOTIPACKET_PARTY_INFO` | ✅ | 建队/改设置↔队伍信息 |
+| 12 | `ENUM_CMDPACKET_SET_PARTY_INFO` | ✅ | 9 | `ENUM_NOTIPACKET_PARTY_INFO` | ✅ | 建队/改设置↔队伍信息；队名 6 条预设本地渲染，自定义名经设置段 kind==0 的 dstr 原生下行（所有客户端直接显示，2026-09-30 更正，原 type 4 扩展方案已撤销）；改名请求的容量字节可越界（服务端按原容量修正，见分册） |
 | 13 | `ENUM_CMDPACKET_LEAVE_PARTY` | ✅ | 10 | `ENUM_NOTIPACKET_WALKOUT` | ✅ | 退队↔离队播报 |
 | 10 | `ENUM_CMDPACKET_REQUEST_PEER` | ✅ | 7 | `ENUM_NOTIPACKET_REQUEST_PEER` | ✅ | 邀请/申请↔邀请弹窗 |
 | 11 | `ENUM_CMDPACKET_RESPONSE_PEER` | ✅ | 8 | `ENUM_NOTIPACKET_RESPONSE_PEER` | ✅ | 接受/拒绝↔回执 |
@@ -597,8 +597,8 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 | 149 | `ENUM_NOTIPACKET_TELEPORT` | ❌ 未实现 |  |
 | 150 | `ENUM_NOTIPACKET_AA_STARTINFO` | ❌ 未实现 |  |
 | 151 | `ENUM_NOTIPACKET_AA_TIME` | ❌ 未实现 |  |
-| 152 | `ENUM_NOTIPACKET_ANTIBOT` | ❌ 未实现 |  |
-| 153 | `ENUM_NOTIPACKET_DPROTO` | ❌ 未实现 |  |
+| 152 | `ENUM_NOTIPACKET_ANTIBOT` | ❌ 未实现 | id `0x98` 在客户端**类型分派之前**被传输层拦截(收包入口 `sub_40D6D0` → `sub_8C7300`,`cmp id,98h` 分支把 `[6..]` 交给 `dword_BF1634+4` 对象的 `vtable+8`),不经游戏层;NOTI 分派 switch 仅覆盖 id 0~151。故 ANTIBOT 应答无游戏层消费者,无真服样本前不实现(见 ADD-09/ADD-03) |
+| 153 | `ENUM_NOTIPACKET_DPROTO` | ❌ 未实现 | id `0x99` 同被传输层拦截,作**压缩信封**:`vtable+48` 判型后取 `vtable+12` 的解压缓冲替换整包(同上入口) |
 | 154 | `<<NOTI_NO_NAME>>` | ❌ 未实现 | NO_NAME 占位保留位 |
 | 155 | `<<NOTI_NO_NAME>>` | ❌ 未实现 | NO_NAME 占位保留位 |
 | 156 | `<<NOTI_NO_NAME>>` | ❌ 未实现 | NO_NAME 占位保留位 |
@@ -691,7 +691,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 | 63 | `ENUM_CMDPACKET_ADD_FRIEND` | ❌ 未实现 |  |
 | 64 | `ENUM_CMDPACKET_REMOVE_FRIEND` | ❌ 未实现 |  |
 | 65 | `ENUM_CMDPACKET_DEBUG_COMMAND` | ❌ 未实现 |  |
-| 66 | `ENUM_CMDPACKET_CERA` | ❌ 未实现 |  |
+| 66 | `ENUM_CMDPACKET_CERA` | ✅ 已实现 | 点券商城刷新按钮 → NOTI 53 余额回推 |
 | 67 | `ENUM_CMDPACKET_BUY_CERASHOP_ITEM` | ✅ 已实现 |  |
 | 68 | `ENUM_CMDPACKET_GEN_CERATICKET` | ✅ 已实现 |  |
 | 69 | `ENUM_CMDPACKET_REQUEST_PVPEXP_OF_WEEK` | ❌ 未实现 |  |

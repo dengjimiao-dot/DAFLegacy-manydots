@@ -21,6 +21,7 @@
 | [client-function-register-60cn.md](client-function-register-60cn.md) | 客户端函数/数据地址全项目登记表 |
 | [ida-call-chain-convention.md](ida-call-chain-convention.md) | 调用链记录规范 |
 | [client-event-system.md](client-event-system.md) | 活动系统（NOTI 69/86/120）逆向 |
+| [client-camera-zoom-60cn.md](client-camera-zoom-60cn.md) | 镜头拉近（命中画面放大）逆向：选项 3 `ZOOM EFFECT` 开关 + 整画面缩放状态机；**纯客户端表现，无协议面** |
 
 ## 各系统分册（packet-detail-*）
 

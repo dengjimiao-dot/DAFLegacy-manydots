@@ -119,7 +119,8 @@ public enum TapDecodeMode { None, ClientCmd, Server }  // 富化提示，按现�
 > `Network/Core/PacketFileLogSink.cs`（自参考项目 PacketFileLogger 迁移的逐包十六进制捕获，
 > 默认关闭，`DFLegacy:PacketCapture` 配置，64MB 轮转），与 DAF-MCP hub 并存互不挤占。
 > 统一文件日志 `Network/Core/BoundedQueueFileLoggerProvider.cs`（`DFLegacy:Logging` 配置）经
-> Microsoft.Extensions.Logging 管线全量落盘 `logs/server.log`，与包捕获分离。
+> Microsoft.Extensions.Logging 管线全量落盘 `logs/server.log`，与包捕获分离；
+> `Logging.Enabled` 默认 `false`，需显式开启（关闭时不注册提供器，见 CHANGELOG ADD-08）。
 
 
 public interface IPacketTapSink

@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Pets packet builders (07 §4.8.3 三层镜像: Builders/Pets).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class PetsPacketBuilders
 {
@@ -41,7 +41,7 @@ internal static class PetsPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CREATURE_ITEM_LIST,
             payload.ToArray());
     }
@@ -59,7 +59,7 @@ internal static class PetsPacketBuilders
         writer.Write(creatureUid);
         writer.Write(state);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CREATURE_STATE,
             payload.ToArray());
     }
@@ -79,7 +79,7 @@ internal static class PetsPacketBuilders
         // object as dead.
         writer.Write(userId);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.DIED_CREATURE,
             payload.ToArray());
     }
@@ -96,7 +96,7 @@ internal static class PetsPacketBuilders
         // death flag on the resolved Creature object.
         writer.Write(userId);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.REVIVAL_CREATURE,
             payload.ToArray());
     }
@@ -116,7 +116,7 @@ internal static class PetsPacketBuilders
         writer.Write(level);
         writer.Write(cumulativeExperience);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.GAIN_EXP_CREATURE,
             payload.ToArray());
     }
@@ -134,7 +134,7 @@ internal static class PetsPacketBuilders
         writer.Write(evolutionCreatureId);
         writer.Write(userId);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.EVOLUTE_CREATURE,
             payload.ToArray());
     }
@@ -157,7 +157,7 @@ internal static class PetsPacketBuilders
         writer.Write(userId);
         PacketBodyWriter.WriteLengthPrefixedBytes(writer, nameBytes);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.RENAME_CREATURE,
             payload.ToArray());
     }
@@ -172,7 +172,7 @@ internal static class PetsPacketBuilders
         using var writer = new BinaryWriter(payload);
         writer.Write(userId);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.RESPONSE_CREATURE,
             payload.ToArray());
     }
@@ -180,7 +180,7 @@ internal static class PetsPacketBuilders
         bool success,
         byte errorCode = 1) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.HATCH_CREATURE,
             success ? [1] : [0, errorCode]);
     public static GameServerPacket CreateRenameCreatureReply(
@@ -192,7 +192,7 @@ internal static class PetsPacketBuilders
         if (!success)
         {
             return new(
-                GameProtocolEngine.CommandPacketType,
+                GameProtocolConstants.CommandPacketType,
                 (byte)CmdPacketType.RENAME_CREATURE,
                 [0, errorCode]);
         }
@@ -203,7 +203,7 @@ internal static class PetsPacketBuilders
         writer.Write(cardSlot);
         writer.Write(itemSpace);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.RENAME_CREATURE,
             payload.ToArray());
     }

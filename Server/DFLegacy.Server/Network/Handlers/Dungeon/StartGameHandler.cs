@@ -27,9 +27,9 @@ public sealed class StartGameHandler(
         // DF2008 handles exhausted party members in this command,
         // before entering the dungeon-selection screen.
         var maximumFatigue = senders.HasActivePremiumService(context, 
-                GameProtocolEngine.BlackDiamondServiceType)
-            ? GameProtocolEngine.BlackDiamondMaximumFatigue
-            : GameProtocolEngine.DefaultMaximumFatigue;
+                GameProtocolConstants.BlackDiamondServiceType)
+            ? GameProtocolConstants.BlackDiamondMaximumFatigue
+            : GameProtocolConstants.DefaultMaximumFatigue;
         var requiresTutorial = session.Character.Active is { TutorialStarted: false };
         if (session.Character.Active is null
             || (!requiresTutorial

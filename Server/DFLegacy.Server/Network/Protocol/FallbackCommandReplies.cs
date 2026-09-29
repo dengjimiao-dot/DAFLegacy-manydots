@@ -2,42 +2,21 @@ using DFLegacy.Server;
 
 namespace DFLegacy.Protocol;
 
-public static class GameProtocolEngine
+/// <summary>
+/// 兜底应答表：为未注册 handler 的命令给出固定回包，由频道泵层在注册表未命中时调用
+/// （07 §11.5）；<c>LoginHandler</c> 也委托此处产出 LOGIN 的成功字节，避免同一字节
+/// 序列两处实现。71 个协议已全部走注册表，本表当前无线上路径，保留为防御性回退。
+/// 回包字节冻结，改动即破坏客户端兼容。
+/// </summary>
+public static class FallbackCommandReplies
 {
-    public const int ClearRewardCardColumnCount = 4;
-    public const byte NotificationPacketType = 0;
-    public const sbyte NoChampionRewardOrdinal = -1;
-    public const sbyte MaximumChampionRewardOrdinal = 11;
-    public const byte CommandPacketType = 1;
-    public const byte DungeonItemActionCommand = (byte)CmdPacketType.USE_STACKABLE;
-    public const ushort TutorialDungeonId = 10_000;
-    public const ushort TutorialMapId = 61_000;
-    public const uint TutorialCompletionModule = 31;
-    public const ushort DefaultMaximumFatigue = 156;
-    public const ushort BlackDiamondBonusFatigue = 32;
-    public const ushort BlackDiamondMaximumFatigue =
-        DefaultMaximumFatigue + BlackDiamondBonusFatigue;
+    public static GameServerPacket? TryCreateReply(PacketFrame request) =>
+        TryCreateReply(request, []);
 
-    // DF2008 CMD 15 reads error 0x16 followed by the exhausted party-member index.
-    public const byte EnterDungeonSelectionInsufficientFatigueError = 0x16;
-    // DF2008 starts ground-item pickup optimistically. CMD 46 error 0x15 stays
-    // silent but enters the common rollback at 0x00414198, which clears the
-    // pending pickup flag at item-object + 0x7A5 so the same item falls back.
-    public const byte GetItemSilentRejectionError = 0x15;
-    public const uint DefaultCompletedTutorialFlags = uint.MaxValue;
-    public const byte BlackDiamondServiceType = 16;
-    public const byte OverlordContractServiceType = 22;
-    public const byte MasterContractServiceType = 27;
-    public const ushort PremiumServiceUpdateAction = 2;
-
-    public static GameServerPacket? Handle(PacketFrame request)
+    public static GameServerPacket? TryCreateReply(PacketFrame request, ReadOnlySpan<byte> challenge)
     {
-        return Handle(request, []);
-    }
-
-    public static GameServerPacket? Handle(PacketFrame request, ReadOnlySpan<byte> challenge)
-    {
-        if (request.Type != CommandPacketType || request.Body.Length < sizeof(ushort))
+        if (request.Type != GameProtocolConstants.CommandPacketType
+            || request.Body.Length < sizeof(ushort))
         {
             return null;
         }
@@ -58,7 +37,7 @@ public static class GameProtocolEngine
             // three account flags and one trailing client-state flag. Zeroes
             // select the normal character-list path in this client build.
             (byte)CmdPacketType.LOGIN => new GameServerPacket(
-                CommandPacketType,
+                GameProtocolConstants.CommandPacketType,
                 (byte)CmdPacketType.LOGIN,
                 [1, 0, 0, 0, 0]),
             // The 1.0.1.9 client clears a possible old game session before it
@@ -97,5 +76,4 @@ public static class GameProtocolEngine
             _ => null
         };
     }
-
 }

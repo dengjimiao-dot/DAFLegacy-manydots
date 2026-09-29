@@ -48,7 +48,7 @@ public sealed partial class ChannelSessionSenders
 
     var automaticCardIndex =
         ClearRewardCardPlanner.FindLowestAvailableFreeCardIndex(
-            GameProtocolEngine.ClearRewardCardColumnCount,
+            GameProtocolConstants.ClearRewardCardColumnCount,
             []);
     if (!automaticCardIndex.HasValue)
     {
@@ -377,7 +377,7 @@ public sealed partial class ChannelSessionSenders
         CancellationToken cancellationToken = default)
     {
     if (context.State.Dungeon.ClearReward is null
-        || selectedCardIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+        || selectedCardIndex >= GameProtocolConstants.ClearRewardCardColumnCount)
     {
         return (false, false, null);
     }

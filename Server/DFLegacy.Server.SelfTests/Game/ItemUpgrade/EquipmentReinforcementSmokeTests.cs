@@ -133,7 +133,7 @@ internal static class EquipmentReinforcementSmokeTests
             3,
             12,
             17);
-        check(success.Type == GameProtocolEngine.CommandPacketType
+        check(success.Type == GameProtocolConstants.CommandPacketType
                 && success.ProtocolId == (byte)CmdPacketType.UPGRADE_ITEM
                 && success.Payload.SequenceEqual(
                     Convert.FromHexString("0149009103000000041100"))

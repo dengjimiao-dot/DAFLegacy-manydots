@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Connection packet builders (07 §4.8.3 三层镜像: Builders/Connection).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class ConnectionPacketBuilders
 {
@@ -17,7 +17,7 @@ internal static class ConnectionPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             request.ProtocolId,
             [success ? (byte)1 : (byte)0]);
     }
@@ -29,12 +29,12 @@ internal static class ConnectionPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             request.ProtocolId,
             [0, errorCode]);
     }
     public static GameServerPacket CreateEnterGameWorldComplete() =>
-        new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.ENTER_GAMEWORLD_COMPLETE, []);
+        new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.ENTER_GAMEWORLD_COMPLETE, []);
     public static GameServerPacket CreateCheckConnection(ReadOnlySpan<byte> challenge)
     {
         if (challenge.Length != 16)
@@ -43,7 +43,7 @@ internal static class ConnectionPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CHECK_CONNECTION,
             challenge.ToArray());
     }
@@ -88,7 +88,7 @@ internal static class ConnectionPacketBuilders
         writer.Write(port1);
         writer.Write(port2);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CHANNELINFO,
             payload.ToArray());
     }

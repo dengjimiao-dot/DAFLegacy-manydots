@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Party packet builders (07 §4.8.3 三层镜像: Builders/Party).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class PartyPacketBuilders
 {
@@ -34,7 +34,7 @@ internal static class PartyPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USER_UDP_IP_PORT,
             payload.ToArray());
     }
@@ -97,7 +97,7 @@ internal static class PartyPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.PARTY_INFO,
             payload.ToArray());
     }
@@ -135,7 +135,7 @@ internal static class PartyPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.REQUEST_PEER,
             payload.ToArray());
     }
@@ -155,7 +155,7 @@ internal static class PartyPacketBuilders
         writer.Write(responseType);
         writer.Write(value);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.RESPONSE_PEER,
             payload.ToArray());
     }
@@ -168,7 +168,7 @@ internal static class PartyPacketBuilders
         // The wire uid is u8 here (reader 0x41C42F); larger ids truncate for
         // the matching lookup, which only affects the departure chat line.
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.WALKOUT,
             [(byte)userId, reason]);
     }
@@ -275,7 +275,7 @@ internal static class PartyPacketBuilders
         PacketFrame request,
         byte errorCode) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             request.ProtocolId,
             [0, errorCode, 0, 0]);
     /// <summary>The peer commands read their error byte at payload[2]
@@ -285,7 +285,7 @@ internal static class PartyPacketBuilders
         PacketFrame request,
         byte errorCode) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             request.ProtocolId,
             [0, 0, errorCode, 0]);
     /// <summary>Parses WALKOUT_PARTY_MEMBER (CMD 14, writer at 0x8520F3):
@@ -312,7 +312,7 @@ internal static class PartyPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.UDP_HOST,
             [partyIndex]);
     }

@@ -244,11 +244,11 @@ public sealed class UseStackableItemHandler(
         if (consumedItem.ItemId == FatigueRecoveryItemId)
         {
             var premiumFatigue = senders.HasActivePremiumService(context, 
-                    GameProtocolEngine.BlackDiamondServiceType)
-                ? GameProtocolEngine.BlackDiamondBonusFatigue
+                    GameProtocolConstants.BlackDiamondServiceType)
+                ? GameProtocolConstants.BlackDiamondBonusFatigue
                 : (ushort)0;
             var maximumFatigue = checked((ushort)(
-                GameProtocolEngine.DefaultMaximumFatigue + premiumFatigue));
+                GameProtocolConstants.DefaultMaximumFatigue + premiumFatigue));
             var useResult = await store.UseFatigueRecoveryItemAsync(
                 session.Login.AccountName,
                 session.Character.Active.Id,

@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Mailbox packet builders (07 §4.8.3 三层镜像: Builders/Mailbox).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class MailboxPacketBuilders
 {
@@ -16,7 +16,7 @@ internal static class MailboxPacketBuilders
         writer.Write((byte)1);
         writer.Write(notLoadedCount);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.MAILBOX_OPEN,
             payload.ToArray());
     }
@@ -27,7 +27,7 @@ internal static class MailboxPacketBuilders
         writer.Write((byte)1);
         writer.Write(mailId);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.MAILBOX_EXTRACT_ITEM,
             payload.ToArray());
     }
@@ -39,7 +39,7 @@ internal static class MailboxPacketBuilders
         writer.Write(mailId);
         writer.Write(state);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.CHANGE_LETTER_STAT,
             payload.ToArray());
     }
@@ -106,7 +106,7 @@ internal static class MailboxPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.MAILBOX_MAIL_LIST,
             payload.ToArray());
     }
@@ -158,13 +158,13 @@ internal static class MailboxPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.MAILBOX_REMOVE_MAIL,
             payload.ToArray());
     }
     public static GameServerPacket CreateMailboxAlarm(short newMailCount) =>
         new(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.MAILBOX_ALARM,
             [(byte)newMailCount, (byte)(newMailCount >> 8)]);
     private static void ValidateMailEntry(GameMailEntry mail)

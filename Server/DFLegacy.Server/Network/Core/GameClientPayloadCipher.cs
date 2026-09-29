@@ -22,7 +22,7 @@ public sealed class GameClientCipherState
             return false;
         }
 
-        var isCheckConnection = request.Type == GameProtocolEngine.CommandPacketType
+        var isCheckConnection = request.Type == GameProtocolConstants.CommandPacketType
             && request.ProtocolId == (byte)CmdPacketType.CHECK_CONNECTION;
 
         // CHECK_CONNECTION is emitted through CNGameSocket's direct-send path

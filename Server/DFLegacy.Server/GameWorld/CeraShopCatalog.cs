@@ -337,23 +337,23 @@ public sealed class CeraShopCatalog
         contract = path switch
         {
             "stackable/cash/contract_monarch1.stk" =>
-                new(GameProtocolEngine.OverlordContractServiceType, 1),
+                new(GameProtocolConstants.OverlordContractServiceType, 1),
             "stackable/cash/contract_monarch3.stk" =>
-                new(GameProtocolEngine.OverlordContractServiceType, 3),
+                new(GameProtocolConstants.OverlordContractServiceType, 3),
             "stackable/cash/contract_monarch5.stk" =>
-                new(GameProtocolEngine.OverlordContractServiceType, 5),
+                new(GameProtocolConstants.OverlordContractServiceType, 5),
             "stackable/cash/contract_monarch7.stk" =>
-                new(GameProtocolEngine.OverlordContractServiceType, 7),
+                new(GameProtocolConstants.OverlordContractServiceType, 7),
             "stackable/cash/contract_monarch15.stk" =>
-                new(GameProtocolEngine.OverlordContractServiceType, 15),
+                new(GameProtocolConstants.OverlordContractServiceType, 15),
             "stackable/cash/contract_expert3.stk" =>
-                new(GameProtocolEngine.MasterContractServiceType, 1),
+                new(GameProtocolConstants.MasterContractServiceType, 1),
             "stackable/cash/contract_expert7.stk" =>
-                new(GameProtocolEngine.MasterContractServiceType, 3),
+                new(GameProtocolConstants.MasterContractServiceType, 3),
             "stackable/cash/contract_expert15.stk" =>
-                new(GameProtocolEngine.MasterContractServiceType, 7),
+                new(GameProtocolConstants.MasterContractServiceType, 7),
             "stackable/cash/contract_expert30.stk" =>
-                new(GameProtocolEngine.MasterContractServiceType, 15),
+                new(GameProtocolConstants.MasterContractServiceType, 15),
             _ => null!
         };
         return contract is not null;

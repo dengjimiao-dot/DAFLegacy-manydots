@@ -114,7 +114,7 @@ internal static class EquipmentQualitySmokeTests
             (byte)ItemAttributeModificationFailure.InsufficientMaterial);
         var unsupportedItem = CraftPacketBuilders.CreateResetItemAttributeFailure(
             (byte)ItemAttributeModificationFailure.UnsupportedItem);
-        check(success.Type == GameProtocolEngine.CommandPacketType
+        check(success.Type == GameProtocolConstants.CommandPacketType
                 && success.ProtocolId
                     == (byte)CmdPacketType.RESET_ITEM_ATTR
                 && success.Payload.SequenceEqual(

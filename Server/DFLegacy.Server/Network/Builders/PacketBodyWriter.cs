@@ -4,7 +4,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Shared packet-body writers (07 §4.7): length-prefixed bytes and IPv4
-/// address encoding. Moved verbatim from GameProtocolEngine (R7).
+/// address encoding. Moved verbatim from the R7 engine split.
 /// </summary>
 internal static class PacketBodyWriter
 {

@@ -631,7 +631,7 @@ public sealed class EntranceService(
             {
                 async Task<bool> TryDispatchGameCommandAsync(PacketFrame frame)
                 {
-                    if (frame.Type != GameProtocolEngine.CommandPacketType
+                    if (frame.Type != GameProtocolConstants.CommandPacketType
                         || !_gameCommands.TryGet(frame.ProtocolId, out var handler))
                     {
                         return false;
@@ -1068,7 +1068,7 @@ public sealed class EntranceService(
                         // Last-resort fallback for commands the registry does not
                         // mount yet; CHECK_CONNECTION is dispatched by the registry
                         // (CheckConnectionHandler) before reaching this point.
-                        var gameReply = GameProtocolEngine.Handle(
+                        var gameReply = FallbackCommandReplies.TryCreateReply(
                             request,
                             protocolSession.SessionToken);
                         if (gameReply is null)
@@ -1090,7 +1090,7 @@ public sealed class EntranceService(
                         continue;
                     }
 
-                    var reply = EntranceProtocolEngine.Handle(request, protocolSession, LoadContent());
+                    var reply = EntranceHandshakeReplies.TryCreateReply(request, protocolSession, LoadContent());
                     if (reply is null)
                     {
                         logger.LogWarning(
@@ -1344,7 +1344,7 @@ public sealed class EntranceService(
         var wire = (rawFrame ?? frame).Encode();
         var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + PacketFrame.HeaderLength);
         var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
-        var idLabel = frame.Type == GameProtocolEngine.NotificationPacketType ? "NOTI" : "CMD";
+        var idLabel = frame.Type == GameProtocolConstants.NotificationPacketType ? "NOTI" : "CMD";
         // Received command bodies are the TryDecode product (the wire carries
         // the client's rolling-transform ciphertext); server-built frames are
         // plaintext, so only RX keeps the decode label.
@@ -1370,7 +1370,7 @@ public sealed class EntranceService(
         var wire = packet.Encode();
         var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + GameServerPacket.HeaderLength);
         var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
-        var idLabel = packet.Type == GameProtocolEngine.NotificationPacketType ? "NOTI" : "CMD";
+        var idLabel = packet.Type == GameProtocolConstants.NotificationPacketType ? "NOTI" : "CMD";
         logger.LogInformation(
             "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} body=({BodyLen}B) [{Body}]{BodySuffix}\n  raw: {Raw}{RawSuffix}",
             idLabel, session.Id, packet.ProtocolId, $"0x{packet.ProtocolId:X2}",

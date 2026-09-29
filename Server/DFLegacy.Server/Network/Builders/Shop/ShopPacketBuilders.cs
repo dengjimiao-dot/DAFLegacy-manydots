@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Shop packet builders (07 §4.8.3 三层镜像: Builders/Shop).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class ShopPacketBuilders
 {
@@ -33,7 +33,7 @@ internal static class ShopPacketBuilders
         writer.Write(itemId);
         writer.Write(countOrValue);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.BUY_ITEM,
             payload.ToArray());
     }
@@ -71,7 +71,7 @@ internal static class ShopPacketBuilders
         writer.Write(ushort.MaxValue);
         writer.Write(0u);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.BUY_CERASHOP_ITEM,
             payload.ToArray());
     }
@@ -90,7 +90,7 @@ internal static class ShopPacketBuilders
         writer.Write(0u);
         writer.Write((ushort)0);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.BUY_CERASHOP_ITEM,
             payload.ToArray());
     }
@@ -113,7 +113,7 @@ internal static class ShopPacketBuilders
         writer.Write(keyBytes);
         writer.Write(ticketNumber);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.GEN_CERATICKET,
             payload.ToArray());
     }
@@ -124,7 +124,7 @@ internal static class ShopPacketBuilders
         writer.Write(success ? (byte)1 : (byte)0);
         writer.Write(value);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CERA,
             payload.ToArray());
     }
@@ -142,7 +142,7 @@ internal static class ShopPacketBuilders
         writer.Write(slot);
         writer.Write(soldCount);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.SELL_ITEM,
             payload.ToArray());
     }
@@ -158,7 +158,7 @@ internal static class ShopPacketBuilders
         writer.Write(itemSpace);
         writer.Write(slot);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.REPAIR_EQUIPMENT,
             payload.ToArray());
     }
@@ -173,7 +173,7 @@ internal static class ShopPacketBuilders
         writer.Write(listType);
         writer.Write((byte)0);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.SET_ITEMTRADE_STATE,
             payload.ToArray());
     }

@@ -66,7 +66,7 @@ public sealed partial class ChannelSessionSenders
         context.State.Character.LocalUserId,
         context.State.Inventory.Equipped.Values,
         context.State.Inventory.Creature.Values,
-        HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType));
+        HasActivePremiumService(context, GameProtocolConstants.BlackDiamondServiceType));
     await context.Outbound.SendAsync(appearance, "TOWN_APPEARANCE", cancellationToken);
 
     // Mode zero is the compact town-actor appearance
@@ -159,12 +159,12 @@ public sealed partial class ChannelSessionSenders
 
     var premiumNotification =
         StaminaPacketBuilders.CreatePremiumServiceNotification(
-            action: GameProtocolEngine.PremiumServiceUpdateAction,
+            action: GameProtocolConstants.PremiumServiceUpdateAction,
             serviceType,
             remainSeconds);
     await context.Outbound.SendAsync(premiumNotification, "PREMIUM_INFO", cancellationToken);
 
-    if (serviceType == GameProtocolEngine.BlackDiamondServiceType
+    if (serviceType == GameProtocolConstants.BlackDiamondServiceType
         && context.State.Character.Active is not null
         && context.State.Dungeon.CurrentDungeonId == 0)
     {
@@ -174,7 +174,7 @@ public sealed partial class ChannelSessionSenders
             context.State.Inventory.Equipped.Values,
             context.State.Inventory.Creature.Values,
             HasActivePremiumService(context,
-                GameProtocolEngine.BlackDiamondServiceType));
+                GameProtocolConstants.BlackDiamondServiceType));
         await context.Outbound.SendAsync(appearance, "PREMIUM_INFO", cancellationToken);
         await SendTownFatigueStateAsync(context, cancellationToken);
     }
@@ -191,11 +191,11 @@ public sealed partial class ChannelSessionSenders
 
     var premiumFatigue = HasActivePremiumService(
             context,
-            GameProtocolEngine.BlackDiamondServiceType)
-        ? GameProtocolEngine.BlackDiamondBonusFatigue
+            GameProtocolConstants.BlackDiamondServiceType)
+        ? GameProtocolConstants.BlackDiamondBonusFatigue
         : (ushort)0;
     var maximumFatigue = checked((ushort)(
-        GameProtocolEngine.DefaultMaximumFatigue + premiumFatigue));
+        GameProtocolConstants.DefaultMaximumFatigue + premiumFatigue));
     var fatigue = StaminaPacketBuilders.CreateFatigue(
         usedFatigue: Math.Min(
             context.State.Character.Active?.UsedFatigue ?? 0,
@@ -220,7 +220,7 @@ public sealed partial class ChannelSessionSenders
         context.State.Character.LocalUserId,
         context.State.Inventory.Equipped.Values,
         context.State.Inventory.Creature.Values,
-        HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType));
+        HasActivePremiumService(context, GameProtocolConstants.BlackDiamondServiceType));
     partyCoordinator.PublishTownPresence(
         new PartyPresenceUpdate(
             context.Runtime.Id,
@@ -266,7 +266,7 @@ public sealed partial class ChannelSessionSenders
     var stamina = context.State.Character.Active.IsWeakened
         && !HasActivePremiumService(
             context,
-            GameProtocolEngine.BlackDiamondServiceType)
+            GameProtocolConstants.BlackDiamondServiceType)
             ? StaminaPacketBuilders.CreateStamina(
                 context.State.Character.Active.WeaknessRecovery)
             : DungeonPacketBuilders.CreateFailClearDungeon(

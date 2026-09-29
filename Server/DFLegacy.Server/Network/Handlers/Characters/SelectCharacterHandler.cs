@@ -615,7 +615,7 @@ public sealed partial class SelectCharacterHandler(
         }
 
         var blackDiamondService = premiumStates.FirstOrDefault(state =>
-            state.ServiceType == GameProtocolEngine.BlackDiamondServiceType);
+            state.ServiceType == GameProtocolConstants.BlackDiamondServiceType);
         var blackDiamondActive = blackDiamondService?.Active == true;
         var selectReply = CharactersPacketBuilders.CreateSelectCharacterReply(
             request,
@@ -624,18 +624,18 @@ public sealed partial class SelectCharacterHandler(
             usedFatigue: Math.Min(
                 session.Character.Active.UsedFatigue,
                 blackDiamondActive
-                    ? GameProtocolEngine.BlackDiamondMaximumFatigue
-                    : GameProtocolEngine.DefaultMaximumFatigue),
+                    ? GameProtocolConstants.BlackDiamondMaximumFatigue
+                    : GameProtocolConstants.DefaultMaximumFatigue),
             maximumFatigue: blackDiamondActive
-                ? GameProtocolEngine.BlackDiamondMaximumFatigue
-                : GameProtocolEngine.DefaultMaximumFatigue,
+                ? GameProtocolConstants.BlackDiamondMaximumFatigue
+                : GameProtocolConstants.DefaultMaximumFatigue,
             premiumFatigue: blackDiamondActive
-                ? GameProtocolEngine.BlackDiamondBonusFatigue
+                ? GameProtocolConstants.BlackDiamondBonusFatigue
                 : (ushort)0,
             cash: (uint)session.Currency.Cash,
             townId: session.Character.TownId,
             completedTutorialFlags: session.Character.Active.TutorialStarted
-                ? GameProtocolEngine.DefaultCompletedTutorialFlags
+                ? GameProtocolConstants.DefaultCompletedTutorialFlags
                 : 0u,
             activeQuests: session.Quest.Current
                 .Select(quest => new GameQuestEntry(quest.QuestId, quest.Trigger))

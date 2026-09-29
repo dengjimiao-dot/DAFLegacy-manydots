@@ -14,12 +14,12 @@ internal static class ProtocolGoldenSmokeTests
 
         // R0 试点协议的线上样本必须解出声明的帧头(07 §7:样本即黄金标准)。
         var checkConnectionFrame = PacketByteSamples.DecodeFrame(samples["cmd:0"]);
-        check(checkConnectionFrame.Type == GameProtocolEngine.CommandPacketType
+        check(checkConnectionFrame.Type == GameProtocolConstants.CommandPacketType
             && checkConnectionFrame.ProtocolId == (byte)CmdPacketType.CHECK_CONNECTION
             && checkConnectionFrame.DeclaredCrc32 == 0x58C223BEu,
             "cmd:0 sample decodes to a CHECK_CONNECTION command frame with its original CRC");
         var exitFrame = PacketByteSamples.DecodeFrame(samples["cmd:3"]);
-        check(exitFrame.Type == GameProtocolEngine.CommandPacketType
+        check(exitFrame.Type == GameProtocolConstants.CommandPacketType
             && exitFrame.ProtocolId == (byte)CmdPacketType.EXIT,
             "cmd:3 sample decodes to an EXIT command frame");
 
@@ -95,7 +95,7 @@ internal static class ProtocolGoldenSmokeTests
                 CancellationToken.None),
             "CHECK_CONNECTION dispatches through the new pipeline");
         var channelInfo = PacketByteSamples.DecodeServerPacket(channelStream.ToArray());
-        check(channelInfo.Type == GameProtocolEngine.NotificationPacketType
+        check(channelInfo.Type == GameProtocolConstants.NotificationPacketType
             && channelInfo.ProtocolId == (byte)NotiPacketType.CHANNELINFO,
             "CHECK_CONNECTION replies with a CHANNELINFO notification");
         var actualSeed = ReadChannelInfoSeed(channelInfo.Payload);

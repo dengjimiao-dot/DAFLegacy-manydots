@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Skill packet builders (07 §4.8.3 三层镜像: Builders/Skill).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class SkillPacketBuilders
 {
@@ -26,7 +26,7 @@ internal static class SkillPacketBuilders
         writer.Write(firstAuxiliaryValue);
         writer.Write(secondAuxiliaryValue);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.INCREASE_STATUS,
             payload.ToArray());
     }
@@ -34,7 +34,7 @@ internal static class SkillPacketBuilders
         byte sourceSlot,
         byte destinationSlot) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.CHANGE_SKILLSLOT,
             [1, sourceSlot, destinationSlot]);
     public static GameServerPacket CreateBuySkillReply(
@@ -50,7 +50,7 @@ internal static class SkillPacketBuilders
         writer.Write(slot);
         writer.Write(skillId);
         writer.Write(level);
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.BUY_SKILL, payload.ToArray());
+        return new GameServerPacket(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.BUY_SKILL, payload.ToArray());
     }
     public static GameServerPacket CreateSkillInfo(
         ushort skillPoints,
@@ -78,7 +78,7 @@ internal static class SkillPacketBuilders
 
         writer.Write((byte)0); // no per-skill auxiliary values
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.SKILLINFO,
             payload.ToArray());
     }

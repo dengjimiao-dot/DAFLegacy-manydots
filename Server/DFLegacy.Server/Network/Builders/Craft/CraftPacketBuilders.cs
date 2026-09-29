@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Craft packet builders (07 §4.8.3 三层镜像: Builders/Craft).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class CraftPacketBuilders
 {
@@ -18,7 +18,7 @@ internal static class CraftPacketBuilders
                 nameof(request));
         }
 
-        return ConnectionPacketBuilders.CreateCommandError(request, GameProtocolEngine.GetItemSilentRejectionError);
+        return ConnectionPacketBuilders.CreateCommandError(request, GameProtocolConstants.GetItemSilentRejectionError);
     }
     public static GameServerPacket CreateDisjointItemReply(
         ushort sourceSlot,
@@ -44,7 +44,7 @@ internal static class CraftPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DISJOINT_ITEM,
             payload.ToArray());
     }
@@ -113,13 +113,13 @@ internal static class CraftPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.COMPOUND_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateCompoundItemFailure(byte errorCode) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.COMPOUND_ITEM,
             [0, errorCode]);
     public static bool TryParseUpgradeItemCommand(
@@ -164,7 +164,7 @@ internal static class CraftPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.UPGRADE_ITEM,
             payload.ToArray());
     }
@@ -201,13 +201,13 @@ internal static class CraftPacketBuilders
         writer.Write(materialRemaining);
         writer.Write(operationType);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.RESET_ITEM_ATTR,
             payload.ToArray());
     }
     public static GameServerPacket CreateResetItemAttributeFailure(byte errorCode) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.RESET_ITEM_ATTR,
             [0, errorCode]);
     public static bool TryParseCompoundAvatarCommand(
@@ -265,13 +265,13 @@ internal static class CraftPacketBuilders
         writer.Write(remainingSeconds);
         writer.Write(selectedOption);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.COMPOUND_AVATAR,
             payload.ToArray());
     }
     public static GameServerPacket CreateCompoundAvatarFailure(byte errorCode = 4) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.COMPOUND_AVATAR,
             [0, errorCode]);
     public static GameServerPacket CreateUseLotteryItemReply(
@@ -292,7 +292,7 @@ internal static class CraftPacketBuilders
         writer.Write(instanceValue);
         writer.Write(itemAttribute);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.USE_LOTTERY_ITEM,
             payload.ToArray());
     }
@@ -332,7 +332,7 @@ internal static class CraftPacketBuilders
         writer.Write(slot);
         writer.Write(count);
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DROP_ITEM,
             payload.ToArray());
     }
@@ -340,7 +340,7 @@ internal static class CraftPacketBuilders
         byte errorCode,
         byte itemSpace) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DROP_ITEM,
             [0, errorCode, itemSpace]);
     public static GameServerPacket CreateDropItem(
@@ -363,7 +363,7 @@ internal static class CraftPacketBuilders
         writer.Write(drop.AddInfo);
         writer.Write(drop.Durability);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.DROP_ITEM,
             payload.ToArray());
     }

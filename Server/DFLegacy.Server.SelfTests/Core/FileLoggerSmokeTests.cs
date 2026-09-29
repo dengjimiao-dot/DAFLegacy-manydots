@@ -94,7 +94,7 @@ internal static class FileLoggerSmokeTests
                 Guid.NewGuid(),
                 "channel:7001",
                 "RX",
-                GameProtocolEngine.CommandPacketType,
+                GameProtocolConstants.CommandPacketType,
                 (byte)CmdPacketType.LOGIN,
                 totalLength: 12,
                 crc32: 0x58C223BE,

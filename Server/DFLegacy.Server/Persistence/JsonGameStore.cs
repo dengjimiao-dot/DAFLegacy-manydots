@@ -1021,7 +1021,7 @@ public sealed class JsonGameStore(
             if (account.LegacyBlackDiamondExpireAt is { } legacyBlackDiamondExpiry)
             {
                 sourceServices.Add(new AccountPremiumServiceRecord(
-                    GameProtocolEngine.BlackDiamondServiceType,
+                    GameProtocolConstants.BlackDiamondServiceType,
                     legacyBlackDiamondExpiry));
             }
 
@@ -1029,7 +1029,7 @@ public sealed class JsonGameStore(
                 .Select(service => service.ServiceType == LegacyOverlordContractServiceType
                     ? service with
                     {
-                        ServiceType = GameProtocolEngine.OverlordContractServiceType
+                        ServiceType = GameProtocolConstants.OverlordContractServiceType
                     }
                     : service)
                 .GroupBy(service => service.ServiceType)
@@ -2084,7 +2084,7 @@ public sealed class JsonGameStore(
     {
         var result = await GrantPremiumServiceToAccountAsync(
             accountName,
-            GameProtocolEngine.BlackDiamondServiceType,
+            GameProtocolConstants.BlackDiamondServiceType,
             days,
             cancellationToken);
         return new(
@@ -2131,12 +2131,12 @@ public sealed class JsonGameStore(
                 0);
         }
 
-        if (days <= 0 || serviceType == GameProtocolEngine.BlackDiamondServiceType
+        if (days <= 0 || serviceType == GameProtocolConstants.BlackDiamondServiceType
             && days != 30)
         {
             return new(
                 false,
-                serviceType == GameProtocolEngine.BlackDiamondServiceType
+                serviceType == GameProtocolConstants.BlackDiamondServiceType
                     ? "当前仅支持开通 30 天黑钻。"
                     : "契约有效期必须是正整数天数。",
                 normalizedAccount,
@@ -2161,7 +2161,7 @@ public sealed class JsonGameStore(
             var now = checked((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             var currentExpiry = GetServiceExpiry(account, serviceType);
             var blackDiamondActivated =
-                serviceType == GameProtocolEngine.BlackDiamondServiceType
+                serviceType == GameProtocolConstants.BlackDiamondServiceType
                 && !(currentExpiry is { } activeExpiry && activeExpiry > now);
             var start = currentExpiry is > 0 && currentExpiry.Value > now
                 ? currentExpiry.Value
@@ -2229,7 +2229,7 @@ public sealed class JsonGameStore(
     {
         var service = (await GetPremiumServicesAsync(accountName, cancellationToken))
             .FirstOrDefault(entry =>
-                entry.ServiceType == GameProtocolEngine.BlackDiamondServiceType);
+                entry.ServiceType == GameProtocolConstants.BlackDiamondServiceType);
         return service is null
             ? new(false, 0, null)
             : new(service.Active, service.RemainingSeconds, service.ExpiresAt);
@@ -2275,9 +2275,9 @@ public sealed class JsonGameStore(
     }
 
     private static bool IsSupportedPremiumServiceType(byte serviceType) => serviceType is
-        GameProtocolEngine.BlackDiamondServiceType
-        or GameProtocolEngine.OverlordContractServiceType
-        or GameProtocolEngine.MasterContractServiceType;
+        GameProtocolConstants.BlackDiamondServiceType
+        or GameProtocolConstants.OverlordContractServiceType
+        or GameProtocolConstants.MasterContractServiceType;
 
     private static uint? GetServiceExpiry(AccountRecord account, byte serviceType)
         => account.PremiumServices?
@@ -3212,8 +3212,8 @@ public sealed class JsonGameStore(
         var now = checked((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         foreach (var grantGroup in grants.GroupBy(grant => grant.ServiceType))
         {
-            if (grantGroup.Key is not (GameProtocolEngine.OverlordContractServiceType
-                    or GameProtocolEngine.MasterContractServiceType)
+            if (grantGroup.Key is not (GameProtocolConstants.OverlordContractServiceType
+                    or GameProtocolConstants.MasterContractServiceType)
                 || grantGroup.Any(grant => grant.Days <= 0))
             {
                 return false;
@@ -4653,7 +4653,7 @@ public sealed class JsonGameStore(
             foreach (var account in _accounts)
             {
                 var hasBlackDiamond = (account.PremiumServices ?? []).Any(service =>
-                    service.ServiceType == GameProtocolEngine.BlackDiamondServiceType
+                    service.ServiceType == GameProtocolConstants.BlackDiamondServiceType
                     && service.ExpiresAt is { } expiry
                     && expiry > now);
                 for (var characterIndex = 0;

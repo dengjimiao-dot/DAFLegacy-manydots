@@ -42,7 +42,7 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
             ? default
             : await context.ReadAdjacentFrame(
                 TimeSpan.FromMilliseconds(5),
-                static raw => raw.Type == GameProtocolEngine.CommandPacketType
+                static raw => raw.Type == GameProtocolConstants.CommandPacketType
                     && raw.ProtocolId == (byte)CmdPacketType.CHANGE_SKILLSLOT,
                 cancellationToken);
         if (adjacentRead.DecodeFailed)

@@ -67,7 +67,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             return;
         }
         if (requiresTutorial
-            && dungeonId != GameProtocolEngine.TutorialDungeonId)
+            && dungeonId != GameProtocolConstants.TutorialDungeonId)
         {
             var tutorialRequiredError = ConnectionPacketBuilders.CreateCommandError(
                 request,
@@ -77,11 +77,11 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 "Rejected dungeon {DungeonId} for character {CharacterId} until tutorial dungeon {TutorialDungeonId} is complete.",
                 dungeonId,
                 session.Character.Active!.Id,
-                GameProtocolEngine.TutorialDungeonId);
+                GameProtocolConstants.TutorialDungeonId);
             return;
         }
 
-        if (dungeonId == GameProtocolEngine.TutorialDungeonId)
+        if (dungeonId == GameProtocolConstants.TutorialDungeonId)
         {
             if (!requiresTutorial)
             {
@@ -97,13 +97,13 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
 
             var tutorialMonsters = DungeonPacketBuilders.CreateTutorialMonsters();
             session.Dungeon.InSelection = false;
-            session.Dungeon.CurrentDungeonId = GameProtocolEngine.TutorialDungeonId;
+            session.Dungeon.CurrentDungeonId = GameProtocolConstants.TutorialDungeonId;
             session.Dungeon.Layout = null;
             session.Dungeon.RoomX = 0;
             session.Dungeon.RoomY = 0;
             session.Dungeon.Difficulty = difficulty;
             session.Dungeon.Room = new DungeonRoomDefinition(
-                GameProtocolEngine.TutorialMapId,
+                GameProtocolConstants.TutorialMapId,
                 DungeonMapType.Boss,
                 tutorialMonsters,
                 Topology: 'B',
@@ -149,7 +149,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             await context.Outbound.SendAsync(tutorialStartMap, Name, cancellationToken);
             logger.LogInformation(
                 "Started mandatory tutorial dungeon/scene {TutorialId} for character {CharacterId}; monsters={MonsterCount}, difficulty={Difficulty}, option={Option}; no PVF dungeon or map definition was queried.",
-                GameProtocolEngine.TutorialDungeonId,
+                GameProtocolConstants.TutorialDungeonId,
                 session.Character.Active!.Id,
                 tutorialMonsters.Length,
                 difficulty,

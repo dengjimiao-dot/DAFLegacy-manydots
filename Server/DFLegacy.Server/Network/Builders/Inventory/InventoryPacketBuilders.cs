@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Inventory packet builders (07 §4.8.3 三层镜像: Builders/Inventory).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class InventoryPacketBuilders
 {
@@ -30,7 +30,7 @@ internal static class InventoryPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DELETE_ITEM,
             payload.ToArray());
     }
@@ -38,14 +38,14 @@ internal static class InventoryPacketBuilders
         byte listType,
         byte errorCode) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DELETE_ITEM,
             [0, errorCode, listType]);
     public static GameServerPacket CreateUseStackableItemReply(
         ushort slot,
         byte listType) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.USE_STACKABLE,
             [
                 1,
@@ -57,7 +57,7 @@ internal static class InventoryPacketBuilders
         byte errorCode,
         byte listType) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.USE_STACKABLE,
             [0, errorCode, listType]);
     public static GameServerPacket CreateItemList(
@@ -90,7 +90,7 @@ internal static class InventoryPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.ITEM_LIST,
             payload.ToArray());
     }
@@ -124,7 +124,7 @@ internal static class InventoryPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.UPDATE_ITEM_LIST,
             payload.ToArray());
     }
@@ -145,19 +145,19 @@ internal static class InventoryPacketBuilders
         writer.Write(destinationSlot);
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.MOVE_ITEMSPACE,
             payload.ToArray());
     }
     public static GameServerPacket CreateSortItemReply(byte itemSpace) =>
-        new(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SORT_ITEM, [1, itemSpace]);
+        new(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.SORT_ITEM, [1, itemSpace]);
     public static GameServerPacket CreateSortItemError(
         byte itemSpace,
         byte errorCode = 1) =>
-        new(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SORT_ITEM, [0, errorCode, itemSpace]);
+        new(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.SORT_ITEM, [0, errorCode, itemSpace]);
     public static GameServerPacket CreateDecreaseDurabilityReply(byte slot) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DECREASE_DURABILITY,
             [1, slot]);
 

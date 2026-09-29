@@ -31,9 +31,9 @@ public sealed record EntranceContent(byte[]? ChannelScript, byte[] Metadata)
 /// Protocol pairs are 11/12 (key), 5/6 (cache decision), 9/10 (ChannelScript.pvf),
 /// and 1/3 (entrance metadata).
 /// </summary>
-public static class EntranceProtocolEngine
+public static class EntranceHandshakeReplies
 {
-    public static PacketFrame? Handle(
+    public static PacketFrame? TryCreateReply(
         PacketFrame request,
         EntranceSessionState session,
         EntranceContent content)

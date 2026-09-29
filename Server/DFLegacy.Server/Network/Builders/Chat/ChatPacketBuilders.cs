@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Chat packet builders (07 §4.8.3 三层镜像: Builders/Chat).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class ChatPacketBuilders
 {
@@ -69,7 +69,7 @@ internal static class ChatPacketBuilders
         writer.Write((uint)messageBytes.Length);
         writer.Write(messageBytes);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.MEGAPHONE_MSG,
             payload.ToArray());
     }
@@ -95,7 +95,7 @@ internal static class ChatPacketBuilders
         writer.Write((uint)messageBytes.Length);
         writer.Write(messageBytes);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             notificationId,
             payload.ToArray());
     }
@@ -116,7 +116,7 @@ internal static class ChatPacketBuilders
         writer.Write((uint)messageBytes.Length);
         writer.Write(messageBytes);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CREATURE_MESSAGE,
             payload.ToArray());
     }

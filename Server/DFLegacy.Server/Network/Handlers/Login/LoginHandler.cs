@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// LOGIN (CMD 1): authenticates the account (password path or the launcher's
 /// passwordless find path) and binds the account identity to the session.
 /// The success acknowledgement is the canned frame the legacy fall-through
-/// produced via <see cref="GameProtocolEngine.Handle"/>: one general success
+/// produced via <see cref="FallbackCommandReplies.TryCreateReply"/>: one general success
 /// byte, three account flags and one trailing client-state flag, all zeroes,
 /// which selects the normal character-list path in this client build.
 /// </summary>
@@ -62,7 +62,7 @@ public sealed class LoginHandler(
         context.State.Login.AccountName = authenticated.UserName;
         context.State.Login.AccountUid = authenticated.AccountUid;
 
-        var reply = GameProtocolEngine.Handle(frame, ReadOnlySpan<byte>.Empty)!;
+        var reply = FallbackCommandReplies.TryCreateReply(frame, ReadOnlySpan<byte>.Empty)!;
         await context.Outbound.SendAsync(reply, Name, cancellationToken);
     }
 }

@@ -5,13 +5,13 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Dungeon packet builders (07 §4.8.3 三层镜像: Builders/Dungeon).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class DungeonPacketBuilders
 {
     public static GameServerPacket CreateUseSkillReply() =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.USE_SKILL,
             [1]);
     public static GameServerPacket CreateDungeonItemActionReply(
@@ -19,10 +19,10 @@ internal static class DungeonPacketBuilders
         byte listType) =>
         InventoryPacketBuilders.CreateUseStackableItemReply(slot, listType);
     public static GameServerPacket CreateFailClearDungeon(byte stamina) =>
-        new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.FAIL_CLEAR_DUNGEON, [stamina]);
+        new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.FAIL_CLEAR_DUNGEON, [stamina]);
     public static GameServerPacket CreateDieState(ushort userId, bool isAlive) =>
         new(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.DIE_STATE,
             [(byte)userId, (byte)(userId >> 8), isAlive ? (byte)1 : (byte)0]);
     public static GameServerPacket CreateDungeonPermissions(
@@ -43,7 +43,7 @@ internal static class DungeonPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.DUNGEON_PERMISSION,
             payload.ToArray());
     }
@@ -81,11 +81,11 @@ internal static class DungeonPacketBuilders
             writer.Write(index);
         }
 
-        return new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.START_GAME, payload.ToArray());
+        return new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.START_GAME, payload.ToArray());
     }
     public static GameServerPacket CreateTutorialDungeonInfo(byte difficulty) =>
         DungeonPacketBuilders.CreateDungeonInfo(
-            GameProtocolEngine.TutorialDungeonId,
+            GameProtocolConstants.TutorialDungeonId,
             difficulty,
             mazeIndex: 0,
             bossX: byte.MaxValue,
@@ -109,7 +109,7 @@ internal static class DungeonPacketBuilders
         writer.Write(flagA);
         writer.Write(flagB);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.DUNGEON_INFO,
             payload.ToArray());
     }
@@ -170,7 +170,7 @@ internal static class DungeonPacketBuilders
         }
         writer.Write(hellPartyMode);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.START_MAP,
             payload.ToArray());
     }
@@ -188,7 +188,7 @@ internal static class DungeonPacketBuilders
         // state byte is zero and reactivates its coordinate-scoped snapshot.
         writer.Write((byte)0);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.START_MAP,
             payload.ToArray());
     }
@@ -211,12 +211,12 @@ internal static class DungeonPacketBuilders
         DungeonPacketBuilders.CreateStartMap(
             roomX: 0,
             roomY: 0,
-            mapId: GameProtocolEngine.TutorialMapId,
+            mapId: GameProtocolConstants.TutorialMapId,
             monsters: DungeonPacketBuilders.CreateTutorialMonsters());
     public static bool IsTutorialCompletionModule(ReadOnlySpan<byte> body) =>
         body.Length >= 6
         && BinaryPrimitives.ReadUInt32LittleEndian(body.Slice(2, sizeof(uint)))
-            == GameProtocolEngine.TutorialCompletionModule;
+            == GameProtocolConstants.TutorialCompletionModule;
     public static bool TryParseDieMonsterCommand(
         ReadOnlySpan<byte> body,
         out GameDieMonsterCommand command)
@@ -255,7 +255,7 @@ internal static class DungeonPacketBuilders
     }
     public static GameServerPacket CreateUseCoinReply(ushort targetUserId) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.USE_COIN,
             [1, (byte)targetUserId, (byte)(targetUserId >> 8)]);
     public static bool TryParseBossDieCheckCommand(
@@ -283,7 +283,7 @@ internal static class DungeonPacketBuilders
         if (!success)
         {
             return new GameServerPacket(
-                GameProtocolEngine.NotificationPacketType,
+                GameProtocolConstants.NotificationPacketType,
                 (byte)NotiPacketType.BOSS_DIE_CHECK,
                 [0, errorCode]);
         }
@@ -294,12 +294,12 @@ internal static class DungeonPacketBuilders
         writer.Write(allBossesReported ? (byte)1 : (byte)0);
         writer.Write(bossId);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.BOSS_DIE_CHECK,
             payload.ToArray());
     }
     public static GameServerPacket CreateFinishLoading() =>
-        new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.FINISH_LOADING, []);
+        new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.FINISH_LOADING, []);
     public static GameServerPacket CreateExperienceGained(
         byte level,
         uint cumulativeExperience,
@@ -315,14 +315,14 @@ internal static class DungeonPacketBuilders
         writer.Write(extraExperienceB);
         writer.Write(skillPoints);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.EXP,
             payload.ToArray());
     }
     public static GameServerPacket CreateMonsterDie(
         ushort uniqueId,
         IReadOnlyList<GameDungeonDrop>? drops = null,
-        sbyte championRewardOrdinal = GameProtocolEngine.NoChampionRewardOrdinal)
+        sbyte championRewardOrdinal = GameProtocolConstants.NoChampionRewardOrdinal)
     {
         drops ??= [];
         if (drops.Count > byte.MaxValue)
@@ -330,9 +330,9 @@ internal static class DungeonPacketBuilders
             throw new ArgumentOutOfRangeException(nameof(drops));
         }
 
-        if (championRewardOrdinal != GameProtocolEngine.NoChampionRewardOrdinal
+        if (championRewardOrdinal != GameProtocolConstants.NoChampionRewardOrdinal
             && (championRewardOrdinal < 1
-                || championRewardOrdinal > GameProtocolEngine.MaximumChampionRewardOrdinal))
+                || championRewardOrdinal > GameProtocolConstants.MaximumChampionRewardOrdinal))
         {
             throw new ArgumentOutOfRangeException(nameof(championRewardOrdinal));
         }
@@ -362,7 +362,7 @@ internal static class DungeonPacketBuilders
         writer.Write((byte)championRewardOrdinal);
         writer.Write((byte)0);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.DIE_MONSTER,
             payload.ToArray());
     }
@@ -388,7 +388,7 @@ internal static class DungeonPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.GET_ITEM,
             payload.ToArray());
     }
@@ -409,12 +409,12 @@ internal static class DungeonPacketBuilders
         writer.Write(pickerUserId);
         writer.Write(destinationSlot);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.GET_ITEM,
             payload.ToArray());
     }
     public static GameServerPacket CreateEnableClearDungeon() =>
-        new(GameProtocolEngine.NotificationPacketType, (byte)NotiPacketType.ENABLE_CLEAR_DUNGEON, []);
+        new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.ENABLE_CLEAR_DUNGEON, []);
     public static GameServerPacket CreatePlayResult(
         ushort userId,
         uint resultValue,
@@ -436,7 +436,7 @@ internal static class DungeonPacketBuilders
             0,
         };
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.PLAY_RESULT,
             payload);
     }
@@ -452,7 +452,7 @@ internal static class DungeonPacketBuilders
         byte localPartyIndex = 0,
         GameDungeonClearExperienceBreakdown? experience = null)
     {
-        if (localPartyIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+        if (localPartyIndex >= GameProtocolConstants.ClearRewardCardColumnCount)
         {
             throw new ArgumentOutOfRangeException(nameof(localPartyIndex));
         }
@@ -486,7 +486,7 @@ internal static class DungeonPacketBuilders
         // DFLegacy increments its visible-card count for every non-empty entry
         // in this first group. Keep all four columns present even in solo play.
         for (var cardIndex = 0;
-             cardIndex < GameProtocolEngine.ClearRewardCardColumnCount;
+             cardIndex < GameProtocolConstants.ClearRewardCardColumnCount;
              cardIndex++)
         {
             DungeonPacketBuilders.WriteFreeClearRewardPreview(
@@ -501,14 +501,14 @@ internal static class DungeonPacketBuilders
         // The paid-card result remains hidden in NOTI 35. It is revealed by
         // SELECT_CARD's group-3 result list only after the player buys a card.
         for (var partyIndex = 0;
-             partyIndex < GameProtocolEngine.ClearRewardCardColumnCount;
+             partyIndex < GameProtocolConstants.ClearRewardCardColumnCount;
              partyIndex++)
         {
             writer.Write((byte)0);
         }
 
         for (var partyIndex = 0;
-             partyIndex < GameProtocolEngine.ClearRewardCardColumnCount;
+             partyIndex < GameProtocolConstants.ClearRewardCardColumnCount;
              partyIndex++)
         {
             DungeonPacketBuilders.WriteEquipmentRewardPreview(
@@ -518,17 +518,17 @@ internal static class DungeonPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.CLEAR_DUNGEON_REWARD,
             payload.ToArray());
     }
     public static GameServerPacket CreateScoreScrollStateReply() =>
-        new(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SCORE_SCROLL_STATE, [1]);
+        new(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.SCORE_SCROLL_STATE, [1]);
     public static GameServerPacket CreateCardSelectRightState(
         bool localUserCanSelect = true,
         byte localPartyIndex = 0)
     {
-        if (localPartyIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+        if (localPartyIndex >= GameProtocolConstants.ClearRewardCardColumnCount)
         {
             throw new ArgumentOutOfRangeException(nameof(localPartyIndex));
         }
@@ -537,7 +537,7 @@ internal static class DungeonPacketBuilders
         using var writer = new BinaryWriter(payload);
         writer.Write((byte)1);
         for (var partyIndex = 0;
-             partyIndex < GameProtocolEngine.ClearRewardCardColumnCount;
+             partyIndex < GameProtocolConstants.ClearRewardCardColumnCount;
              partyIndex++)
         {
             writer.Write(partyIndex == localPartyIndex
@@ -546,7 +546,7 @@ internal static class DungeonPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.CARD_SELECT_RIGHT_STATE,
             payload.ToArray());
     }
@@ -557,17 +557,17 @@ internal static class DungeonPacketBuilders
         ushort? goldRewardItemId = null,
         byte localPartyIndex = 0)
     {
-        if (freeCardIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+        if (freeCardIndex >= GameProtocolConstants.ClearRewardCardColumnCount)
         {
             throw new ArgumentOutOfRangeException(nameof(freeCardIndex));
         }
 
-        if (goldCardIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+        if (goldCardIndex >= GameProtocolConstants.ClearRewardCardColumnCount)
         {
             throw new ArgumentOutOfRangeException(nameof(goldCardIndex));
         }
 
-        if (localPartyIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+        if (localPartyIndex >= GameProtocolConstants.ClearRewardCardColumnCount)
         {
             throw new ArgumentOutOfRangeException(nameof(localPartyIndex));
         }
@@ -576,7 +576,7 @@ internal static class DungeonPacketBuilders
         using var writer = new BinaryWriter(payload);
         writer.Write((byte)1);
         for (byte cardIndex = 0;
-             cardIndex < GameProtocolEngine.ClearRewardCardColumnCount;
+             cardIndex < GameProtocolConstants.ClearRewardCardColumnCount;
              cardIndex++)
         {
             writer.Write(freeCardIndex == cardIndex
@@ -608,7 +608,7 @@ internal static class DungeonPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.SELECT_CARD,
             payload.ToArray());
     }
@@ -661,5 +661,5 @@ internal static class DungeonPacketBuilders
         }
     }
     public static GameServerPacket CreateEplpReply(byte state, byte option) =>
-        new(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.EPLP_COMMAND, [1, state, option]);
+        new(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.EPLP_COMMAND, [1, state, option]);
 }

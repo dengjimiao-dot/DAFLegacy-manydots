@@ -55,7 +55,7 @@ public sealed partial class ChannelSessionSenders(
         if (context.State.Character.Active is null
             || !context.State.Character.Active.IsWeakened
             || HasActivePremiumService(context,
-                GameProtocolEngine.BlackDiamondServiceType))
+                GameProtocolConstants.BlackDiamondServiceType))
         {
             return DungeonWeaknessPolicy.FullStamina;
         }

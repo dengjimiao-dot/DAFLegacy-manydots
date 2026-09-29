@@ -91,7 +91,7 @@ public sealed class DieMonsterHandler(
             session.Dungeon.Run.MarkMonsterDefeated(monsterUniqueId);
 
             var championRewardOrdinal =
-                GameProtocolEngine.NoChampionRewardOrdinal;
+                GameProtocolConstants.NoChampionRewardOrdinal;
 
             switch (defeatedMonster.Type)
             {
@@ -101,7 +101,7 @@ public sealed class DieMonsterHandler(
                         ushort.MaxValue,
                         session.Dungeon.ChampionMonsterKills + 1);
                     if (session.Dungeon.ChampionRewardOrdinal
-                        < GameProtocolEngine.MaximumChampionRewardOrdinal)
+                        < GameProtocolConstants.MaximumChampionRewardOrdinal)
                     {
                         championRewardOrdinal = checked((sbyte)(
                             ++session.Dungeon.ChampionRewardOrdinal));

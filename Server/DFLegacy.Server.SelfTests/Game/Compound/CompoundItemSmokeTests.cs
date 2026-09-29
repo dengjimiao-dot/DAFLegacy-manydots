@@ -118,7 +118,7 @@ internal static class CompoundItemSmokeTests
             new GameCompoundItemResult(4, 3_038, 2, 0, 0)
         ]);
         var failure = CraftPacketBuilders.CreateCompoundItemFailure(19);
-        check(reply.Type == GameProtocolEngine.CommandPacketType
+        check(reply.Type == GameProtocolConstants.CommandPacketType
                 && reply.ProtocolId == (byte)CmdPacketType.COMPOUND_ITEM
                 && reply.Payload.SequenceEqual(Convert.FromHexString(
                     "01020000008403000000090064000000010400DE0B02000000000000"))

@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// EXIT (CMD 3): the 1.0.1.9 client clears a possible old game session
 /// before it begins the selected-channel login flow. The legacy chain
-/// delegated this protocol to <see cref="GameProtocolEngine.Handle"/>,
+/// delegated this protocol to <see cref="FallbackCommandReplies.TryCreateReply"/>,
 /// which answers a one-byte true result and requires the body to carry at
 /// least the record-count byte plus one payload byte — shorter bodies fell
 /// through to the "No channel handler" warning. Both behaviors are kept.

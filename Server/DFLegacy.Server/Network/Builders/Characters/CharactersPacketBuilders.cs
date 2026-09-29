@@ -5,19 +5,19 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Characters packet builders (07 §4.8.3 三层镜像: Builders/Characters).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class CharactersPacketBuilders
 {
     public static GameServerPacket CreateExchangeServerCharacterInfoReply() =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.REQUEST_BLACKLIST,
             [1, 0]);           // result, character count
 
     public static GameServerPacket CreateDeleteCharacterReply(byte slot) =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.DELETE_CHARACTER,
             [1, slot]);
     public static GameServerPacket CreateSelectCharacterReply(
@@ -25,17 +25,17 @@ internal static class CharactersPacketBuilders
         uint characterId = 1,
         ushort serverId = 1,
         ushort usedFatigue = 0,
-        ushort maximumFatigue = GameProtocolEngine.DefaultMaximumFatigue,
+        ushort maximumFatigue = GameProtocolConstants.DefaultMaximumFatigue,
         ushort premiumFatigue = 0,
         uint cash = 0,
         byte townId = 1,
-        uint completedTutorialFlags = GameProtocolEngine.DefaultCompletedTutorialFlags,
+        uint completedTutorialFlags = GameProtocolConstants.DefaultCompletedTutorialFlags,
         IReadOnlyList<GameQuestEntry>? activeQuests = null,
         IReadOnlyList<ushort>? completedQuestIds = null,
         IReadOnlyList<GamePremiumServiceEntry>? premiumServices = null,
         IReadOnlyDictionary<ushort, int>? questCompletionMapping = null)
     {
-        if (request.Type != GameProtocolEngine.CommandPacketType
+        if (request.Type != GameProtocolConstants.CommandPacketType
             || request.ProtocolId != (byte)CmdPacketType.SELECT_CHARACTER
             || request.Body.Length < 3)
         {
@@ -140,7 +140,7 @@ internal static class CharactersPacketBuilders
         writer.Write(completedTutorialFlags);
 
         return new GameServerPacket(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.SELECT_CHARACTER,
             payload.ToArray());
     }
@@ -166,13 +166,13 @@ internal static class CharactersPacketBuilders
         writer.Write(pvpGrade);
         writer.Write(pvpGradeExtension);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.PVP_RECORD,
             payload.ToArray());
     }
     public static GameServerPacket CreateUserState(ushort userId, byte state) =>
         new(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USER_STATE,
             [(byte)userId, (byte)(userId >> 8), state]);
     public static GameServerPacket CreateEmptyUserInfo()
@@ -239,7 +239,7 @@ internal static class CharactersPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USERINFO,
             payload.ToArray());
     }
@@ -348,7 +348,7 @@ internal static class CharactersPacketBuilders
         writer.Write(0u);        // actor state C
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USERINFO,
             payload.ToArray());
     }
@@ -513,7 +513,7 @@ internal static class CharactersPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USERINFO,
             payload.ToArray());
     }

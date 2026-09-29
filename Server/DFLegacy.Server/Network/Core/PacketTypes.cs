@@ -358,8 +358,8 @@ public static class PacketTypeNames
     {
         Type? enumType = type switch
         {
-            GameProtocolEngine.NotificationPacketType => typeof(NotiPacketType),
-            GameProtocolEngine.CommandPacketType => typeof(CmdPacketType),
+            GameProtocolConstants.NotificationPacketType => typeof(NotiPacketType),
+            GameProtocolConstants.CommandPacketType => typeof(CmdPacketType),
             _ => null,
         };
         if (enumType is null || !Enum.IsDefined(enumType, (ushort)protocolId))
@@ -368,7 +368,7 @@ public static class PacketTypeNames
             return false;
         }
 
-        name = (type == GameProtocolEngine.CommandPacketType ? CommandPrefix : NotificationPrefix)
+        name = (type == GameProtocolConstants.CommandPacketType ? CommandPrefix : NotificationPrefix)
             + Enum.GetName(enumType, (ushort)protocolId);
         return true;
     }

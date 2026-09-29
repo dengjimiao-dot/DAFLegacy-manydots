@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Quest packet builders (07 §4.8.3 三层镜像: Builders/Quest).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class QuestPacketBuilders
 {
@@ -26,7 +26,7 @@ internal static class QuestPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.ACCEPTABLE_QUEST_LIST,
             payload.ToArray());
     }
@@ -55,7 +55,7 @@ internal static class QuestPacketBuilders
             writer.Write(item.CountOrSeed);
         }
 
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.ACCEPT_QUEST, payload.ToArray());
+        return new GameServerPacket(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.ACCEPT_QUEST, payload.ToArray());
     }
     public static GameServerPacket CreateGiveupQuestReply(ushort questId)
     {
@@ -63,7 +63,7 @@ internal static class QuestPacketBuilders
         using var writer = new BinaryWriter(payload);
         writer.Write((byte)1);
         writer.Write(questId);
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.GIVEUP_QUEST, payload.ToArray());
+        return new GameServerPacket(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.GIVEUP_QUEST, payload.ToArray());
     }
     public static GameServerPacket CreateSetQuestTriggerReply(
         ushort questId,
@@ -74,7 +74,7 @@ internal static class QuestPacketBuilders
         writer.Write((byte)1);
         writer.Write(questId);
         writer.Write(trigger);
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.SET_QUEST_TRIGGER, payload.ToArray());
+        return new GameServerPacket(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.SET_QUEST_TRIGGER, payload.ToArray());
     }
     public static GameServerPacket CreateFinishQuestReply(
         ushort questId,
@@ -132,6 +132,6 @@ internal static class QuestPacketBuilders
             }
         }
 
-        return new GameServerPacket(GameProtocolEngine.CommandPacketType, (byte)CmdPacketType.FINISH_QUEST, payload.ToArray());
+        return new GameServerPacket(GameProtocolConstants.CommandPacketType, (byte)CmdPacketType.FINISH_QUEST, payload.ToArray());
     }
 }

@@ -623,7 +623,7 @@ app.MapPost("/api/client-pay/diamond", async (
     {
         characterSessions.NotifyPremiumInfo(
             character.Id,
-            GameProtocolEngine.BlackDiamondServiceType,
+            GameProtocolConstants.BlackDiamondServiceType,
             result.RemainingSeconds);
     }
     foreach (var characterId in result.WeaknessRecoveredCharacterIds ?? [])
@@ -731,11 +731,11 @@ app.MapPut("/api/characters/{characterId:guid}/fatigue", async (
     JsonGameStore store,
     CancellationToken token) =>
 {
-    if (request.UsedFatigue > GameProtocolEngine.BlackDiamondMaximumFatigue)
+    if (request.UsedFatigue > GameProtocolConstants.BlackDiamondMaximumFatigue)
     {
         return Results.BadRequest(new
         {
-            error = $"Used fatigue must be between 0 and {GameProtocolEngine.BlackDiamondMaximumFatigue}."
+            error = $"Used fatigue must be between 0 and {GameProtocolConstants.BlackDiamondMaximumFatigue}."
         });
     }
 

@@ -12,7 +12,7 @@ public sealed partial class ChannelSessionSenders
         HiddenDungeonUnlockCatalog.ResolveVisibleDungeonIds(
             dungeonCatalog.DungeonIds,
             context.State.Character.Active?.UnlockedDungeonIds)
-        .Where(dungeonId => dungeonId != GameProtocolEngine.TutorialDungeonId)
+        .Where(dungeonId => dungeonId != GameProtocolConstants.TutorialDungeonId)
         .ToArray();
 
     public IReadOnlyList<GameDungeonPermissionEntry> GetDungeonPermissions(ConnectionContext context)
@@ -26,10 +26,10 @@ public sealed partial class ChannelSessionSenders
             .ToList();
         if (context.State.Character.Active is { TutorialStarted: false }
             && permissions.All(permission =>
-                permission.DungeonId != GameProtocolEngine.TutorialDungeonId))
+                permission.DungeonId != GameProtocolConstants.TutorialDungeonId))
         {
             permissions.Add(new GameDungeonPermissionEntry(
-                GameProtocolEngine.TutorialDungeonId,
+                GameProtocolConstants.TutorialDungeonId,
                 ClearState: 0));
         }
 
@@ -225,13 +225,13 @@ public sealed partial class ChannelSessionSenders
             && blackDiamondState.ExpiresAt is { } blackDiamondExpiry)
         {
             context.State.Premium.ExpiryUnix[
-                GameProtocolEngine.BlackDiamondServiceType] =
+                GameProtocolConstants.BlackDiamondServiceType] =
                 blackDiamondExpiry;
         }
         else
         {
             context.State.Premium.ExpiryUnix.TryRemove(
-                GameProtocolEngine.BlackDiamondServiceType,
+                GameProtocolConstants.BlackDiamondServiceType,
                 out _);
         }
     }
@@ -389,11 +389,11 @@ public sealed partial class ChannelSessionSenders
         return;
     }
 
-    var premiumFatigue = HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType)
-        ? GameProtocolEngine.BlackDiamondBonusFatigue
+    var premiumFatigue = HasActivePremiumService(context, GameProtocolConstants.BlackDiamondServiceType)
+        ? GameProtocolConstants.BlackDiamondBonusFatigue
         : (ushort)0;
     var maximumFatigue = checked((ushort)(
-        GameProtocolEngine.DefaultMaximumFatigue + premiumFatigue));
+        GameProtocolConstants.DefaultMaximumFatigue + premiumFatigue));
     var consumption =
         await store.ConsumeDungeonRoomFatigueAsync(
             context.State.Character.Active.Id,

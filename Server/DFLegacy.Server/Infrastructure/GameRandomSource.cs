@@ -2,7 +2,7 @@ namespace DFLegacy.Server;
 
 // 全仓随机数分三类，不得混用（与 docs/design/06 的规则一致）：
 // - 密码学随机：会话密钥等不可预测材料，必须走 RandomNumberGenerator，
-//   不得改走伪随机（EntranceProtocolEngine 的会话密钥材料）；
+//   不得改走伪随机（EntranceHandshakeReplies 的会话密钥材料）；
 // - 服务端裁决随机：掉落、奖励、强化、合成、商店内容等，只允许走本模块；
 // - 客户端可复算随机：客户端要按同一种子重放的序列，当前无实现；
 //   若将来引入，必须移植客户端 LCG 且保留其取模语义，不得用本类替代。

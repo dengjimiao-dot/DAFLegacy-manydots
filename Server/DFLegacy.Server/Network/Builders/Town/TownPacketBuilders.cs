@@ -5,13 +5,13 @@ namespace DFLegacy.Server;
 
 /// <summary>
 /// Town packet builders (07 §4.8.3 三层镜像: Builders/Town).
-/// Moved verbatim from GameProtocolEngine (R7); byte output unchanged.
+/// Moved verbatim from the R7 engine split; byte output unchanged.
 /// </summary>
 internal static class TownPacketBuilders
 {
     public static GameServerPacket CreatePrivateStorePollReply() =>
         new(
-            GameProtocolEngine.CommandPacketType,
+            GameProtocolConstants.CommandPacketType,
             (byte)CmdPacketType.CALL_MEMER_LIST,
             [
                 1,             // result
@@ -34,7 +34,7 @@ internal static class TownPacketBuilders
         writer.Write(user.Direction);
         writer.Write(movementValue);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USER_POSITION,
             payload.ToArray());
     }
@@ -53,7 +53,7 @@ internal static class TownPacketBuilders
         writer.Write(user.Direction);
         writer.Write((byte)1); // active town actor
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USER_AREA,
             payload.ToArray());
     }
@@ -82,7 +82,7 @@ internal static class TownPacketBuilders
         }
 
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.AREA_USERS,
             payload.ToArray());
     }
@@ -93,7 +93,7 @@ internal static class TownPacketBuilders
         var payload = new byte[2];
         BinaryPrimitives.WriteUInt16LittleEndian(payload, userId);
         return new GameServerPacket(
-            GameProtocolEngine.NotificationPacketType,
+            GameProtocolConstants.NotificationPacketType,
             (byte)NotiPacketType.USER_LEAVE,
             payload);
     }

@@ -33,7 +33,7 @@ public sealed class SetPlayResultHandler(
             logger.LogInformation(
                 "Ignored normal settlement command for tutorial dungeon {DungeonId}; waiting for tutorial module {ModuleId}.",
                 session.Dungeon.CurrentDungeonId,
-                GameProtocolEngine.TutorialCompletionModule);
+                GameProtocolConstants.TutorialCompletionModule);
             return;
         }
 
@@ -94,7 +94,7 @@ public sealed class SetPlayResultHandler(
                                 HasCreature: session.Inventory.Creature.TryGetValue(
                                     CharacterCreatureInventoryLayout.EquippedCreatureSlot,
                                     out var clearCreature) && clearCreature.CountOrValue != 0,
-                                HasBlackDiamond: senders.HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType),
+                                HasBlackDiamond: senders.HasActivePremiumService(context, GameProtocolConstants.BlackDiamondServiceType),
                                 MentorBonusRate: DungeonClearBonusContext.GetMentorBonusRate(
                                     session.Character.Active, characterSessions.IsOnline),
                                 EventBonusRate: dungeonExperienceCatalog.GetEventBonusRate(DateTimeOffset.UtcNow),
@@ -159,7 +159,7 @@ public sealed class SetPlayResultHandler(
                 generationLevel,
                 session.Dungeon.Difficulty,
                 senders.HasActivePremiumService(context, 
-                    GameProtocolEngine.BlackDiamondServiceType),
+                    GameProtocolConstants.BlackDiamondServiceType),
                 !hasDungeonDefinition || settledDungeon.GoldCardUse,
                 partyMemberCount: 1,
                 normalMonsterKills: session.Dungeon.NormalMonsterKills,
@@ -174,7 +174,7 @@ public sealed class SetPlayResultHandler(
                     goldCardEnabled: session.Dungeon.ClearReward.GoldCardEnabled,
                     goldItemId: session.Dungeon.ClearReward.GoldItemId,
                     premiumCardEnabled: senders.HasActivePremiumService(context, 
-                        GameProtocolEngine.BlackDiamondServiceType),
+                        GameProtocolConstants.BlackDiamondServiceType),
                     premiumItemId: session.Dungeon.ClearReward.PremiumItemId,
                     experience: settledClearExperience);
             await context.Outbound.SendAsync(clearReward, Name, cancellationToken);

@@ -562,6 +562,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
   - `Network/Protocol/`(协议核心,字节冷冻不变):PacketFrame/GameProtocolEngine/EntranceMetadata/EntranceProtocolEngine/GameDatagramProtocol/LegacyDatagramProtocol;
   - `Network/Core/`(通用工具统一管理):Crc32/EntranceCrypto/GameClientPayloadCipher/GameServerPacket(包基元+GamePayloadCipher 服务端加解密)/PacketNames/PacketPlainText/PvfArchiveReader(非协议格式读取工具,仅自测消费),以及自 `Tap/` 迁入的 IPacketTapSink(空目录 `Tap/` 移除);
   - 命名空间保持不变(`DFLegacy.Protocol`),调用点零改动;§1.3/§4.1 引用 `Protocol/` 的物理位置以本节为准,字节冻结(N2/I4)不受影响。
+- **`Hosting/` 并入 `Infrastructure/`,会话注册表入 `Game/Session/`**(2026-09-29,镜参考项目 `Infrastructure/` 与 `Game/Session/SessionDirectory`):`ServerOptions`/`PathResolver`/`AdminApiModels` → `Infrastructure/`;`CharacterSessionRegistry` → `Game/Session/`;空目录 `Hosting/` 移除。命名空间不变,调用点零改动。`Properties/` 为 SDK/IDE 约定(`AssemblyInfo.cs` 的 InternalsVisibleTo 与 launchSettings.json),不动;`Services/`(疲劳重置/虚弱恢复后台循环)待 R6 事件入队改造后随其最终形态归位。
 - **共享助手归口**:ChannelSessionSenders 承接库存移动发送器/精灵移动规划簇/库存空间校验族(FindFreeInventorySlot/TryGetInventorySpace/IsInventorySlotValid/兼容槽与部分堆叠搜索)、SendPremiumServiceInfo/SendTownFatigueState;CreatureInventoryMovePlan 迁至 Game/Inventory/。
 - **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;按 4.7 单文件上限的子流程拆分作为遗留项(见 11.4)。
 - **规模**:EntranceService.cs 14,832 → 5,128 行;累计挂载协议 43/71;SelfTests 20 套件全量通过(真机冒烟仍为遗留项)。

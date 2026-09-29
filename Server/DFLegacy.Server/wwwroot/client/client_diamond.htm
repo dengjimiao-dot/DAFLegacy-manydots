@@ -1,0 +1,95 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>D&F</title>
+<link href="css/commen.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript">
+function jsonEscape(value) {
+	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+}
+function createHttpRequest() {
+	if (window.XMLHttpRequest) {
+		return new XMLHttpRequest();
+	}
+	return new ActiveXObject("Microsoft.XMLHTTP");
+}
+function setDiamondMessage(text, isError) {
+	var message = document.getElementById("diamond_msg");
+	message.innerHTML = text;
+	message.style.color = isError ? "#F00" : "#DFB873";
+}
+function submitDiamondForm() {
+	var form = document.forms["diamondForm"];
+	var account = form.elements["account"].value.replace(/^\s+|\s+$/g, "");
+	var days = 30;
+	if (!account) {
+		setDiamondMessage("请输入游戏账号。", true);
+		return false;
+	}
+	var request = createHttpRequest();
+	request.open("POST", "/api/client-pay/diamond", true);
+	request.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+	request.onreadystatechange = function() {
+		if (request.readyState != 4) {
+			return;
+		}
+		if (request.status >= 200 && request.status < 300) {
+			setDiamondMessage("已成功开通黑钻会员服务30天。", false);
+		} else {
+			setDiamondMessage("开通失败，请检查账号信息是否正确。", true);
+		}
+	};
+	request.send('{"account":"' + jsonEscape(account) + '","days":' + days + '}');
+	return false;
+}
+function resetDiamondForm() {
+	document.forms["diamondForm"].reset();
+	return false;
+}
+</script>
+</head>
+<body oncontextmenu="return false;" ondragstart="return false;" scroll="no">
+<div id="wrapper">
+<div id="navi" class="navi">
+	<ul id="swapNavi">
+		<li class="no"><img src="images/cz.png" alt="" /><a href="client_pay.htm">充值点券</a></li>
+		<li><img src="images/hz.gif" alt="" /><a href="client_diamond.htm">开通黑钻</a></li>
+	</ul>
+	<ol>
+		<li class="now"><a href="client_diamond.htm">网银开通</a></li>
+		<li><a href="client_diamond_netbar.htm">网吧开通</a></li>
+	</ol>
+	<div class="qpay" role="button" tabindex="0" title="账号充值" onclick="return false;"></div>
+</div>
+
+<div id="details" class="details">
+    
+	<div class="boxer">
+		<form name="diamondForm" id="diamond_form" method="get" action="#" onsubmit="return false;">
+			<ul>
+				<li>
+					<h3>游戏账号：</h3>
+					<input type="text" name="account" maxlength="32"/>
+				</li>
+				<li class="radio diamondDuration">
+					<h3>服务时长：</h3>
+					<div class="durationOptions">
+						<label class="durationOption"><input type="radio" name="days" value="30" checked="checked" />30天</label>
+						<label class="durationOption disabled"><input type="radio" name="days" value="15" disabled="disabled" />15天</label>
+						<label class="durationOption disabled"><input type="radio" name="days" value="7" disabled="disabled" />7天</label>
+					</div>
+				</li>
+				<li class="button">
+					<a href="#" onclick="return submitDiamondForm();">充值</a>
+					<a href="#" onclick="return resetDiamondForm();">重置</a>
+				</li>
+			</ul>
+			<p class="notice" id="diamond_msg"><span class="noticeLink" role="button" tabindex="0" title="玩家条例" onclick="return false;">黑钻会员使用有期限，详情请参见《玩家条例》</span></p>
+		</form>
+	</div>
+</div>
+</div>
+</body>
+</html>
+<!--[if !IE]>|xGv00|a6d52f33a4440f62252c0fc0c6894fa5<![endif]-->

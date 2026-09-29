@@ -1,0 +1,4 @@
+LIBRARY "DFLegacy.RandomNative.dll"
+EXPORTS
+    dflegacy_rdseed_supported
+    dflegacy_rdseed64

@@ -1,0 +1,18 @@
+{
+  "ClientPath": "..\\DNF.exe",
+  "EntranceHost": "127.0.0.1",
+  "EntrancePort": 2311,
+  "Account": "test",
+  "Password": "test",
+  "Accounts": [
+    {
+      "Account": "test",
+      "Password": "test"
+    }
+  ],
+  "AccountIndex": 0,
+  "StartServer": true,
+  "D3D9Adapter": 0,
+  "D3D9TimeoutSeconds": 30,
+  "D3D9RetryIntervalSeconds": 1
+}

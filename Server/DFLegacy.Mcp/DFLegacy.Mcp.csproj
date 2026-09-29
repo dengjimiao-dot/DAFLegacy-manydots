@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 插件形态（docs/design/09-mcp-packet-tap.md §5.3）：发布产物恰为 5 个
+         .dll（自身 + 4 个 SDK DLL），无 deps.json / pdb / xml / 资源子目录；
+         deps.json 缺席由 McpModuleLoader 的 Resolving 兜底加载。 -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Private=false：MCP 是宿主加载的插件，编译引用 Server 但不把 Server 的
+         二进制/内容资产带进本项目的 build/publish 输出（发布产物恰为 5 个 DLL）。 -->
+    <ProjectReference Include="../DFLegacy.Server/DFLegacy.Server.csproj" Private="false" />
+  </ItemGroup>
+</Project>

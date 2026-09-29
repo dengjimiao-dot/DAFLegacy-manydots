@@ -1,0 +1,18 @@
+bin/
+obj/
+dist/
+#.tools/
+data/*.tmp
+.vs/
+.tmp/
+.codegraph/
+artifacts/
+backups/
+#tools/__pycache__/
+#tools/pydeps/
+*.user
+*.log
+# /tools
+# /docs
+# CHANGELOG.md
+# AGENTS.md

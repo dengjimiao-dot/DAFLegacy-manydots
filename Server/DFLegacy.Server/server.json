@@ -1,0 +1,66 @@
+{
+  "DFLegacy": {
+    "Admin": {
+      "Host": "127.0.0.1",
+      "Port": 8081
+    },
+    "Mcp": {
+      "Enabled": true,
+      "Host": "127.0.0.1",
+      "Port": 12222
+    },
+    "Entrance": {
+      "Enabled": true,
+      "Host": "127.0.0.1",
+      "Port": 2311,
+      "AdditionalPorts": [
+        7001,
+        8080
+      ]
+    },
+    "CharacterDatagram": {
+      "Enabled": true,
+      "Host": "127.0.0.1",
+      "Port": 2311
+    },
+    "GameplayDatagram": {
+      "Enabled": true,
+      "Host": "127.0.0.1",
+      "PrimaryPort": 7002,
+      "SecondaryPort": 7003,
+      "MonsterObjectType": 529,
+      "SenderPartyIndex": 0
+    },
+    "GameProbe": {
+      "Enabled": false,
+      "Host": "127.0.0.1",
+      "Port": 7001
+    },
+    "DataPath": "data/state.json",
+    "ScriptPvfPath": "../Script.pvf",
+    "SkillScriptPath": "",
+    "Channel": {
+      "Name": "Local Channel",
+      "Host": "127.0.0.1",
+      "Port": 7001,
+      "ChannelNumber": 1,
+      "MaximumUsers": 100,
+      "CurrentUsers": 1
+    },
+    "Drop": {
+      "Enabled": true,
+      "RatePercent": 100.0,
+      "EconomicRate": 1.0,
+      "ForceDrops": false
+    },
+    "Experience": {
+      "MonsterMultiplier": 1.0,
+      "ClearMultiplier": 1.0
+    },
+    "MaximumPacketLength": 4194304,
+    "RejectBadCrc32": false,
+    "EnablePacketTracing": true,
+    "HexDumpLimit": 256,
+    "LoginHandshakeDelaySeconds": 3
+  }
+}

@@ -1,0 +1,134 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=gb2312" />
+<title>D&F</title>
+<link href="css/commen.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript">
+function choosePayAmount(value) {
+	var wrap = document.getElementById("amount_other_wrap");
+	var input = document.getElementById("amount_other");
+	var amount = document.getElementById("amount_value");
+	if (value == "other") {
+		wrap.style.display = "block";
+		amount.value = input.value;
+		input.focus();
+	} else {
+		wrap.style.display = "none";
+		amount.value = value;
+	}
+}
+function updatePayAmount(value) {
+	document.getElementById("amount_value").value = value;
+}
+function resetPayForm() {
+	document.forms["formMain"].reset();
+	document.getElementById("amount_other_wrap").style.display = "none";
+	document.getElementById("amount_value").value = "500";
+	return false;
+}
+function jsonEscape(value) {
+	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+}
+function createHttpRequest() {
+	if (window.XMLHttpRequest) {
+		return new XMLHttpRequest();
+	}
+	return new ActiveXObject("Microsoft.XMLHTTP");
+}
+function setPayMessage(text, isError) {
+	var message = document.getElementById("pay_msg");
+	message.innerHTML = text;
+	message.style.color = isError ? "#F00" : "#DFB873";
+}
+function submitPayForm() {
+	var form = document.forms["formMain"];
+	var account = form.elements["account"].value.replace(/^\s+|\s+$/g, "");
+	var amount = parseInt(document.getElementById("amount_value").value, 10);
+	if (!account) {
+		setPayMessage("请输入游戏账号。", true);
+		return false;
+	}
+	if (!amount || amount <= 0 || amount % 100 != 0) {
+		setPayMessage("充值点数必须为100的倍数。", true);
+		return false;
+	}
+	var request = createHttpRequest();
+	request.open("POST", "/api/client-pay/cera", true);
+	request.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+	request.onreadystatechange = function() {
+		if (request.readyState != 4) {
+			return;
+		}
+		if (request.status >= 200 && request.status < 300) {
+			setPayMessage("充值成功，请点击点券刷新按钮查看最新余额。", false);
+		} else {
+			setPayMessage("充值失败，请检查账号信息和充值数量。", true);
+		}
+	};
+	request.send('{"account":"' + jsonEscape(account) + '","amount":' + amount + '}');
+	return false;
+}
+</script>
+</head>
+<body oncontextmenu="return false;" ondragstart="return false;" scroll="no">
+<div id="wrapper">
+<div id="navi" class="navi">
+	<ul id="swapNavi">
+		<li><img src="images/cz.png" alt="" /><a href="client_pay.htm">充值点券</a></li>
+		<li class="no"><img src="images/hz.gif" alt="" /><a href="client_diamond.htm">开通黑钻</a></li>
+	</ul>
+	<ol>
+		<li class="now"><a href="client_pay_bank.htm">网银充点券</a></li>
+		<li><a href="client_pay_netbar.htm">网吧充点券</a></li>
+	</ol>
+	<div class="qpay" role="button" tabindex="0" title="账号充值" onclick="return false;"></div>
+</div>
+
+<form name="formMain" id="pay_form" method="get" action="#" onsubmit="return false;">
+
+
+
+<div id="details" class="details">
+
+    
+
+	<div class="boxer">
+    
+
+        
+
+    
+		<h2>网银充点券</h2>
+		<ul>
+			<li>
+				<h3>游戏账号：</h3>
+				<input type="text" name="account" maxlength="32"/>
+			</li>
+			<li class="radio amountSelect">
+				<h3>选择充值的金额：</h3>
+				<div class="amountChoices">
+					<label class="amountOption"><input type="radio" name="amountChoice" value="500" checked="checked" onclick="choosePayAmount(this.value);" />500点券</label>
+					<label class="amountOption"><input type="radio" name="amountChoice" value="1000" onclick="choosePayAmount(this.value);" />1000点券</label>
+					<label class="amountOption"><input type="radio" name="amountChoice" value="3000" onclick="choosePayAmount(this.value);" />3000点券</label>
+					<label class="amountOption"><input type="radio" name="amountChoice" value="other" onclick="choosePayAmount(this.value);" />其他</label>
+					<div id="amount_other_wrap" class="amountOther" style="display: none;">
+						<input type="text" id="amount_other" name="amount_other" maxlength="9" onkeyup="updatePayAmount(this.value);" onchange="updatePayAmount(this.value);" />
+						<p>请填写充入的点数(必须为100的倍数)</p>
+					</div>
+				</div>
+				<input type="hidden" id="amount_value" name="amount" value="500" />
+			</li>
+			<li class="button">
+				<a href="#" onclick="return submitPayForm();">确定</a>
+				<a href="#" onclick="return resetPayForm();">重置</a>
+			</li>
+		</ul>
+		<p class="notice" id="pay_msg"><a href="#" onclick="return false;">点券使用有期限，详情请参见《玩家条例》</a></p>
+	</div>
+</div>
+</form>
+</div>
+</body>
+</html>
+<!--[if !IE]>|xGv00|5694c75030d9a1f3e476444e024a9758<![endif]-->

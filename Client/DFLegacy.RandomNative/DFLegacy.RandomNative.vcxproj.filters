@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{CBECECEC-8277-483C-95BF-CAB702E16963}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{5B598975-81B6-4AAB-A392-D4982C8C690D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tests">
+      <UniqueIdentifier>{C266573B-D569-478A-B9F8-0833C3657940}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Build">
+      <UniqueIdentifier>{8B320A61-8DB4-492D-A469-3DE08625ECA2}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\dflegacy_random.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\dflegacy_random.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="src\dflegacy_random.def">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="tests\random_native_tests.cpp">
+      <Filter>Tests</Filter>
+    </None>
+    <None Include="build-native.ps1">
+      <Filter>Build</Filter>
+    </None>
+    <None Include="CMakeLists.txt">
+      <Filter>Build</Filter>
+    </None>
+  </ItemGroup>
+</Project>

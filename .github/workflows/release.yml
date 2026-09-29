@@ -1,0 +1,144 @@
+name: release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (created on the selected commit if missing)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  linux-server:
+    # Linux 服务端包。发布流水线只交付服务端（客户端产物由本地 patch.bat 构建）。
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.release_tag }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          if (-not $tag.StartsWith('v')) { throw "Tag must start with 'v': $tag" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build server project
+        # 发布流水线只单独构建服务端项目（自测在 build.yml 的 PR 流水线执行）。
+        run: dotnet build Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release
+
+      - name: Publish Linux server
+        run: dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
+
+      - name: Verify package contents (Linux server)
+        shell: pwsh
+        run: |
+          $expected = @('DFLegacy.Server','server.json','wwwroot')
+          $missing = $expected | Where-Object { -not (Test-Path (Join-Path 'dist/server-linux-x64' $_)) }
+          if ($missing) { throw "包内容缺失：$($missing -join ', ')" }
+
+      - name: Pack ZIP with SHA-256
+        shell: pwsh
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $tag = $env:TAG
+          $zip = "artifacts/release/DFLegacy-$tag-linux-x64.zip"
+          New-Item -ItemType Directory -Path (Split-Path $zip) -Force | Out-Null
+          Compress-Archive -Path "dist/server-linux-x64/*" -DestinationPath $zip -Force
+          $sha256 = (Get-FileHash -Path $zip -Algorithm SHA256).Hash
+          Set-Content -Path "$zip.sha256" -Value "$sha256  $(Split-Path -Leaf $zip)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DFLegacy-linux-x64
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.sha256
+          retention-days: 7
+
+  windows-server:
+    # Windows 服务端包：只单独构建服务端项目，产物只含服务端。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.release_tag }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          if (-not $tag.StartsWith('v')) { throw "Tag must start with 'v': $tag" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build server project
+        # 发布流水线只单独构建服务端项目（自测在 build.yml 的 PR 流水线执行）。
+        run: dotnet build .\Server\DFLegacy.Server\DFLegacy.Server.csproj -c Release
+
+      - name: Publish Windows server
+        run: dotnet publish .\Server\DFLegacy.Server\DFLegacy.Server.csproj -c Release -r win-x64 -o .\dist\server-win-x64
+
+      - name: Verify package contents (Windows server)
+        shell: pwsh
+        run: |
+          $expected = @('DFLegacy.Server.exe','server.json','wwwroot')
+          $missing = $expected | Where-Object { -not (Test-Path (Join-Path 'dist/server-win-x64' $_)) }
+          if ($missing) { throw "server-win-x64 缺失：$($missing -join ', ')" }
+          if (Test-Path 'dist/server-win-x64/DFLegacy.Launcher.exe') {
+            throw "发布产物只含服务端：不应出现 DFLegacy.Launcher.exe"
+          }
+
+      - name: Pack ZIP with SHA-256
+        shell: pwsh
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $tag = $env:TAG
+          New-Item -ItemType Directory -Path "artifacts/release" -Force | Out-Null
+          $zip = "artifacts/release/DFLegacy-$tag-server-win-x64.zip"
+          Compress-Archive -Path "dist/server-win-x64/*" -DestinationPath $zip -Force
+          $sha256 = (Get-FileHash -Path $zip -Algorithm SHA256).Hash
+          Set-Content -Path "$zip.sha256" -Value "$sha256  $(Split-Path -Leaf $zip)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DFLegacy-windows
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.sha256
+          retention-days: 7
+
+  release:
+    needs: [ linux-server, windows-server ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/release
+          merge-multiple: true
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.linux-server.outputs.tag }}
+          files: |
+            artifacts/release/*.zip
+            artifacts/release/*.sha256

@@ -1,0 +1,65 @@
+name: build
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  server:
+    # 流水线只构建服务端（publish.bat）。客户端插件 ijl15.dll 由 patch.bat
+    # 手动构建，不进入本流水线；层边界仍由编译器强制（NU1201 / MSB4278 /
+    # NETSDK1100），另保留两处廉价源码扫描防回归。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 层边界护栏检查（Z5 源码扫描 + EnableWindowsTargeting 位置）
+        shell: bash
+        run: |
+          if grep -rnE 'DllImport\(\s*"(d3d9|user32|kernel32|gdi32|shell32|advapi32|ole32|psapi|shlwapi|windowscodecs)' \
+               Server/ ; then
+            echo "::error::Server 层出现 Windows 系统库 P/Invoke（违反 Z5）"
+            exit 1
+          fi
+          if find . -name 'Directory.Build.props' -o -name 'Directory.Build.targets' | grep -q .; then
+            echo "::error::不得引入共享构建配置（会削弱 EnableWindowsTargeting 护栏）"
+            exit 1
+          fi
+          hits=$(grep -rl 'EnableWindowsTargeting' --include='*.csproj' --include='*.props' --include='*.targets' . || true)
+          bad=$(echo "$hits" | grep -v '^Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::EnableWindowsTargeting 只允许出现在 Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj，发现于：$bad"
+            exit 1
+          fi
+
+      - name: Build and self-test
+        run: |
+          dotnet build .\Server\DFLegacy.Server.SelfTests\DFLegacy.Server.SelfTests.csproj -c Release
+          .\Server\DFLegacy.Server.SelfTests\bin\Release\net10.0\DFLegacy.Server.SelfTests.exe
+
+      - name: Publish server (publish.bat)
+        run: .\publish.bat
+
+      - name: Verify package contents (server only)
+        shell: pwsh
+        run: |
+          $expected = @('DFLegacy.Server.exe','server.json','wwwroot')
+          $missing = $expected | Where-Object { -not (Test-Path (Join-Path 'dist/DFLegacy.Server' $_)) }
+          if ($missing) { throw "包内容缺失：$($missing -join ', ')" }
+          if (Test-Path 'dist/DFLegacy.Server/DFLegacy.Launcher.exe') {
+            throw "流水线只交付服务端：dist 中不应出现 DFLegacy.Launcher.exe"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DFLegacy-server-win-x64
+          path: dist/DFLegacy.Server
+          retention-days: 7

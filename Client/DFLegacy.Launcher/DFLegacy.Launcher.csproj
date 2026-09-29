@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>DFLegacy.Launcher</AssemblyName>
+    <ApplicationIcon>DFLegacy.Launcher.ico</ApplicationIcon>
+    <!-- 刻意只写在本项目内、不放仓库根：全局打开会让 Server 层的
+         WinForms/WPF 违规在 Linux 上静默通过（docs/design/01 · 3.3）。 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Ijl15Binary>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\artifacts\native\ijl15\$(Configuration)\win-x86\ijl15.dll'))</Ijl15Binary>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 原生插件与本项目零编译期耦合：ijl15.dll 由 patch.bat（CMake + MSVC）预先
+         手动构建，产物存在即随包复制；不存在则构建照常成功，只是包里没有该 DLL。
+         安装插件时由 Ijl15ReplacementInstaller 报告"缺少模块"，不会崩溃。 -->
+    <Content Include="$(Ijl15Binary)"
+             Link="ijl15.dll"
+             Condition="Exists('$(Ijl15Binary)')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="../DFLegacy.Ijl15/Config.ini" Link="Config.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <!-- 补丁资产（docs/design/01 · 2.4）：d3d8to9 预编译二进制随包分发，
+         BSD 式许可要求二进制再分发必须随附版权与免责声明，因此许可与说明
+         文件与 d3d8.dll 绑定复制。项目自身的 0BSD LICENSE 一并随包（Q14）。 -->
+    <Content Include="../Patch/d3d8.dll" Link="d3d8.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="../Patch/LICENSE-d3d8to9.md" Link="LICENSE-d3d8to9.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="../Patch/README-d3d8to9.md" Link="README-d3d8to9.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="../../LICENSE" Link="LICENSE">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <None Update="launcher.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+</Project>

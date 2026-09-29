@@ -66,7 +66,8 @@ public sealed class EntranceService(
     private GameCommandRegistry _gameCommands = null!;
     private readonly GameCommandDispatcher _gameCommandDispatcher = new(logger);
     private readonly CharacterPacketBuilders _characterPacketBuilders =
-        new(store, itemCatalog, pvpExperienceCatalog);
+        new(store, itemCatalog, pvpExperienceCatalog, ceraShopCatalog);
+    private ChannelSessionSenders _sessionSenders = null!;
     private EntranceContent? _content;
     private static readonly Encoding ClientEncoding = CreateClientEncoding();
     private static readonly GameSkillEntry[] DebugSwordmanSkills =
@@ -126,6 +127,18 @@ public sealed class EntranceService(
         registry.Register("progression.character", new GetUserInfoHandler(_characterPacketBuilders));
         registry.Register("progression.character", new CreateCharacterHandler(store, _characterPacketBuilders));
         registry.Register("progression.character", new DeleteCharacterHandler(store, _characterPacketBuilders));
+        registry.Register("progression.character", new SelectCharacterHandler(
+            store,
+            itemCatalog,
+            skillCatalog,
+            questCatalog,
+            dungeonCatalog,
+            characterStatCatalog,
+            premiumBenefitCatalog,
+            characterSessions,
+            _characterPacketBuilders,
+            _sessionSenders,
+            loggerFactory.CreateLogger<SelectCharacterHandler>()));
         registry.Register("progression.character", new ReturnSelectCharacterHandler(
             store,
             characterSessions,
@@ -142,8 +155,14 @@ public sealed class EntranceService(
             return;
         }
 
-        // Assemble the dispatch table before any listener starts: a duplicate
-        // registration throws here and fails the service (07 §3 I5).
+        _sessionSenders = new ChannelSessionSenders(
+            store,
+            itemCatalog,
+            questCatalog,
+            dungeonCatalog,
+            pvpExperienceCatalog,
+            _characterPacketBuilders,
+            loggerFactory.CreateLogger<ChannelSessionSenders>());
         _gameCommands = BuildGameCommandRegistry(options, loggerFactory);
 
         // Startup listing of the mounted dispatch table (07 §4.6): one line
@@ -305,6 +324,7 @@ public sealed class EntranceService(
                 outboundQueue,
                 logger,
                 serverToken);
+            connectionContext.KickConnection = KickConnection;
 
             try
             {
@@ -492,10 +512,7 @@ public sealed class EntranceService(
                         appearance);
                 }
 
-                GameSkillEntry[] GetCurrentGameSkills() => session.Skill.Current
-                    .OrderBy(skill => skill.Slot)
-                    .Select(skill => new GameSkillEntry(skill.SkillId, skill.Level, skill.Slot))
-                    .ToArray();
+                GameSkillEntry[] GetCurrentGameSkills() => _sessionSenders.GetCurrentGameSkills(connectionContext);
 
                 int ApplyLevelUpSkillPoints(CharacterExperienceGrant progression)
                 {
@@ -521,60 +538,8 @@ public sealed class EntranceService(
                     LogPacket("TX", runtimeSession, skillInfo);
                 }
 
-                async Task SendPvpRecordAsync()
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    // PvpPoints is the source of truth. Older state files may
-                    // have persisted the pre-boundary grade (for example,
-                    // 2,000 points as grade 1), so derive the wire rank from
-                    // the cumulative PVF thresholds on every full sync.
-                    var grade = pvpExperienceCatalog.GetGradeForPoints(
-                        session.Character.Active.PvpPoints);
-                    var pvpRecord = GameProtocolEngine.CreatePvpRecord(
-                        session.Character.Active.PvpWins,
-                        session.Character.Active.PvpLosses,
-                        session.Character.Active.PvpPoints,
-                        pvpExperienceCatalog.GetCurrentRankPoint(grade),
-                        pvpExperienceCatalog.GetNextRankPoint(grade),
-                        grade,
-                        session.Character.Active.PvpGradeExtension);
-                    await pvpRecord.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, pvpRecord);
-
-                    var refreshedQuests = session.Quest.Current.Select(quest =>
-                        questCatalog.TryGetDefinition(quest.QuestId, out var definition)
-                            && QuestPvpRankRequirement.IsPvpRank(definition)
-                            ? quest with { Trigger = QuestPvpRankRequirement.GetTrigger(definition, grade) }
-                            : quest).ToList();
-                    var changedQuests = refreshedQuests.Where((quest, index) =>
-                        quest.Trigger != session.Quest.Current[index].Trigger).ToArray();
-                    if (changedQuests.Length == 0)
-                    {
-                        return;
-                    }
-
-                    var saved = await store.SaveCharacterQuestsAsync(
-                        session.Login.AccountName, session.Character.Active.Id, refreshedQuests, session.Quest.CompletedIds, serverToken);
-                    if (saved is null)
-                    {
-                        logger.LogWarning("Could not persist PvP-rank quest progress for {CharacterId}.", session.Character.Active.Id);
-                        return;
-                    }
-                    session.Quest.Current = refreshedQuests;
-                    session.Character.Active = session.Character.Active with { Quests = saved.Quests };
-                    foreach (var quest in changedQuests)
-                    {
-                        var update = GameProtocolEngine.CreateSetQuestTriggerReply(quest.QuestId, quest.Trigger);
-                        await update.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, update);
-                    }
-                }
+                Task SendPvpRecordAsync() =>
+                    _sessionSenders.SendPvpRecordAsync(connectionContext, serverToken);
 
                 async Task<CharacterMailRecord[]> SendMailboxStateAsync(bool notifyNewMail)
                 {
@@ -708,33 +673,13 @@ public sealed class EntranceService(
                 }
 
                 bool HasActivePremiumService(byte serviceType) =>
-                    session.Premium.ExpiryUnix.TryGetValue(serviceType, out var expiryUnix)
-                    && expiryUnix > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    _sessionSenders.HasActivePremiumService(connectionContext, serviceType);
 
-                byte[] GetActivePremiumServiceTypes()
-                {
-                    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                    return session.Premium.ExpiryUnix
-                        .Where(entry => entry.Value > now)
-                        .Select(entry => entry.Key)
-                        .ToArray();
-                }
+                byte[] GetActivePremiumServiceTypes() =>
+                    _sessionSenders.GetActivePremiumServiceTypes(connectionContext);
 
-                byte GetProjectedStaminaRecovery()
-                {
-                    if (session.Character.Active is null
-                        || !session.Character.Active.IsWeakened
-                        || HasActivePremiumService(
-                            GameProtocolEngine.BlackDiamondServiceType))
-                    {
-                        return DungeonWeaknessPolicy.FullStamina;
-                    }
-
-                    return (byte)Math.Clamp(
-                        session.Character.Active.WeaknessRecovery,
-                        DungeonWeaknessPolicy.MinimumRecovery,
-                        DungeonWeaknessPolicy.FullStamina);
-                }
+                byte GetProjectedStaminaRecovery() =>
+                    _sessionSenders.GetProjectedStaminaRecovery(connectionContext);
 
                 async Task SendCurrentEquipmentStateAsync(
                     GameCharacterCombatStats? validatedStats = null)
@@ -2132,51 +2077,17 @@ public sealed class EntranceService(
                     }
                 }
 
-                IReadOnlyList<ushort> GetAcceptableQuestIds() => session.Character.Active is null
-                    ? []
-                    : questCatalog.GetAcceptableQuestIds(
-                        session.Character.Active,
-                        session.Quest.Current,
-                        session.Quest.CompletedIds,
-                        session.Character.TownId == 1 ? 2 : null,
-                        itemCatalog);
+                IReadOnlyList<ushort> GetAcceptableQuestIds() =>
+                    _sessionSenders.GetAcceptableQuestIds(connectionContext);
 
                 IReadOnlyList<ushort> GetVisibleDungeonIds() =>
-                    HiddenDungeonUnlockCatalog.ResolveVisibleDungeonIds(
-                        dungeonCatalog.DungeonIds,
-                        session.Character.Active?.UnlockedDungeonIds)
-                    .Where(dungeonId => dungeonId != GameProtocolEngine.TutorialDungeonId)
-                    .ToArray();
+                    _sessionSenders.GetVisibleDungeonIds(connectionContext);
 
-                IReadOnlyList<GameDungeonPermissionEntry> GetDungeonPermissions()
-                {
-                    var permissions = GetVisibleDungeonIds()
-                        .Select(dungeonId => new GameDungeonPermissionEntry(
-                            dungeonId,
-                            DungeonDifficultyProgression.GetMaximumDifficulty(
-                                session.Character.Active?.DungeonProgress,
-                            dungeonId)))
-                        .ToList();
-                    if (session.Character.Active is { TutorialStarted: false }
-                        && permissions.All(permission =>
-                            permission.DungeonId != GameProtocolEngine.TutorialDungeonId))
-                    {
-                        permissions.Add(new GameDungeonPermissionEntry(
-                            GameProtocolEngine.TutorialDungeonId,
-                            ClearState: 0));
-                    }
+                IReadOnlyList<GameDungeonPermissionEntry> GetDungeonPermissions() =>
+                    _sessionSenders.GetDungeonPermissions(connectionContext);
 
-                    return permissions;
-                }
-
-                async Task SendDungeonPermissionsAsync()
-                {
-                    var permissions = GameProtocolEngine.CreateDungeonPermissions(
-                        GetDungeonPermissions());
-                    await permissions.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, permissions);
-                }
+                Task SendDungeonPermissionsAsync() =>
+                    _sessionSenders.SendDungeonPermissionsAsync(connectionContext, serverToken);
 
                 async Task SendAcceptableQuestListAsync()
                 {
@@ -2570,680 +2481,6 @@ public sealed class EntranceService(
                             continue;
                         }
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.SelectCharacterCommand)
-                        {
-                            var characters = await store.GetCharactersAsync(session.Login.AccountUid, serverToken);
-                            var slot = request.Body.Length >= 3 ? request.Body[2] : 0;
-                            var character = characters.FirstOrDefault(candidate =>
-                                candidate.Slot == slot);
-                            if (character is null)
-                            {
-                                var selectError = GameProtocolEngine.CreateCommandError(request, errorCode: 2);
-                                await selectError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, selectError);
-                                continue;
-                            }
-
-                            if (session.Character.Lease is not null
-                                && session.Character.Lease.CharacterNo != character.CharacterNo)
-                            {
-                                await SaveCurrentLocationAsync(serverToken);
-                                characterSessions.Release(session.Character.Lease);
-                                session.Character.Lease = null;
-                                session.Character.Active = null;
-                                session.Character.LastProjectedCombatStats = null;
-                                session.Premium.ExpiryUnix.Clear();
-                            }
-
-                            session.Character.Lease = await characterSessions.ClaimAsync(
-                                character.CharacterNo,
-                                character.Id,
-                                runtimeSession.Id,
-                                KickConnection,
-                                serverToken,
-                                () => Interlocked.Exchange(ref session.Mailbox.PendingAlarm, 1),
-                                (serviceType, remainSeconds) =>
-                                {
-                                    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                                    var expiry = remainSeconds > long.MaxValue - now
-                                        ? long.MaxValue
-                                        : now + (long)remainSeconds;
-                                    if (remainSeconds == 0)
-                                    {
-                                        session.Premium.ExpiryUnix.TryRemove(serviceType, out _);
-                                    }
-                                    else
-                                    {
-                                        session.Premium.ExpiryUnix[serviceType] = expiry;
-                                    }
-                                    session.Premium.PendingUpdates.Enqueue((serviceType, remainSeconds));
-                                },
-                                value => Interlocked.Exchange(
-                                    ref session.Premium.PendingCeraValue,
-                                    value > int.MaxValue
-                                        ? int.MaxValue
-                                        : (int)value),
-                                () => Interlocked.Exchange(
-                                    ref session.Weakness.PendingFatigueReset,
-                                    1),
-                                (messageType, targetAreaUserId, messageBytes) =>
-                                    _ = SendTypedMessageNotificationAsync(
-                                        messageType,
-                                        targetAreaUserId,
-                                        messageBytes),
-                                (messageType, ownerFlag, targetAreaUserId, senderName, messageBytes) =>
-                                    _ = SendMegaphoneNotificationAsync(
-                                        messageType,
-                                        ownerFlag,
-                                        targetAreaUserId,
-                                        senderName,
-                                        messageBytes),
-                                messageBytes =>
-                                    _ = SendPopupNotificationAsync(messageBytes),
-                                recovery =>
-                                {
-                                    Interlocked.Exchange(
-                                        ref session.Weakness.PendingWeaknessRecovery,
-                                        recovery);
-                                    _ = SendWeaknessRecoveryNotificationAsync(recovery);
-                                },
-                                (dungeonId, maximumDifficulty) =>
-                                {
-                                    if (session.Character.Active is null)
-                                    {
-                                        return;
-                                    }
-
-                                    session.Character.Active = session.Character.Active with
-                                    {
-                                        UnlockedDungeonIds =
-                                            (session.Character.Active.UnlockedDungeonIds ?? [])
-                                            .Append(dungeonId)
-                                            .Where(id => id != 0)
-                                            .Distinct()
-                                            .OrderBy(id => id)
-                                            .ToList(),
-                                        DungeonProgress = DungeonDifficultyProgression.Normalize(
-                                                (session.Character.Active.DungeonProgress ?? [])
-                                                .Where(entry => entry.DungeonId != dungeonId)
-                                                .Append(new CharacterDungeonProgressRecord(
-                                                    dungeonId,
-                                                    maximumDifficulty)))
-                                            .ToList()
-                                    };
-                                    _ = SendDungeonPermissionsAsync();
-                                });
-
-                            // Claim the wire identity for this session.
-                            session.Character.LocalUserId = (ushort)(character.CharacterNo & 0xFFFF);
-                            if (session.Character.LocalUserId == 0)
-                            {
-                                session.Character.LocalUserId = 1;
-                            }
-
-                            // A displaced connection performs its final save before
-                            // releasing the character lease. Reload after the claim
-                            // so this session cannot start from the pre-kick snapshot.
-                            character = (await store.GetCharactersAsync(session.Login.AccountUid, serverToken))
-                                .FirstOrDefault(candidate =>
-                                    candidate.CharacterNo == character.CharacterNo)
-                                ?? character;
-                            var persistedWarehouseCapacity = character.WarehouseCapacity;
-                            session.Inventory.WarehouseCapacity = CharacterWarehouseProgression.Normalize(
-                                persistedWarehouseCapacity);
-                            character = character with
-                            {
-                                WarehouseCapacity = session.Inventory.WarehouseCapacity
-                            };
-                            session.Character.Active = character;
-                            session.Character.LastProjectedCombatStats = null;
-                            session.Weakness.StaminaStateInitialized = false;
-                            session.Currency.Gold = Math.Max(0, character.Gold);
-                            session.Currency.Cash = Math.Max(0, character.Cash);
-                            session.Currency.VictoryPoints = character.VictoryPoints;
-                            bool IsAvatarItem(CharacterItemRecord item) =>
-                                itemCatalog.TryGetDefinition(item.ItemId, out var definition)
-                                && definition.InventoryCategory == ItemInventoryCategory.Avatar;
-                            bool IsCreatureItem(CharacterItemRecord item) =>
-                                itemCatalog.TryGetDefinition(item.ItemId, out var definition)
-                                && definition.InventoryCategory == ItemInventoryCategory.Creature;
-
-                            var savedInventory = character.Inventory
-                                ?? _characterPacketBuilders.CreateStarterInventory(session.Login.AccountUid);
-                            var savedWarehouse = character.Warehouse ?? [];
-                            var residualWarehouseUpgrades =
-                                CharacterWarehouseProgression.SettleUpgradeItems(
-                                    savedInventory,
-                                    savedWarehouse,
-                                    session.Inventory.WarehouseCapacity);
-                            savedInventory = residualWarehouseUpgrades.Inventory.ToList();
-                            savedWarehouse = residualWarehouseUpgrades.Warehouse.ToList();
-                            session.Inventory.WarehouseCapacity = residualWarehouseUpgrades.Capacity;
-                            character = character with
-                            {
-                                Inventory = savedInventory,
-                                Warehouse = savedWarehouse,
-                                WarehouseCapacity = session.Inventory.WarehouseCapacity
-                            };
-                            session.Character.Active = character;
-                            var savedEquipment = character.Equipment ?? [];
-                            var savedAvatarInventory = character.AvatarInventory ?? [];
-                            var savedCreatureInventory = character.CreatureInventory ?? [];
-                            var displacedMainItems = savedAvatarInventory
-                                .Concat(savedCreatureInventory)
-                                .Where(item => !IsAvatarItem(item) && !IsCreatureItem(item))
-                                .Select(item => item with { Slot = ushort.MaxValue })
-                                .ToList();
-                            var displacedAvatarItems = savedInventory
-                                .Where(IsAvatarItem)
-                                .Concat(savedWarehouse.Where(IsAvatarItem))
-                                .Concat(savedCreatureInventory.Where(IsAvatarItem))
-                                .Select(item => item with { Slot = ushort.MaxValue })
-                                .ToList();
-                            var displacedCreatureItems = savedInventory
-                                .Where(IsCreatureItem)
-                                .Concat(savedAvatarInventory.Where(IsCreatureItem))
-                                .Select(item => item with { Slot = ushort.MaxValue })
-                                .ToList();
-                            var repairedAvatarEquipment = false;
-                            var repairedEquipmentState = false;
-                            session.Inventory.Equipped = new Dictionary<ushort, CharacterItemRecord>();
-                            foreach (var item in savedEquipment
-                                         .Where(item => item.ItemId != 0)
-                                         .OrderBy(item => item.Slot))
-                            {
-                                if (itemCatalog.TryGetDefinition(item.ItemId, out var definition)
-                                    && definition.InventoryCategory
-                                        == ItemInventoryCategory.Avatar)
-                                {
-                                    var normalizedAvatarItem = NormalizeAvatarInstance(
-                                        CharacterItemSealing.UnsealWhenEquipped(
-                                            item,
-                                            definition));
-                                    if (CharacterAvatarInventoryLayout.IsCompatibleWornSlot(
-                                            definition,
-                                            item.Slot)
-                                        && session.Inventory.Equipped.TryAdd(
-                                            item.Slot,
-                                            normalizedAvatarItem))
-                                    {
-                                        repairedAvatarEquipment |=
-                                            !normalizedAvatarItem.Equals(item);
-                                        if (item.CountOrValue > 1)
-                                        {
-                                            displacedAvatarItems.Add(item with
-                                            {
-                                                Slot = ushort.MaxValue,
-                                                CountOrValue = item.CountOrValue - 1
-                                            });
-                                        }
-
-                                        continue;
-                                    }
-
-                                    displacedAvatarItems.Add(item with
-                                    {
-                                        Slot = ushort.MaxValue
-                                    });
-                                    continue;
-                                }
-
-                                if (definition?.InventoryCategory
-                                    == ItemInventoryCategory.Creature)
-                                {
-                                    displacedCreatureItems.Add(item with
-                                    {
-                                        Slot = ushort.MaxValue
-                                    });
-                                    continue;
-                                }
-
-                                var normalizedEquipmentItem =
-                                    CharacterItemSealing.UnsealWhenEquipped(
-                                        item,
-                                        itemCatalog) with
-                                {
-                                    Durability = itemCatalog.NormalizeDurability(
-                                        item.ItemId,
-                                        item.Durability)
-                                };
-                                if (item.Slot is >= 9 and < 23
-                                    && session.Inventory.Equipped.TryAdd(
-                                        item.Slot,
-                                        normalizedEquipmentItem))
-                                {
-                                    repairedEquipmentState |=
-                                        !normalizedEquipmentItem.Equals(item);
-                                    continue;
-                                }
-
-                                displacedMainItems.Add(item with { Slot = ushort.MaxValue });
-                            }
-
-                            var normalizedInventory = CharacterInventoryPlanner.Normalize(
-                                savedInventory
-                                    .Where(item => !IsAvatarItem(item) && !IsCreatureItem(item))
-                                    .Concat(displacedMainItems),
-                                itemCatalog);
-                            var normalizedAvatarInventory =
-                                CharacterAvatarInventoryPlanner.Normalize(
-                                    savedAvatarInventory
-                                        .Where(IsAvatarItem)
-                                        .Concat(displacedAvatarItems),
-                                    itemCatalog);
-                            var normalizedWarehouse =
-                                CharacterInventoryPlanner.NormalizeWarehouse(
-                                    savedWarehouse.Where(item => !IsAvatarItem(item)),
-                                    itemCatalog,
-                                    session.Inventory.WarehouseCapacity);
-                            var normalizedCreatureInventory =
-                                CharacterCreatureInventoryPlanner.Normalize(
-                                    savedCreatureInventory
-                                        .Where(IsCreatureItem)
-                                        .Concat(displacedCreatureItems),
-                                    itemCatalog);
-                            var loginOverflowCandidates = normalizedInventory.OverflowItems
-                                .Concat(normalizedAvatarInventory.OverflowItems)
-                                .Concat(normalizedWarehouse.OverflowItems)
-                                .Concat(normalizedCreatureInventory.OverflowItems)
-                                .ToArray();
-                            var normalizedWarehouseUpgrades =
-                                PlanWarehouseUpgradeSettlement(
-                                    normalizedInventory.Inventory.Values,
-                                    normalizedWarehouse.Warehouse.Values,
-                                    loginOverflowCandidates.Select(item => item.ItemId));
-                            var consumedOverflowWarehouseUpgrade =
-                                loginOverflowCandidates.Any(item =>
-                                    CharacterWarehouseProgression
-                                        .TryGetItemTargetCapacity(item.ItemId, out _));
-                            session.Inventory.Main = normalizedWarehouseUpgrades.Inventory
-                                .ToDictionary(item => item.Slot);
-                            session.Inventory.Avatar = normalizedAvatarInventory.Inventory;
-                            session.Inventory.Warehouse = normalizedWarehouseUpgrades.Warehouse
-                                .ToDictionary(item => item.Slot);
-                            session.Inventory.WarehouseCapacity = normalizedWarehouseUpgrades.Capacity;
-                            session.Inventory.Creature = normalizedCreatureInventory.Inventory;
-                            var loginOverflowItems = loginOverflowCandidates
-                                .Where(item => !CharacterWarehouseProgression
-                                    .TryGetItemTargetCapacity(item.ItemId, out _))
-                                .ToArray();
-                            var loginOverflowMails = CreateOverflowMailRequests(
-                                loginOverflowItems,
-                                "Login inventory repair");
-                            var migratedEquipmentSlots = displacedMainItems.Count != 0
-                                || displacedAvatarItems.Count != 0
-                                || savedInventory.Any(IsAvatarItem)
-                                || savedWarehouse.Any(IsAvatarItem)
-                                || savedAvatarInventory.Any(item => !IsAvatarItem(item))
-                                || savedInventory.Any(IsCreatureItem)
-                                || savedAvatarInventory.Any(IsCreatureItem)
-                                || savedCreatureInventory.Any(item => !IsCreatureItem(item))
-                                || repairedAvatarEquipment
-                                || repairedEquipmentState;
-                            if (character.Inventory is null
-                                || character.Equipment is null
-                                || character.Warehouse is null
-                                || character.AvatarInventory is null
-                                || character.CreatureInventory is null
-                                || normalizedInventory.Changed
-                                || normalizedAvatarInventory.Changed
-                                || normalizedWarehouse.Changed
-                                || normalizedCreatureInventory.Changed
-                                || residualWarehouseUpgrades.ConsumedItems
-                                || normalizedWarehouseUpgrades.ConsumedItems
-                                || consumedOverflowWarehouseUpgrade
-                                || persistedWarehouseCapacity != session.Inventory.WarehouseCapacity
-                                || migratedEquipmentSlots)
-                            {
-                                var repairedCharacter =
-                                    await store.SaveCharacterItemSpacesAsync(
-                                    session.Login.AccountName,
-                                    character.Id,
-                                    session.Currency.Gold,
-                                    session.Inventory.Main.Values,
-                                    session.Inventory.Equipped.Values,
-                                    session.Inventory.Warehouse.Values,
-                                    serverToken,
-                                    loginOverflowMails,
-                                    session.Inventory.Avatar.Values,
-                                    session.Inventory.Creature.Values,
-                                    session.Inventory.WarehouseCapacity);
-                                if (repairedCharacter is null)
-                                {
-                                    characterSessions.Release(session.Character.Lease);
-                                    session.Character.Lease = null;
-                                    session.Character.Active = null;
-                                    session.Character.LastProjectedCombatStats = null;
-                                    session.Premium.ExpiryUnix.Clear();
-                                    var repairError = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 4);
-                                    await repairError.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, repairError);
-                                    logger.LogError(
-                                        "Could not repair inventory layout for character {CharacterId}; selection was rejected to avoid losing an item.",
-                                        character.Id);
-                                    continue;
-                                }
-
-                                session.Character.Active = repairedCharacter;
-                                if (loginOverflowMails.Length > 0)
-                                {
-                                    characterSessions.NotifyMailReceived(character.CharacterNo);
-                                }
-                            }
-
-                            if (TryPlanLegacyPremiumContractRedemption(
-                                    session.Inventory.Main,
-                                    out var redeemedContractInventory,
-                                    out var redeemedContractGrants))
-                            {
-                                var redeemedCharacter =
-                                    await store.SaveCharacterCeraShopPurchaseAsync(
-                                        session.Login.AccountName,
-                                        session.Character.Active.Id,
-                                        session.Currency.Cash,
-                                        session.Currency.Gold,
-                                        redeemedContractInventory.Values,
-                                        session.Inventory.Equipped.Values,
-                                        serverToken,
-                                        avatarInventory: session.Inventory.Avatar.Values,
-                                        creatureInventory: session.Inventory.Creature.Values,
-                                        premiumServiceGrants: redeemedContractGrants,
-                                        expectedCash: session.Currency.Cash);
-                                if (redeemedCharacter is not null)
-                                {
-                                    session.Character.Active = redeemedCharacter;
-                                    session.Inventory.Main = redeemedContractInventory;
-                                    logger.LogInformation(
-                                        "Redeemed {ContractCount} legacy Cera-shop contract stack(s) while selecting character {CharacterId}.",
-                                        redeemedContractGrants.Count,
-                                        session.Character.Active.Id);
-                                }
-                                else
-                                {
-                                    logger.LogError(
-                                        "Could not redeem legacy Cera-shop contract items for character {CharacterId}; the items were retained.",
-                                        session.Character.Active.Id);
-                                }
-                            }
-
-                            var premiumStates = await store.GetPremiumServicesAsync(
-                                session.Login.AccountName,
-                                serverToken);
-                            var effectiveSkillLevel =
-                                premiumBenefitCatalog.GetEffectiveSkillLevel(
-                                    session.Character.Active.Level,
-                                    premiumStates
-                                        .Where(state => state.Active)
-                                        .Select(state => state.ServiceType));
-
-                            session.Skill.CurrentSp = Math.Max(0, session.Character.Active.Sp);
-                            if (session.Character.Active.Skills is null)
-                            {
-                                session.Skill.Current = skillCatalog
-                                    .CreateInitialLayout(character.Job, GetInitialSkills(character))
-                                    .ToList();
-                                session.Character.Active = await store.SaveCharacterSkillsAsync(
-                                    session.Login.AccountName,
-                                    character.Id,
-                                    session.Skill.CurrentSp,
-                                    session.Skill.Current,
-                                    serverToken) ?? session.Character.Active;
-                            }
-                            else
-                            {
-                                session.Skill.Current = session.Character.Active.Skills
-                                    .Where(skill => skill.Level > 0)
-                                    .OrderBy(skill => skill.Slot)
-                                    .ToList();
-                                var normalizedSkills = skillCatalog.NormalizeLayout(
-                                    session.Character.Active.Job,
-                                    session.Character.Active.GrowType,
-                                    session.Character.Active.AwakeningType,
-                                    session.Skill.Current,
-                                    out var skillLayoutChanged);
-                                if (skillLayoutChanged)
-                                {
-                                    session.Skill.Current = normalizedSkills.ToList();
-                                    session.Character.Active = await store.SaveCharacterSkillsAsync(
-                                        session.Login.AccountName,
-                                        character.Id,
-                                        session.Skill.CurrentSp,
-                                        session.Skill.Current,
-                                        serverToken) ?? session.Character.Active;
-                                    logger.LogInformation(
-                                        "Migrated character {CharacterId} to the DFLegacy skill-slot layout.",
-                                        character.Id);
-                                }
-                            }
-
-                            var reconciledSkills = skillCatalog.ReconcileOverLevelSkills(
-                                session.Character.Active.Job,
-                                session.Character.Active.GrowType,
-                                session.Character.Active.AwakeningType,
-                                effectiveSkillLevel,
-                                session.Skill.Current,
-                                out var refundedContractSkillPoints,
-                                out var contractSkillRefunds);
-                            if (!session.Skill.Current.SequenceEqual(reconciledSkills))
-                            {
-                                session.Skill.Current = reconciledSkills.ToList();
-                                session.Skill.CurrentSp = checked((int)Math.Min(
-                                    int.MaxValue,
-                                    (long)session.Skill.CurrentSp + refundedContractSkillPoints));
-                                session.Character.Active = await store.SaveCharacterSkillsAsync(
-                                    session.Login.AccountName,
-                                    character.Id,
-                                    session.Skill.CurrentSp,
-                                    session.Skill.Current,
-                                    serverToken) ?? session.Character.Active;
-                                logger.LogInformation(
-                                    "Reconciled {RefundCount} over-level skill(s) for character {CharacterId} at effective level {EffectiveLevel}; refunded {RefundedSp} SP: {Refunds}.",
-                                    contractSkillRefunds.Count,
-                                    character.Id,
-                                    effectiveSkillLevel,
-                                    refundedContractSkillPoints,
-                                    string.Join(
-                                        ", ",
-                                        contractSkillRefunds.Select(refund =>
-                                            $"{refund.SkillId}:{refund.PreviousLevel}->{refund.CurrentLevel}(+{refund.SkillPoints})")));
-                            }
-
-                            session.Quest.Current = (session.Character.Active.Quests ?? [])
-                                .Where(quest => quest.QuestId != ushort.MaxValue)
-                                .DistinctBy(quest => quest.QuestId)
-                                .Take(3)
-                                .ToList();
-                            session.Quest.CompletedIds = (session.Character.Active.CompletedQuestIds ?? [])
-                                .ToHashSet();
-                            if (session.Character.Active.Quests is null
-                                || session.Character.Active.CompletedQuestIds is null
-                                || !session.Quest.Current.SequenceEqual(session.Character.Active.Quests.Take(3))
-                                || session.Quest.CompletedIds.Count != session.Character.Active.CompletedQuestIds.Distinct().Count())
-                            {
-                                session.Character.Active = await store.SaveCharacterQuestsAsync(
-                                    session.Login.AccountName,
-                                    character.Id,
-                                    session.Quest.Current,
-                                    session.Quest.CompletedIds,
-                                    serverToken) ?? session.Character.Active;
-                            }
-
-                            var migrateLegacyDungeonProgress =
-                                session.Character.Active.DungeonProgress is null;
-                            var migratedDungeonUnlocks = (session.Character.Active.UnlockedDungeonIds ?? [])
-                                .Concat(HiddenDungeonUnlockCatalog.ResolveUnlockedDungeonIds(
-                                    session.Quest.Current.Select(quest => quest.QuestId)
-                                        .Concat(session.Quest.CompletedIds),
-                                    questCatalog,
-                                    dungeonCatalog))
-                                .Where(dungeonId => dungeonId != 0)
-                                .Distinct()
-                                .OrderBy(dungeonId => dungeonId)
-                                .ToArray();
-                            var storedDungeonUnlocks = (session.Character.Active.UnlockedDungeonIds ?? [])
-                                .Where(dungeonId => dungeonId != 0)
-                                .Distinct()
-                                .OrderBy(dungeonId => dungeonId)
-                                .ToArray();
-                            if (session.Character.Active.UnlockedDungeonIds is null
-                                || !storedDungeonUnlocks.SequenceEqual(migratedDungeonUnlocks))
-                            {
-                                session.Character.Active = await store.SaveCharacterDungeonUnlocksAsync(
-                                    session.Login.AccountName,
-                                    character.Id,
-                                    migratedDungeonUnlocks,
-                                    serverToken) ?? session.Character.Active;
-                            }
-
-                            var normalizedDungeonProgress = migrateLegacyDungeonProgress
-                                ? HiddenDungeonUnlockCatalog.ResolveVisibleDungeonIds(
-                                        dungeonCatalog.DungeonIds,
-                                        migratedDungeonUnlocks)
-                                    .Select(dungeonId =>
-                                        new CharacterDungeonProgressRecord(dungeonId, 1))
-                                    .ToArray()
-                                : DungeonDifficultyProgression.Normalize(
-                                    session.Character.Active.DungeonProgress);
-                            var storedDungeonProgress =
-                                DungeonDifficultyProgression.Normalize(
-                                    session.Character.Active.DungeonProgress);
-                            if (migrateLegacyDungeonProgress
-                                || !storedDungeonProgress.SequenceEqual(
-                                    normalizedDungeonProgress))
-                            {
-                                session.Character.Active = await store.SaveCharacterDungeonProgressAsync(
-                                    session.Login.AccountName,
-                                    character.Id,
-                                    normalizedDungeonProgress,
-                                    serverToken) ?? session.Character.Active;
-                                if (migrateLegacyDungeonProgress)
-                                {
-                                    logger.LogInformation(
-                                        "Migrated character {CharacterId} dungeon permissions to persistent maximum difficulties.",
-                                        character.Id);
-                                }
-                            }
-
-                            session.Character.TownId = session.Character.Active.TownId is >= 1 and <= 5
-                                ? session.Character.Active.TownId
-                                : (byte)1;
-                            var loginSpawn = GetTownGateSpawn(session.Character.TownId);
-                            session.Character.AreaId = loginSpawn.AreaId;
-                            session.Character.X = loginSpawn.X;
-                            session.Character.Y = loginSpawn.Y;
-                            session.Character.Direction = loginSpawn.Direction;
-                            session.Character.MovementValue = 100;
-                            session.Character.AreaRosterInitialized = false;
-                            session.Premium.ExpiryUnix.Clear();
-                            foreach (var premiumState in premiumStates.Where(state =>
-                                         state.Active
-                                         && state.ExpiresAt is not null))
-                            {
-                                session.Premium.ExpiryUnix[premiumState.ServiceType] =
-                                    premiumState.ExpiresAt!.Value;
-                            }
-
-                            var blackDiamondService = premiumStates.FirstOrDefault(state =>
-                                state.ServiceType == GameProtocolEngine.BlackDiamondServiceType);
-                            var blackDiamondActive = blackDiamondService?.Active == true;
-                            var selectReply = GameProtocolEngine.CreateSelectCharacterReply(
-                                request,
-                                characterId: (uint)slot + 1,
-                                serverId: session.Character.LocalUserId,
-                                usedFatigue: Math.Min(
-                                    session.Character.Active.UsedFatigue,
-                                    blackDiamondActive
-                                        ? GameProtocolEngine.BlackDiamondMaximumFatigue
-                                        : GameProtocolEngine.DefaultMaximumFatigue),
-                                maximumFatigue: blackDiamondActive
-                                    ? GameProtocolEngine.BlackDiamondMaximumFatigue
-                                    : GameProtocolEngine.DefaultMaximumFatigue,
-                                premiumFatigue: blackDiamondActive
-                                    ? GameProtocolEngine.BlackDiamondBonusFatigue
-                                    : (ushort)0,
-                                cash: (uint)session.Currency.Cash,
-                                townId: session.Character.TownId,
-                                completedTutorialFlags: session.Character.Active.TutorialStarted
-                                    ? GameProtocolEngine.DefaultCompletedTutorialFlags
-                                    : 0u,
-                                activeQuests: session.Quest.Current
-                                    .Select(quest => new GameQuestEntry(quest.QuestId, quest.Trigger))
-                                    .ToArray(),
-                                premiumServices: premiumStates
-                                    .Where(state => state.Active)
-                                    .Select(state => new GamePremiumServiceEntry(
-                                        state.ServiceType,
-                                        state.RemainingSeconds))
-                                    .ToArray(),
-                                completedQuestIds: session.Quest.CompletedIds.Order().ToArray(),
-                                questCompletionMapping: questCatalog.CompletionMapping);
-                            await selectReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, selectReply);
-
-                            var currentCharacter = CreateTownAppearancePacket(
-                                session.Character.Active,
-                                session.Character.LocalUserId,
-                                session.Inventory.Equipped.Values,
-                                session.Inventory.Creature.Values,
-                                blackDiamondActive);
-                            await currentCharacter.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, currentCharacter);
-
-                            var learnedSkills = GetCurrentGameSkills();
-                            var projectedCombatStats =
-                                characterStatCatalog.Get(session.Character.Active);
-                            var currentCharacterDetails =
-                                GameProtocolEngine.CreateCurrentCharacterDetails(
-                                    session.Character.LocalUserId,
-                                    experience: session.Character.Active.Experience,
-                                    learnedSkills: learnedSkills,
-                                    combatStats: projectedCombatStats,
-                                    equippedItems: CreateWornEquipmentSnapshot(
-                                        session.Inventory.Equipped.Values,
-                                        session.Inventory.Creature),
-                                    equippedCreatureLevel: GetEquippedCreatureLevel(
-                                        session.Inventory.Creature),
-                                    staminaRecoveryPercentage:
-                                        GetProjectedStaminaRecovery());
-                            await currentCharacterDetails.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, currentCharacterDetails);
-                            session.Character.LastProjectedCombatStats = projectedCombatStats;
-
-                            foreach (var initialPacket in CreateTownInitializationPackets(
-                                         session.Skill.CurrentSp,
-                                         learnedSkills,
-                                         session.Currency.Gold,
-                                         session.Currency.VictoryPoints,
-                                         session.Inventory.Main.Values,
-                                         session.Inventory.Equipped.Values,
-                                         session.Inventory.Avatar.Values,
-                                         session.Inventory.Warehouse.Values,
-                                         session.Inventory.WarehouseCapacity,
-                                         session.Inventory.Creature.Values,
-                                         GetAcceptableQuestIds(),
-                                         GetDungeonPermissions()))
-                            {
-                                await initialPacket.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, initialPacket);
-                            }
-
-                            await SendPvpRecordAsync();
-
-                            // DFLegacy does not issue MAILBOX_OPEN while entering
-                            // town, so deliver the current character's mailbox
-                            // snapshot as part of character initialization.
-                            await SendMailboxStateAsync(notifyNewMail: true);
-                            continue;
-                        }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.SendMessageCommand)
@@ -12564,327 +11801,55 @@ public sealed class EntranceService(
     private static CreateCharacterMailRequest[] CreateOverflowMailRequests(
         IEnumerable<CharacterMailAttachmentRecord> items,
         string source) =>
-        items.Select(item => new CreateCharacterMailRequest(
-                "DFLegacy",
-                $"{source}: delivered because the inventory was full or overweight.",
-                Attachment: item))
-            .ToArray();
-
-    private static IReadOnlyList<GameSkillEntry> GetInitialSkills(CharacterRecord character)
-    {
-        var skills = InitialSkillsByJob.TryGetValue(character.Job, out var initial)
-            ? initial.AsEnumerable()
-            : [];
-
-        // DebugConfig.txt defines its larger skill set for the level-60,
-        // grow-type-2 swordman only. Merge it with the mandatory base skills
-        // and keep the highest level when an id appears in both lists.
-        if (character.Job == 0 && character.GrowType == 2 && character.Level >= 50)
-        {
-            skills = skills.Concat(DebugSwordmanSkills);
-        }
-
-        return skills
-            .GroupBy(skill => skill.SkillId)
-            .Select(group =>
-            {
-                var highest = group.OrderByDescending(skill => skill.Level).First();
-                var stableSlot = group.FirstOrDefault(skill => skill.Slot.HasValue)?.Slot;
-                return highest with { Slot = stableSlot ?? highest.Slot };
-            })
-            .OrderBy(skill => skill.Slot ?? byte.MaxValue)
-            .ThenBy(skill => skill.SkillId)
-            .ToArray();
-    }
-
-    private IEnumerable<GameServerPacket> CreateTownInitializationPackets(
-        int skillPoints,
-        IReadOnlyList<GameSkillEntry> panelSkills,
-        int gold,
-        uint victoryPoints,
-        IEnumerable<CharacterItemRecord> inventory,
-        IEnumerable<CharacterItemRecord> equipment,
-        IEnumerable<CharacterItemRecord> avatarInventory,
-        IEnumerable<CharacterItemRecord> warehouse,
-        ushort warehouseCapacity,
-        IEnumerable<CharacterItemRecord> creatureInventory,
-        IReadOnlyList<ushort> acceptableQuestIds,
-        IReadOnlyList<GameDungeonPermissionEntry> dungeonPermissions)
-    {
-        // Dungeon permissions are u16-counted (u16 id, u8 state) records, and
-        // the acceptable-quest list is u8-counted. The stamina notification is
-        // sent later, after AREA_USERS has created the local town actor.
-        yield return GameProtocolEngine.CreateDungeonPermissions(dungeonPermissions);
-
-        yield return CreateMainInventoryPacket(gold, victoryPoints, inventory);
-        yield return CreateAvatarInventoryPacket(avatarInventory);
-        yield return CreateWarehousePacket(warehouse, warehouseCapacity);
-        foreach (var creaturePacket in CreateCreatureInventoryPackets(creatureInventory))
-        {
-            yield return creaturePacket;
-        }
-        yield return GameProtocolEngine.CreateSkillInfo(
-            (ushort)Math.Clamp(skillPoints, ushort.MinValue, ushort.MaxValue),
-            panelSkills);
-        yield return GameProtocolEngine.CreateAcceptableQuestList(acceptableQuestIds);
-    }
-
-    private bool TryPlanLegacyPremiumContractRedemption(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
-        out Dictionary<ushort, CharacterItemRecord> plannedInventory,
-        out IReadOnlyList<PremiumServicePurchaseGrant> grants)
-    {
-        plannedInventory = inventory.ToDictionary(pair => pair.Key, pair => pair.Value);
-        var daysByService = new Dictionary<byte, long>();
-        foreach (var item in inventory.Values)
-        {
-            if (!ceraShopCatalog.TryGetPremiumContract(item.ItemId, out var contract)
-                || item.CountOrValue == 0)
-            {
-                continue;
-            }
-
-            var itemDays = (long)contract.Days * item.CountOrValue;
-            daysByService[contract.ServiceType] = Math.Min(
-                int.MaxValue,
-                daysByService.GetValueOrDefault(contract.ServiceType) + itemDays);
-            plannedInventory.Remove(item.Slot);
-        }
-
-        grants = daysByService
-            .Select(pair => new PremiumServicePurchaseGrant(
-                pair.Key,
-                checked((int)pair.Value)))
-            .ToArray();
-        return grants.Count > 0;
-    }
+        CharacterPacketBuilders.CreateOverflowMailRequests(items, source);
 
     private GameServerPacket CreateMainInventoryPacket(
         int gold,
         uint victoryPoints,
         IEnumerable<CharacterItemRecord> inventory,
-        ushort? preferredLastSlot = null)
-    {
-        var entries = inventory
-            .Where(item => item.ItemId != 0
-                && !CharacterWarehouseProgression.TryGetItemTargetCapacity(
-                    item.ItemId,
-                    out _)
-                && (item.Slot >= CharacterInventoryLayout.QuickSlotStart
-                    || (item.Slot == CharacterInventoryLayout.RevivalCoinSlot
-                        && item.ItemId
-                            == CharacterInventoryLayout.RevivalCoinItemId)))
-            .OrderBy(item => preferredLastSlot.HasValue
-                && item.Slot == preferredLastSlot.Value
-                    ? 1
-                    : 0)
-            .ThenBy(item => item.Slot)
-            .Select(ToGameInventoryEntry)
-            .ToArray();
-        return GameProtocolEngine.CreateMainItemList(
-            checked((uint)Math.Max(0, gold)),
-            victoryPoints,
-            entries);
-    }
+        ushort? preferredLastSlot = null) =>
+        _characterPacketBuilders.CreateMainInventoryPacket(gold, victoryPoints, inventory, preferredLastSlot);
 
     private GameServerPacket CreateWarehousePacket(
         IEnumerable<CharacterItemRecord> warehouse,
-        ushort warehouseCapacity)
-    {
-        var entries = warehouse
-            .Where(item => item.Slot < warehouseCapacity
-                && item.ItemId != 0
-                && !CharacterWarehouseProgression.TryGetItemTargetCapacity(
-                    item.ItemId,
-                    out _))
-            .OrderBy(item => item.Slot)
-            .Select(ToGameInventoryEntry)
-            .ToArray();
-        return GameProtocolEngine.CreateItemList(
-            2,
-            entries,
-            warehouseCapacity);
-    }
+        ushort warehouseCapacity) =>
+        _characterPacketBuilders.CreateWarehousePacket(warehouse, warehouseCapacity);
 
     private GameServerPacket CreateAvatarInventoryPacket(
-        IEnumerable<CharacterItemRecord> avatarInventory)
-    {
-        var entries = avatarInventory
-            .Where(item => CharacterAvatarInventoryLayout.IsBagSlot(item.Slot)
-                && item.ItemId != 0)
-            .OrderBy(item => item.Slot)
-            .Select(ToGameInventoryEntry)
-            .ToArray();
-        return GameProtocolEngine.CreateItemList(1, entries);
-    }
+        IEnumerable<CharacterItemRecord> avatarInventory) =>
+        _characterPacketBuilders.CreateAvatarInventoryPacket(avatarInventory);
 
     private IEnumerable<GameServerPacket> CreateCreatureInventoryPackets(
-        IEnumerable<CharacterItemRecord> creatureInventory)
-    {
-        var items = creatureInventory
-            .Where(item => CharacterCreatureInventoryLayout.IsInventorySlot(item.Slot)
-                && item.ItemId != 0)
-            .OrderBy(item => item.Slot)
-            .ToArray();
-        var creatures = items
-            .Where(item => itemCatalog.TryGetDefinition(item.ItemId, out var definition)
-                && CharacterCreatureInventoryLayout.IsCreature(definition))
-            .GroupBy(item => item.CountOrValue)
-            .Select(group => group.First())
-            .Where(item => item.CountOrValue != 0)
-            .Select(item => new GameCreatureInfoEntry(
-                item.CountOrValue,
-                item.CreatureStomach ?? 100,
-                item.CreatureExperience ?? 0,
-                item.CreatureLevel ?? 1,
-                EncodeCreatureName(item.CreatureName, item.ItemId),
-                item.CreatureNoCharge ?? false))
-            .ToArray();
-        yield return GameProtocolEngine.CreateCreatureInfo(creatures);
-        yield return CreateCreatureInventoryItemListPacket(items);
-    }
+        IEnumerable<CharacterItemRecord> creatureInventory) =>
+        _characterPacketBuilders.CreateCreatureInventoryPackets(creatureInventory);
 
     private GameServerPacket CreateCreatureInventoryItemListPacket(
-        IEnumerable<CharacterItemRecord> creatureInventory)
-    {
-        var entries = creatureInventory
-            .Where(item => CharacterCreatureInventoryLayout.IsInventorySlot(item.Slot)
-                && item.ItemId != 0)
-            .OrderBy(item => item.Slot)
-            .Select(ToGameInventoryEntry)
-            .ToArray();
-        return GameProtocolEngine.CreateItemList(7, entries);
-    }
+        IEnumerable<CharacterItemRecord> creatureInventory) =>
+        _characterPacketBuilders.CreateCreatureInventoryItemListPacket(creatureInventory);
 
-    private byte[] EncodeCreatureName(string? name, ushort itemId)
-    {
-        if (string.IsNullOrWhiteSpace(name)
-            && itemCatalog.TryGetDefinition(itemId, out var definition))
-        {
-            name = definition.Name;
-        }
-
-        name = string.IsNullOrWhiteSpace(name) ? "Creature" : name;
-        var output = new byte[29];
-        ClientEncoding.GetEncoder().Convert(
-            name.AsSpan(),
-            output.AsSpan(),
-            flush: true,
-            out _,
-            out var bytesUsed,
-            out _);
-        return output.AsSpan(0, bytesUsed).ToArray();
-    }
-
-    private static byte GetEquippedCreatureLevel(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory) =>
-        creatureInventory.TryGetValue(
-                CharacterCreatureInventoryLayout.EquippedCreatureSlot,
-                out var creature)
-            ? creature.CreatureLevel ?? 1
-            : (byte)0;
+    private byte[] EncodeCreatureName(string? name, ushort itemId) =>
+        _characterPacketBuilders.EncodeCreatureName(name, itemId);
 
     private GameInventoryEntry[] CreateWornEquipmentSnapshot(
         IEnumerable<CharacterItemRecord> equipment,
-        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory)
-    {
-        var snapshot = equipment
-            .Where(item => item.Slot is < CharacterCreatureInventoryLayout.ClientEquippedCreatureSlot
-                or > CharacterCreatureInventoryLayout.ClientEquippedArtifactGreenSlot)
-            .Select(ToGameInventoryEntry)
-            .ToList();
-        var creatureSlots = new (ushort StorageSlot, ushort ClientSlot)[]
-        {
-            (CharacterCreatureInventoryLayout.EquippedCreatureSlot,
-                CharacterCreatureInventoryLayout.ClientEquippedCreatureSlot),
-            (CharacterCreatureInventoryLayout.EquippedArtifactRedSlot,
-                CharacterCreatureInventoryLayout.ClientEquippedArtifactRedSlot),
-            (CharacterCreatureInventoryLayout.EquippedArtifactBlueSlot,
-                CharacterCreatureInventoryLayout.ClientEquippedArtifactBlueSlot),
-            (CharacterCreatureInventoryLayout.EquippedArtifactGreenSlot,
-                CharacterCreatureInventoryLayout.ClientEquippedArtifactGreenSlot)
-        };
-        foreach (var (storageSlot, clientSlot) in creatureSlots)
-        {
-            if (creatureInventory.TryGetValue(storageSlot, out var item))
-            {
-                snapshot.Add(ToGameInventoryEntry(item with { Slot = clientSlot }));
-            }
-        }
+        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory) =>
+        _characterPacketBuilders.CreateWornEquipmentSnapshot(equipment, creatureInventory);
 
-        return snapshot.OrderBy(item => item.Slot).ToArray();
-    }
-
-    private IEnumerable<GameServerPacket> CreateInventoryRefreshPackets(
-        int gold,
-        uint victoryPoints,
-        IEnumerable<CharacterItemRecord> inventory,
-        IEnumerable<CharacterItemRecord> equipment)
-    {
-        yield return CreateMainInventoryPacket(gold, victoryPoints, inventory);
-    }
+    private GameServerPacket CreateTownAppearancePacket(
+        CharacterRecord character,
+        ushort userId,
+        IEnumerable<CharacterItemRecord> equipment,
+        IEnumerable<CharacterItemRecord> creatureInventory,
+        bool hasBlackDiamond) =>
+        _characterPacketBuilders.CreateTownAppearancePacket(
+            character,
+            userId,
+            equipment,
+            creatureInventory,
+            hasBlackDiamond);
 
     private GameInventoryEntry ToGameInventoryEntry(CharacterItemRecord item) =>
         _characterPacketBuilders.ToGameInventoryEntry(item);
-
-    private GameMailEntry ToGameMailEntry(CharacterMailRecord mail)
-    {
-        GameMailAttachment? attachment = null;
-        if (mail.Attachment is not null)
-        {
-            var wire = CharacterItemWireProjection.Project(
-                mail.Attachment,
-                itemCatalog);
-            attachment = new GameMailAttachment(
-                mail.Attachment.ItemId,
-                wire.AddInfo,
-                wire.ItemAttr,
-                wire.Durability,
-                wire.SealState);
-        }
-
-        return new GameMailEntry(
-            mail.Id,
-            EncodeMailField(mail.Sender, 29, "DFLegacy"),
-            EncodeMailField(mail.Text, 511, string.Empty),
-            checked((uint)Math.Max(0, mail.Gold)),
-            attachment,
-            mail.SentAt,
-            mail.ExpiresAt,
-            mail.State is 2 or 3 ? mail.State : (ushort)1);
-    }
-
-    private static CharacterItemRecord NormalizeAvatarInstance(
-        CharacterItemRecord item) =>
-        item with
-        {
-            CountOrValue = 1,
-            Durability = 0,
-            AvatarRemainingSeconds = item.AvatarRemainingSeconds ?? 0,
-            AvatarAbilityIndex = item.AvatarAbilityIndex ?? 0
-        };
-
-    private static byte[] EncodeMailField(
-        string value,
-        int maximumBytes,
-        string fallback)
-    {
-        value ??= fallback;
-        var output = new byte[maximumBytes];
-        ClientEncoding.GetEncoder().Convert(
-            value.AsSpan(),
-            output.AsSpan(),
-            flush: true,
-            out _,
-            out var bytesUsed,
-            out _);
-        if (bytesUsed == 0 && fallback.Length != 0)
-        {
-            return ClientEncoding.GetBytes(fallback);
-        }
-
-        return output.AsSpan(0, bytesUsed).ToArray();
-    }
 
     private static bool TryPlanMailAttachment(
         IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
@@ -12988,63 +11953,12 @@ public sealed class EntranceService(
         return true;
     }
 
-    private static (byte AreaId, short X, short Y, byte Direction) GetTownGateSpawn(
-        byte townId) =>
-        (
-            townId switch
-            {
-                2 => 5, // Hendon Myre/Gate_Hendon.map
-                3 => 2, // West Coast/Gate_West.map
-                _ => 1  // Elvengard, Alfhlyra and Storm Pass gate rooms
-            },
-            474,
-            234,
-            5);
+    private GameMailEntry ToGameMailEntry(CharacterMailRecord mail) =>
+        _characterPacketBuilders.ToGameMailEntry(mail);
 
-    private GameServerPacket CreateTownAppearancePacket(
-        CharacterRecord character,
-        ushort userId,
-        IEnumerable<CharacterItemRecord> equipment,
-        IEnumerable<CharacterItemRecord> creatureInventory,
-        bool hasBlackDiamond)
-    {
-        var equipmentSnapshot = equipment.ToArray();
-
-        return GameProtocolEngine.CreateCurrentCharacterInfo(
-            new GameCharacterSummary(
-                0,
-                EncodeCharacterName(character.Name),
-                (byte)Math.Clamp(character.Job, byte.MinValue, byte.MaxValue),
-                (byte)Math.Clamp(character.GrowType, 0, 15),
-                (byte)Math.Clamp(character.Level, 1, byte.MaxValue),
-                AwakeningType: (byte)Math.Clamp(
-                    character.AwakeningType,
-                    byte.MinValue,
-                    byte.MaxValue),
-                PvpGrade: pvpExperienceCatalog.GetGradeForPoints(
-                    character.PvpPoints)),
-            userId,
-            equipmentSnapshot
-                .Where(item => item.Slot <= EquippedTitleSlot)
-                .Select(ToGameInventoryEntry)
-                .ToArray(),
-            CreateEquippedCreatureAppearance(creatureInventory),
-            hasBlackDiamond);
-    }
-
-    private GameCreatureAppearanceEntry? CreateEquippedCreatureAppearance(
-        IEnumerable<CharacterItemRecord> creatureInventory)
-    {
-        var creature = creatureInventory.FirstOrDefault(item =>
-            item.Slot == CharacterCreatureInventoryLayout.EquippedCreatureSlot
-            && item.ItemId != 0);
-        return creature is null
-            ? null
-            : new GameCreatureAppearanceEntry(
-                creature.ItemId,
-                EncodeCreatureName(creature.CreatureName, creature.ItemId),
-                State: 1);
-    }
+    private static byte GetEquippedCreatureLevel(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory) =>
+        CharacterPacketBuilders.GetEquippedCreatureLevel(creatureInventory);
 
     private bool TryPlanCreatureInventoryMove(
         IReadOnlyDictionary<ushort, CharacterItemRecord> warehouse,

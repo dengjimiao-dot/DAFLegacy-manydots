@@ -46,4 +46,12 @@ public sealed class ConnectionContext
 
     /// <summary>Connected to the connection cancellation source; cancelled when the connection dies.</summary>
     public CancellationToken Disconnecting { get; }
+
+    /// <summary>
+    /// Connection-level kick wired by the pump: closes the socket and cancels
+    /// the connection (the former KickConnection local function). Handlers
+    /// hand it to services that must terminate this connection, such as the
+    /// character-session lease being claimed by a newer login.
+    /// </summary>
+    public Action? KickConnection { get; set; }
 }

@@ -218,3 +218,21 @@ NOTI 23 USER_AREA / NOTI 24 AREA_USERS 只更新已存在记录(查不到即跳�
 - `Protocol/GameProtocolEngine.cs` — CMD 10-14 解析、NOTI 6/7/8/9/10 构建、`CreateCurrentCharacterDetails(mode:3)` 对端上下文构建
 - `Network/CharacterSessionRegistry.cs` — 跨会话封包通道(`AttachPacketChannel`)
 - 自测:`DFLegacy.Server.SelfTests/Game/Party/PartySmokeTests.cs`
+
+### 参考项目 TURN 式中继(per-ordered-pair)评估(2026-09-29)
+
+对照参考项目 `Network/Core/PartyUdpRelay.cs`(1,014 行,env `DFO_UDP_RELAY` 门控、默认关)+ `UdpRelayServer.cs`:
+
+| 维度 | 本项目(现行) | 参考项目 |
+| --- | --- | --- |
+| 通告端点 | 所有队员统一通告服务器 gameplay 监听端点(单口,inner/outer 同值) | 每**有序对**(成员→队友)一个专属端口(固定端口段) |
+| 转发归属 | 按 `_sessionsByEndpoint` 定位发送者,经 `PartyCoordinator.GetPartyPeerSessionIds` 广播给同队 | 按**到达 socket** 唯一确定 (owner→peer),无需端点匹配 |
+| 设计动机 | 客户端拨号对端与回包来源端点一致,握手可完成(已记录于本分册上文) | ① 单口下客户端无法按源 ip:port 区分队友;② 对称 NAT 下同客户端对不同目标端口映射不同,按源端点匹配会错乱 |
+| 验证状态 | 双客户端实测:城镇零数据报、握手在副本入口触发 | 其自注释"⚠️ 需真机验证(服务端绿≠客户端认)" |
+
+**结论:暂不迁移,登记为候选**。理由与前置条件:
+
+1. 本项目的单口中继已满足**握手**路径的端点一致性(上文实测结论);差异只在**多人副本内 P2P 数据报的归属**:若 60CN 客户端按源 ip:port 区分队友,则单口下多队友流量不可区分,需 per-ordered-pair;若其 P2P 载荷内联发起者 uid,则单口已足够。**该判定必须先做客户端 IDA 复核**(副本内 P2P 收包路径的归属逻辑),本仓库现有结论未覆盖此点。
+2. 迁移会改变 NOTI 11 通告的端点形态(单口 → 每对端口),属客户端可见行为;按 AGENTS D1/D2 与 07 §7.5 需 IDA 静态复核 + 双客户端副本内抓包实测(≥3 人、含对称 NAT 场景)后方可落地,未复测前不实施。
+3. 参考项目自身亦默认关闭、env 门控,印证其结论仍处验证阶段;若后续确需迁移,建议同样以配置门控(默认关)形态引入,复用其"每有序对一 socket + 每腿独立学习"的形态与本项目的端点学习/中继解析器并存。
+

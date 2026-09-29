@@ -13,7 +13,12 @@ namespace DFLegacy.Server;
 public sealed class ChannelSessionSenders(
     JsonGameStore store,
     ItemCatalog itemCatalog,
+    ScriptFileSystem scripts,
+    ServerOptions options,
     CharacterStatCatalog characterStatCatalog,
+    CharacterSpCatalog spCatalog,
+    CreatureExperienceCatalog creatureExperienceCatalog,
+    CharacterSessionRegistry characterSessions,
     PartyCoordinator partyCoordinator,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
@@ -21,6 +26,10 @@ public sealed class ChannelSessionSenders(
     CharacterPacketBuilders builders,
     ILogger<ChannelSessionSenders> logger)
 {
+    // Entrance content cache (migrated with LoadContent; single instance
+    // shared with the pump's entrance-port path).
+    private readonly object _contentGate = new();
+    private EntranceContent? _content;
     public GameSkillEntry[] GetCurrentGameSkills(ConnectionContext context) => context.State.Skill.Current
         .OrderBy(skill => skill.Slot)
         .Select(skill => new GameSkillEntry(skill.SkillId, skill.Level, skill.Slot))
@@ -1724,4 +1733,966 @@ public async Task SendSilentTownStaminaStateAsync(
     await context.Outbound.SendAsync(stamina, "TOWN_NOTI", cancellationToken);
 }
 
+    // ---- Dungeon flow helpers (migrated verbatim for R5: return-to-town,
+    // selection eligibility, room fatigue, creature experience, clear-reward
+    // cards and quest-item grants).
+
+public async Task ReturnToTownFromDungeonAsync(
+    ConnectionContext context,
+    string reason,
+    bool forcedDungeonExit = false,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Dungeon.CurrentDungeonId == 0 && !context.State.Dungeon.InSelection)
+    {
+        logger.LogWarning(
+            "Ignored {Reason} return-to-town request because the user is not in a dungeon or dungeon selection.",
+            reason);
+        return;
+    }
+
+    if (context.State.Dungeon.CurrentDungeonId != 0 && !context.State.Dungeon.TutorialActive)
+    {
+        await SettleDungeonCreatureHungerAsync(context, 
+            notifyClient: true,
+            cancellationToken);
+    }
+
+    var leavingDungeonId = context.State.Dungeon.CurrentDungeonId;
+    var leftDungeonSelection = context.State.Dungeon.InSelection;
+    var gainedExperience = context.State.Dungeon.MonsterExperienceGained;
+    var leveledUp = context.State.Dungeon.LeveledUp;
+    if (context.State.Character.Active is not null && gainedExperience > 0)
+    {
+        var savedProgression = await store.SaveCharacterProgressionAsync(
+            context.State.Login.AccountName,
+            context.State.Character.Active.Id,
+            context.State.Character.Active.Level,
+            context.State.Character.Active.Experience,
+            context.State.Skill.CurrentSp,
+            cancellationToken);
+        if (savedProgression is not null)
+        {
+            context.State.Character.Active = context.State.Character.Active with
+            {
+                Level = savedProgression.Level,
+                Experience = savedProgression.Experience,
+                Sp = savedProgression.Sp
+            };
+        }
+    }
+
+    var hasBlackDiamond = false;
+    if (context.State.Character.Active is not null)
+    {
+        var blackDiamondState = await store.GetPremiumServiceAsync(
+            context.State.Login.AccountName,
+            cancellationToken);
+        hasBlackDiamond = blackDiamondState.Active;
+        if (blackDiamondState.Active
+            && blackDiamondState.ExpiresAt is { } blackDiamondExpiry)
+        {
+            context.State.Premium.ExpiryUnix[
+                GameProtocolEngine.BlackDiamondServiceType] =
+                blackDiamondExpiry;
+        }
+        else
+        {
+            context.State.Premium.ExpiryUnix.TryRemove(
+                GameProtocolEngine.BlackDiamondServiceType,
+                out _);
+        }
+    }
+
+    var enteredWeakness = false;
+    if (context.State.Character.Active is not null
+        && !context.State.Character.Active.IsWeakened
+        && DungeonWeaknessPolicy.ShouldApply(
+            context.State.Character.Active.Level,
+            forcedDungeonExit,
+            dungeonActive: leavingDungeonId != 0,
+            dungeonCleared: context.State.Dungeon.ClearEnabled,
+            hasBlackDiamond))
+    {
+        var weakenedCharacter = await store.SetCharacterWeaknessRecoveryAsync(
+            context.State.Character.Active.Id,
+            DungeonWeaknessPolicy.InitialRecovery,
+            cancellationToken);
+        if (weakenedCharacter is not null)
+        {
+            context.State.Character.Active = weakenedCharacter;
+            context.State.Currency.Gold = context.State.Character.Active.Gold;
+            enteredWeakness = true;
+        }
+        else
+        {
+            logger.LogError(
+                "Could not persist weakness for character {CharacterId} while returning from dungeon {DungeonId}; the client will retain normal stamina.",
+                context.State.Character.Active.Id,
+                leavingDungeonId);
+        }
+    }
+
+    context.State.Dungeon.CurrentDungeonId = 0;
+    context.State.Dungeon.Layout = null;
+    context.State.Dungeon.Room = null;
+    context.State.Dungeon.InSelection = false;
+    context.State.Dungeon.SelectionDeadline = null;
+    context.State.Dungeon.SelectionWorldMap = null;
+    context.State.Dungeon.AliveMonsters.Clear();
+    context.State.Dungeon.ReportedBossDeaths.Clear();
+    context.State.Dungeon.BossCascadeDeaths.Clear();
+    context.State.Dungeon.DestroyedPassiveObjects.Clear();
+    context.State.Dungeon.GroundItems.ResetDungeon();
+    context.State.Dungeon.Run.Stop();
+    context.State.Dungeon.TutorialActive = false;
+    context.State.Dungeon.CharacterAlive = true;
+    context.State.Dungeon.DeathGeneration++;
+    context.State.Dungeon.DeathTimeout = null;
+    context.State.Dungeon.Difficulty = 0;
+    context.State.Dungeon.ClearEnabled = false;
+    context.State.Dungeon.ResultSent = false;
+    context.State.Dungeon.CardLayoutSent = false;
+    context.State.Dungeon.CardRightsSent = false;
+    context.State.Dungeon.CardSelectionDeadline = null;
+    context.State.Dungeon.ClearReward = null;
+    context.State.Dungeon.FreeCardIndex = null;
+    context.State.Dungeon.GoldCardIndex = null;
+    context.State.Dungeon.MonsterExperienceGained = 0;
+    context.State.Dungeon.ClearExperience = null;
+    context.State.Dungeon.ConsumedFatigue = 0;
+    context.State.Dungeon.CreatureStomachCheckpointSeconds = null;
+    context.State.Dungeon.LeveledUp = false;
+    context.State.Dungeon.NormalMonsterKills = 0;
+    context.State.Dungeon.ChampionMonsterKills = 0;
+    context.State.Dungeon.BossMonsterKills = 0;
+    context.State.Dungeon.ChampionRewardOrdinal = 0;
+    context.State.Character.TownId = context.State.Dungeon.ReturnTownId;
+    context.State.Character.AreaId = context.State.Dungeon.ReturnAreaId;
+    context.State.Character.X = context.State.Dungeon.ReturnX;
+    context.State.Character.Y = context.State.Dungeon.ReturnY;
+    context.State.Character.Direction = context.State.Dungeon.ReturnDirection;
+    context.State.Character.MovementValue = 100;
+    await SessionLocationPersistence.SaveCurrentLocationAsync(store, context.State, cancellationToken);
+
+    var townState = GameProtocolEngine.CreateUserState(
+        context.State.Character.LocalUserId,
+        state: 0);
+    await context.Outbound.SendAsync(townState, "DUNGEON", cancellationToken);
+
+    var townUser = new GameTownUser(
+        context.State.Character.LocalUserId,
+        context.State.Character.X,
+        context.State.Character.Y,
+        context.State.Character.Direction);
+    var userArea = GameProtocolEngine.CreateUserArea(
+        context.State.Character.TownId,
+        context.State.Character.AreaId,
+        townUser);
+    await context.Outbound.SendAsync(userArea, "DUNGEON", cancellationToken);
+
+    var areaUsers = GameProtocolEngine.CreateAreaUsers(
+        context.State.Character.TownId,
+        context.State.Character.AreaId,
+        [townUser]);
+    await context.Outbound.SendAsync(areaUsers, "DUNGEON", cancellationToken);
+    context.State.Character.AreaRosterInitialized = true;
+    await SendTownFatigueStateAsync(context, cancellationToken);
+    await SendTownAppearanceAsync(context, waitForTownActor: true, cancellationToken);
+    await SendSilentTownStaminaStateAsync(context, cancellationToken);
+    await SendEnterGameWorldCompleteAsync(context, cancellationToken);
+    // The town return bypasses SET_USER_AREA, so refresh the
+    // town presence (and any same-area residents' view) here.
+    PublishTownPresence(context);
+    if (leveledUp)
+    {
+        await SendCurrentSkillInfoAsync(context, cancellationToken);
+        await SendAcceptableQuestListAsync(context, cancellationToken);
+    }
+
+    if (leftDungeonSelection && leavingDungeonId == 0)
+    {
+        logger.LogInformation(
+            "Dungeon selection returned user {UserId} to town through {Reason}.",
+            context.State.Character.LocalUserId,
+            reason);
+    }
+    else
+    {
+        logger.LogInformation(
+            "Dungeon {DungeonId} returned user {UserId} to town through {Reason}; exp={Experience}, weakened={IsWeakened}, enteredWeakness={EnteredWeakness}, blackDiamond={HasBlackDiamond}.",
+            leavingDungeonId,
+            context.State.Character.LocalUserId,
+            reason,
+            gainedExperience,
+            context.State.Character.Active?.IsWeakened ?? false,
+            enteredWeakness,
+            hasBlackDiamond);
+    }
+}
+
+public async Task SendDungeonSelectionEligibilityAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    var questsMet = context.State.Dungeon.SelectionWorldMap?.MeetsHellQuests(context.State.Quest.CompletedIds) == true;
+    var missingItems = context.State.Dungeon.SelectionWorldMap is { HasHellDungeon: true }
+        && !context.State.Dungeon.SelectionWorldMap.HasHellItems(context.State.Inventory.Main.Values);
+    var packet = GameProtocolEngine.CreateEnterSelectDungeon(
+        questsMet, missingItems ? [(ushort)0] : []);
+    await context.Outbound.SendAsync(packet, "DUNGEON", cancellationToken);
+    logger.LogInformation(
+        "World map {WorldMapId} eligibility for {CharacterId}: hellQuests={QuestsMet}, missingHellItems={MissingItems}.",
+        context.State.Dungeon.SelectionWorldMap?.Id, context.State.Character.Active?.Id, questsMet, missingItems);
+}
+
+public async Task ConsumeDungeonRoomFatigueAsync(
+    ConnectionContext context,
+    byte roomX,
+    byte roomY,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null || context.State.Dungeon.CurrentDungeonId == 0)
+    {
+        return;
+    }
+
+    var premiumFatigue = HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType)
+        ? GameProtocolEngine.BlackDiamondBonusFatigue
+        : (ushort)0;
+    var maximumFatigue = checked((ushort)(
+        GameProtocolEngine.DefaultMaximumFatigue + premiumFatigue));
+    var consumption =
+        await store.ConsumeDungeonRoomFatigueAsync(
+            context.State.Character.Active.Id,
+            maximumFatigue,
+            cancellationToken);
+    if (consumption.Character is null)
+    {
+        logger.LogWarning(
+            "Could not consume dungeon-room fatigue because character {CharacterId} was not found.",
+            context.State.Character.Active.Id);
+        return;
+    }
+
+    context.State.Character.Active = consumption.Character;
+    if (!consumption.Consumed)
+    {
+        logger.LogInformation(
+            "Dungeon {DungeonId} room ({RoomX},{RoomY}) consumed no fatigue because user {UserId} is already at {UsedFatigue}/{MaximumFatigue}.",
+            context.State.Dungeon.CurrentDungeonId,
+            roomX,
+            roomY,
+            context.State.Character.LocalUserId,
+            consumption.UsedFatigue,
+            maximumFatigue);
+        return;
+    }
+
+    context.State.Dungeon.ConsumedFatigue++;
+
+    var fatigue = GameProtocolEngine.CreateFatigue(
+        consumption.UsedFatigue,
+        maximumFatigue,
+        premiumFatigue);
+    await context.Outbound.SendAsync(fatigue, "DUNGEON", cancellationToken);
+    logger.LogInformation(
+        "Dungeon {DungeonId} room ({RoomX},{RoomY}) consumed one fatigue for user {UserId}: used {PreviousUsedFatigue}->{UsedFatigue}, remaining={RemainingFatigue}/{MaximumFatigue}.",
+        context.State.Dungeon.CurrentDungeonId,
+        roomX,
+        roomY,
+        context.State.Character.LocalUserId,
+        consumption.PreviousUsedFatigue,
+        consumption.UsedFatigue,
+        maximumFatigue - consumption.UsedFatigue,
+        maximumFatigue);
+}
+
+public async Task GrantDungeonCreatureExperienceAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Dungeon.ConsumedFatigue == 0
+        || context.State.Character.Active is null
+        || !context.State.Inventory.Creature.TryGetValue(
+            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+            out var creature)
+        || creature.CountOrValue == 0
+        || (creature.CreatureStomach ?? 100) == 0
+        || !itemCatalog.TryGetDefinition(
+            creature.ItemId,
+            out var creatureDefinition)
+        || !CharacterCreatureInventoryLayout.IsCreature(
+            creatureDefinition)
+        || creatureDefinition.CreatureSubType == 1)
+    {
+        context.State.Dungeon.ConsumedFatigue = 0;
+        return;
+    }
+
+    var previousLevel = creature.CreatureLevel ?? 1;
+    var bonusRate =
+        GetEquippedCreatureExperienceBonusRate(context, previousLevel);
+    var grant = creatureExperienceCatalog.Grant(
+        creature.CreatureExperience ?? 0,
+        previousLevel,
+        creatureDefinition.CreatureSpecies,
+        context.State.Dungeon.ConsumedFatigue,
+        bonusRate);
+    if (grant.GrantedExperience == 0)
+    {
+        context.State.Dungeon.ConsumedFatigue = 0;
+        return;
+    }
+
+    var plannedCreatureInventory = context.State.Inventory.Creature.ToDictionary();
+    plannedCreatureInventory[
+        CharacterCreatureInventoryLayout.EquippedCreatureSlot] =
+        creature with
+        {
+            CreatureExperience = grant.Experience,
+            CreatureLevel = grant.Level
+        };
+    var saved = await store.SaveCharacterItemSpacesAsync(
+        context.State.Login.AccountName,
+        context.State.Character.Active.Id,
+        context.State.Currency.Gold,
+        context.State.Inventory.Main.Values,
+        context.State.Inventory.Equipped.Values,
+        context.State.Inventory.Warehouse.Values,
+        cancellationToken,
+        avatarInventory: context.State.Inventory.Avatar.Values,
+        creatureInventory: plannedCreatureInventory.Values);
+    if (saved is null)
+    {
+        logger.LogWarning(
+            "Could not persist Creature experience for character {CharacterId} after clearing dungeon {DungeonId}.",
+            context.State.Character.Active.Id,
+            context.State.Dungeon.CurrentDungeonId);
+        return;
+    }
+
+    context.State.Inventory.Creature = plannedCreatureInventory;
+    context.State.Character.Active = context.State.Character.Active with
+    {
+        CreatureInventory = plannedCreatureInventory.Values
+            .OrderBy(item => item.Slot)
+            .ToList()
+    };
+    context.State.Dungeon.ConsumedFatigue = 0;
+    var experienceNotification =
+        GameProtocolEngine.CreateCreatureGainExperience(
+            grant.Level,
+            grant.Experience);
+    await context.Outbound.SendAsync(experienceNotification, "DUNGEON", cancellationToken);
+    logger.LogInformation(
+        "Dungeon {DungeonId} granted Creature uid {CreatureUid} {GrantedExperience} experience from {ConsumedFatigue} fatigue and {BonusExperience} artifact bonus: exp {PreviousExperience}->{Experience}, level {PreviousLevel}->{Level}.",
+        context.State.Dungeon.CurrentDungeonId,
+        creature.CountOrValue,
+        grant.GrantedExperience,
+        grant.BaseExperience,
+        grant.BonusExperience,
+        grant.PreviousExperience,
+        grant.Experience,
+        grant.PreviousLevel,
+        grant.Level);
+}
+
+public async Task SendCardSelectionSnapshotAsync(
+    ConnectionContext context,
+    bool inventoryChanged,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Dungeon.ClearReward is null)
+    {
+        return;
+    }
+
+    var selectCardReply = GameProtocolEngine.CreateSelectCardReply(
+        context.State.Dungeon.FreeCardIndex,
+        context.State.Dungeon.GoldCardIndex,
+        goldRewardRevealed: context.State.Dungeon.GoldCardIndex.HasValue,
+        goldRewardItemId: context.State.Dungeon.ClearReward.GoldItemId);
+    await context.Outbound.SendAsync(selectCardReply, "DUNGEON", cancellationToken);
+    if (!inventoryChanged)
+    {
+        return;
+    }
+
+    var inventoryRefresh = builders.CreateMainInventoryPacket(
+        context.State.Currency.Gold,
+        context.State.Currency.VictoryPoints,
+        context.State.Inventory.Main.Values);
+    await context.Outbound.SendAsync(inventoryRefresh, "DUNGEON", cancellationToken);
+}
+
+public async Task<bool> TryAutomaticallySelectFreeCardAsync(
+    ConnectionContext context,
+    string source,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Dungeon.ClearReward is null || context.State.Dungeon.FreeCardIndex.HasValue)
+    {
+        return true;
+    }
+
+    var automaticCardIndex =
+        ClearRewardCardPlanner.FindLowestAvailableFreeCardIndex(
+            GameProtocolEngine.ClearRewardCardColumnCount,
+            []);
+    if (!automaticCardIndex.HasValue)
+    {
+        return true;
+    }
+
+    var automaticGrant = await GrantFreeClearRewardAsync(
+        context,
+        automaticCardIndex.Value);
+    if (!automaticGrant.Saved)
+    {
+        logger.LogWarning(
+            "Could not automatically settle dungeon {DungeonId} free card for user {UserId} through {Source}",
+            context.State.Dungeon.CurrentDungeonId,
+            context.State.Character.LocalUserId,
+            source);
+        return false;
+    }
+
+    // DNF 1.0.1.9 consumes the same CMD 74 ownership snapshot
+    // for manual and TimerCardSelect assignments.
+    await SendCardSelectionSnapshotAsync(
+        context,
+        automaticGrant.InventoryChanged,
+        cancellationToken);
+    logger.LogInformation(
+        "Dungeon {DungeonId} automatically selected free card {CardIndex} for user {UserId} through {Source}; reward={RewardItemId}",
+        context.State.Dungeon.CurrentDungeonId,
+        automaticCardIndex.Value,
+        context.State.Character.LocalUserId,
+        source,
+        automaticGrant.RewardItemId);
+    return true;
+}
+
+public async Task<(bool Saved, bool[] Granted)> SaveClearRewardEquipmentAsync(
+    ConnectionContext context,
+    int targetGold,
+    IReadOnlyList<ushort?> itemIds,
+    CancellationToken cancellationToken = default)
+{
+    var granted = new bool[itemIds.Count];
+    if (context.State.Character.Active is null)
+    {
+        return (false, granted);
+    }
+
+    var plannedInventory = context.State.Inventory.Main.ToDictionary(
+        pair => pair.Key,
+        pair => pair.Value);
+    var plannedWarehouseCapacity = context.State.Inventory.WarehouseCapacity;
+    var overflowMails = new List<CreateCharacterMailRequest>();
+    for (var index = 0; index < itemIds.Count; index++)
+    {
+        if (!itemIds[index].HasValue)
+        {
+            continue;
+        }
+
+        if (CharacterWarehouseProgression.TryGetItemTargetCapacity(
+                itemIds[index]!.Value,
+                out var targetCapacity))
+        {
+            plannedWarehouseCapacity = Math.Max(
+                plannedWarehouseCapacity,
+                targetCapacity);
+            granted[index] = true;
+            continue;
+        }
+
+        var rewardItem = CharacterItemIdentity.Ensure(
+            new CharacterMailAttachmentRecord(
+            itemIds[index]!.Value,
+            1,
+            Durability: itemCatalog.GetInitialDurability(
+                itemIds[index]!.Value),
+            SealState: CharacterItemSealing.GetInitialSealState(
+                itemCatalog,
+                itemIds[index]!.Value)),
+            itemCatalog);
+        if (CharacterInventoryPlanner.TryPlace(
+                plannedInventory,
+                rewardItem,
+                itemCatalog,
+                GetInventoryWeightLimit(context, context.State.Character.Active),
+                out var plan,
+                out _))
+        {
+            plannedInventory = plan.Inventory;
+            granted[index] = true;
+            continue;
+        }
+
+        if (!itemCatalog.TryGetDefinition(
+                rewardItem.ItemId,
+                out _))
+        {
+            continue;
+        }
+
+        // Card rewards must never become ground drops. Preserve
+        // the generated instance in the same inventory/mail transaction.
+        overflowMails.AddRange(CharacterPacketBuilders.CreateOverflowMailRequests(
+            [rewardItem],
+            "Dungeon clear reward"));
+
+        granted[index] = true;
+    }
+
+    var normalizedGold = Math.Max(0, targetGold);
+    if (normalizedGold == context.State.Currency.Gold
+        && !granted.Any(value => value)
+        && overflowMails.Count == 0)
+    {
+        return (true, granted);
+    }
+
+    var saved = await store.SaveCharacterInventoryAsync(
+        context.State.Login.AccountName,
+        context.State.Character.Active.Id,
+        normalizedGold,
+        plannedInventory.Values,
+        context.State.Inventory.Equipped.Values,
+        cancellationToken,
+        overflowMails,
+        warehouseCapacity: plannedWarehouseCapacity,
+        expectedWarehouseCapacity: context.State.Inventory.WarehouseCapacity);
+    if (saved is null)
+    {
+        return (false, new bool[itemIds.Count]);
+    }
+
+    var warehouseCapacityChanged =
+        AdoptSavedWarehouseUpgradeState(context, saved);
+    context.State.Currency.Gold = normalizedGold;
+    if (overflowMails.Count > 0)
+    {
+        characterSessions.NotifyMailReceived(context.State.Character.Active.CharacterNo);
+    }
+
+    if (warehouseCapacityChanged)
+    {
+        await SendWarehouseStateAsync(context, cancellationToken);
+    }
+
+    return (true, granted);
+}
+
+public async Task CompleteClearQuestTriggersAsync(
+    ConnectionContext context,
+    string source,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null || context.State.Dungeon.CurrentDungeonId == 0)
+    {
+        return;
+    }
+
+    var completedSimpleClearQuestIds = context.State.Quest.Current
+        .Where(quest => quest.Trigger != 0)
+        .Where(quest =>
+            questCatalog.TryGetDefinition(
+                quest.QuestId,
+                out var definition)
+            && ((context.State.Dungeon.ClearEnabled
+                    && QuestDungeonClearRequirement.IsSimpleClear(definition)
+                    && QuestDungeonClearRequirement.Matches(
+                        definition, context.State.Dungeon.CurrentDungeonId, context.State.Dungeon.Difficulty))
+                || context.State.Dungeon.Run.HasClearedMap(
+                    QuestMapRequirement.GetTargetMapId(definition))))
+        .Select(quest => quest.QuestId)
+        .ToHashSet();
+    if (completedSimpleClearQuestIds.Count == 0)
+    {
+        return;
+    }
+
+    var plannedQuests = context.State.Quest.Current
+        .Select(quest => completedSimpleClearQuestIds.Contains(quest.QuestId)
+            ? quest with { Trigger = 0 }
+            : quest)
+        .ToList();
+    var savedQuestProgress = await store.SaveCharacterQuestsAsync(
+        context.State.Login.AccountName,
+        context.State.Character.Active.Id,
+        plannedQuests,
+        context.State.Quest.CompletedIds,
+        cancellationToken: cancellationToken);
+    if (savedQuestProgress is null)
+    {
+        logger.LogWarning(
+            "Could not persist clear quest progress after {Source} in dungeon {DungeonId}.",
+            source,
+            context.State.Dungeon.CurrentDungeonId);
+        return;
+    }
+
+    context.State.Quest.Current = plannedQuests;
+    context.State.Character.Active = context.State.Character.Active with
+    {
+        Quests = savedQuestProgress.Quests,
+        CompletedQuestIds = savedQuestProgress.CompletedQuestIds
+    };
+    foreach (var questId in completedSimpleClearQuestIds.Order())
+    {
+        var triggerUpdate =
+            GameProtocolEngine.CreateSetQuestTriggerReply(
+                questId,
+                trigger: 0);
+        await context.Outbound.SendAsync(triggerUpdate, "DUNGEON", cancellationToken);
+        logger.LogInformation(
+            "Completed clear quest {QuestId} after {Source} in dungeon {DungeonId} difficulty {Difficulty}.",
+            questId,
+            source,
+            context.State.Dungeon.CurrentDungeonId,
+            context.State.Dungeon.Difficulty);
+    }
+}
+
+public async Task EnableEmptyBossRoomSettlementAsync(
+    ConnectionContext context,
+    DungeonRoomDefinition room,
+    CancellationToken cancellationToken = default)
+{
+    if (room.Monsters.Length != 0
+        || context.State.Dungeon.ClearEnabled
+        || room.MapType != DungeonMapType.Boss)
+    {
+        return;
+    }
+
+    // War-room scripts (2000-2002) use timed dynamic spawns
+    // rather than static .map monster rows. Until that mode is
+    // simulated, an empty terminal room must remain settleable.
+    context.State.Dungeon.ClearEnabled = true;
+    var enableClear = GameProtocolEngine.CreateEnableClearDungeon();
+    await context.Outbound.SendAsync(enableClear, "DUNGEON", cancellationToken);
+    await CompleteClearQuestTriggersAsync(context, 
+        "empty boss-room settlement");
+    logger.LogInformation(
+        "Dungeon {DungeonId} empty boss room ({RoomX},{RoomY}) enabled settlement.",
+        context.State.Dungeon.CurrentDungeonId,
+        context.State.Dungeon.RoomX,
+        context.State.Dungeon.RoomY);
+}
+
+public Task GrantMonsterQuestItemsAsync(
+    ConnectionContext context,
+    int monsterIndex,
+    CancellationToken cancellationToken = default) =>
+    GrantQuestItemDropsAsync(context, 
+        (quest, inventory) => QuestItemDropPlanner.PlanMonster(
+            quest,
+            context.State.Dungeon.CurrentDungeonId,
+            context.State.Dungeon.Difficulty,
+            monsterIndex,
+            inventory,
+            chance => GameRandomSource.Shared.Next(100) < chance),
+        $"monster {monsterIndex}");
+
+public Task GrantClearQuestItemsAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default) =>
+    GrantQuestItemDropsAsync(context, 
+        (quest, inventory) => QuestItemDropPlanner.PlanClear(
+            quest,
+            context.State.Dungeon.CurrentDungeonId,
+            context.State.Dungeon.Difficulty,
+            inventory,
+        chance => GameRandomSource.Shared.Next(100) < chance),
+        $"dungeon {context.State.Dungeon.CurrentDungeonId} clear");
+
+public decimal GetEquippedCreatureExperienceBonusRate(
+    ConnectionContext context,
+    byte creatureLevel)
+{
+    decimal bonusRate = 0;
+    foreach (var artifactSlot in new[]
+             {
+                 CharacterCreatureInventoryLayout.EquippedArtifactRedSlot,
+                 CharacterCreatureInventoryLayout.EquippedArtifactBlueSlot,
+                 CharacterCreatureInventoryLayout.EquippedArtifactGreenSlot
+             })
+    {
+        if (!context.State.Inventory.Creature.TryGetValue(artifactSlot, out var artifact)
+            || !itemCatalog.TryGetDefinition(
+                artifact.ItemId,
+                out var definition)
+            || !CharacterCreatureInventoryLayout.TryGetEquippedSlot(
+                definition,
+                out var expectedSlot)
+            || expectedSlot != artifactSlot
+            || definition.CreatureExperienceAmountRate is not decimal rate
+            || definition.CreatureMinimumLevel is int minimumLevel
+                && minimumLevel > 0
+                && creatureLevel < minimumLevel)
+        {
+            continue;
+        }
+
+        bonusRate += rate;
+    }
+
+    return bonusRate;
+}
+
+public async Task<(bool Saved, bool InventoryChanged, ushort? RewardItemId)>
+    GrantFreeClearRewardAsync(
+        ConnectionContext context,
+        byte selectedCardIndex,
+        CancellationToken cancellationToken = default)
+{
+    if (context.State.Dungeon.ClearReward is null
+        || selectedCardIndex >= GameProtocolEngine.ClearRewardCardColumnCount)
+    {
+        return (false, false, null);
+    }
+
+    if (context.State.Dungeon.FreeCardIndex.HasValue)
+    {
+        return (
+            context.State.Dungeon.FreeCardIndex == selectedCardIndex,
+            false,
+            context.State.Dungeon.ClearReward.FreeItemId
+                ?? context.State.Dungeon.ClearReward.PremiumItemId);
+    }
+
+    var goldBeforeGrant = context.State.Currency.Gold;
+    var settledGold = (int)Math.Min(
+        int.MaxValue,
+        (long)context.State.Currency.Gold + context.State.Dungeon.ClearReward.FreeGoldAmount);
+    var freeGrant = await SaveClearRewardEquipmentAsync(context, 
+        settledGold,
+        [
+            context.State.Dungeon.ClearReward.FreeItemId,
+            context.State.Dungeon.ClearReward.PremiumItemId
+        ]);
+    if (!freeGrant.Saved)
+    {
+        return (false, false, null);
+    }
+
+    context.State.Dungeon.FreeCardIndex = selectedCardIndex;
+    context.State.Dungeon.CardSelectionDeadline = null;
+    var rewardItemId = freeGrant.Granted[0]
+        ? context.State.Dungeon.ClearReward.FreeItemId
+        : freeGrant.Granted[1]
+            ? context.State.Dungeon.ClearReward.PremiumItemId
+            : null;
+    return (
+        true,
+        context.State.Currency.Gold != goldBeforeGrant
+            || freeGrant.Granted.Any(granted => granted),
+        rewardItemId);
+}
+
+public async Task CompleteTutorialAndReturnAsync(
+    ConnectionContext context,
+    string reason,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null
+        || !context.State.Dungeon.TutorialActive
+        || !context.State.Dungeon.ClearEnabled
+        || context.State.Dungeon.AliveMonsters.Count != 0)
+    {
+        logger.LogWarning(
+            "Ignored tutorial completion because its room is not cleared for user {UserId}.",
+            context.State.Character.LocalUserId);
+        return;
+    }
+
+    CharacterQuestRecord? tutorialQuest = null;
+    var tutorialQuestWasActive = context.State.Quest.Current.Any(quest =>
+        quest.QuestId == QuestCatalog.TutorialCompletionQuestId);
+    if (!tutorialQuestWasActive
+        && !context.State.Quest.CompletedIds.Contains(QuestCatalog.TutorialCompletionQuestId))
+    {
+        if (context.State.Quest.Current.Count >= 3)
+        {
+            logger.LogWarning(
+                "Tutorial completion quest {QuestId} was not activated because the active quest list is full.",
+                QuestCatalog.TutorialCompletionQuestId);
+        }
+        else if (!questCatalog.TryGetDefinition(
+                     QuestCatalog.TutorialCompletionQuestId,
+                     out var definition)
+                 || !QuestCatalog.IsTutorialCompletionQuestDefinition(definition))
+        {
+            logger.LogWarning(
+                "Tutorial completion quest {QuestId} is missing or does not match the target client definition.",
+                QuestCatalog.TutorialCompletionQuestId);
+        }
+        else
+        {
+            tutorialQuest = new CharacterQuestRecord(
+                QuestCatalog.TutorialCompletionQuestId,
+                Trigger: 0);
+        }
+    }
+
+    var saved = await store.CompleteCharacterTutorialAsync(
+        context.State.Login.AccountName,
+        context.State.Character.Active.Id,
+        tutorialQuest: tutorialQuest,
+        level: context.State.Character.Active.Level,
+        experience: context.State.Character.Active.Experience,
+        skillPoints: context.State.Skill.CurrentSp,
+        cancellationToken: cancellationToken);
+    if (saved is null)
+    {
+        logger.LogWarning(
+            "Could not persist tutorial completion for character {CharacterId}.",
+            context.State.Character.Active.Id);
+        return;
+    }
+
+    context.State.Character.Active = context.State.Character.Active with
+    {
+        TutorialStarted = saved.TutorialStarted,
+        Quests = saved.Quests,
+        CompletedQuestIds = saved.CompletedQuestIds,
+        Level = saved.Level,
+        Experience = saved.Experience,
+        Sp = saved.Sp
+    };
+    context.State.Quest.Current = (saved.Quests ?? [])
+        .Where(quest => quest.QuestId != ushort.MaxValue)
+        .Take(3)
+        .ToList();
+    context.State.Quest.CompletedIds = (saved.CompletedQuestIds ?? []).ToHashSet();
+    var tutorialQuestActivated = !tutorialQuestWasActive
+        && context.State.Quest.Current.Any(quest =>
+            quest.QuestId == QuestCatalog.TutorialCompletionQuestId);
+    if (tutorialQuestActivated)
+    {
+        var acceptQuest = GameProtocolEngine.CreateAcceptQuestReply(
+            QuestCatalog.TutorialCompletionQuestId,
+            trigger: 1);
+        await context.Outbound.SendAsync(acceptQuest, "TUTORIAL", cancellationToken);
+
+        var readyQuest = GameProtocolEngine.CreateSetQuestTriggerReply(
+            QuestCatalog.TutorialCompletionQuestId,
+            trigger: 0);
+        await context.Outbound.SendAsync(readyQuest, "TUTORIAL", cancellationToken);
+        await SendDungeonPermissionsAsync(context, cancellationToken);
+        await SendAcceptableQuestListAsync(context, cancellationToken);
+        logger.LogInformation(
+            "Activated tutorial completion quest {QuestId} for character {CharacterId}.",
+            QuestCatalog.TutorialCompletionQuestId,
+            context.State.Character.Active.Id);
+    }
+
+    await ReturnToTownFromDungeonAsync(context, reason);
+}
+
+    // ---- Dungeon passive-object drop registry (migrated verbatim).
+
+    internal GamePassiveObjectDrop[] RegisterPassiveObjectDrops(
+        DungeonRoomDefinition room,
+        DungeonGroundItemState groundItems,
+        ushort ownerUserId,
+        byte roomX,
+        byte roomY)
+    {
+        var result = new List<GamePassiveObjectDrop>(room.PassiveItemSpawns.Length);
+        foreach (var spawn in room.PassiveItemSpawns)
+        {
+            var groundItem = groundItems.AddPassive(
+                spawn.Drop,
+                ownerUserId,
+                spawn.PassiveObjectIndex,
+                spawn.AssociationSlot,
+                roomX,
+                roomY,
+                x: unchecked((short)spawn.X),
+                y: unchecked((short)spawn.Y),
+                catalog: itemCatalog);
+            result.Add(new GamePassiveObjectDrop(
+                spawn.AssociationSlot,
+                groundItem.GroundId,
+                groundItem.ItemId,
+                groundItem.GetClientAddInfo(itemCatalog),
+                groundItem.OwnerUserId));
+        }
+
+        return result.ToArray();
+    }
+
+    internal GamePassiveObjectDrop[] GetRegisteredPassiveObjectDrops(
+        DungeonGroundItemState groundItems,
+        byte roomX,
+        byte roomY) =>
+        groundItems.GetPassiveObjectItems(roomX, roomY)
+            .Select(item => new GamePassiveObjectDrop(
+                item.PassiveItemSlot,
+                item.GroundId,
+                item.ItemId,
+                item.GetClientAddInfo(itemCatalog),
+                item.OwnerUserId))
+            .ToArray();
+
+    internal EntranceContent LoadContent()
+    {
+        if (_content is not null)
+        {
+            return _content;
+        }
+
+        lock (_contentGate)
+        {
+            if (_content is not null)
+            {
+                return _content;
+            }
+
+            byte[]? channelScript = null;
+            const string virtualPath = "etc/channel_info.etc";
+            if (scripts.FileExists(virtualPath))
+            {
+                channelScript = scripts.ReadAllBytes(virtualPath);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "{VirtualPath} is missing from {Source}; protocol 9 download is disabled.",
+                    virtualPath,
+                    scripts.SourceDescription);
+            }
+
+            var channel = options.Channel;
+            var metadata = EntranceMetadata.BuildSingleLocalChannel(new EntranceChannel(
+                channel.Name,
+                channel.Host,
+                channel.Port,
+                channel.ChannelNumber,
+                channel.MaximumUsers,
+                channel.CurrentUsers));
+            _content = new EntranceContent(channelScript, metadata);
+            return _content;
+        }
+    }
+
+public int ApplyLevelUpSkillPoints(ConnectionContext context, CharacterExperienceGrant progression)
+{
+    var granted = spCatalog.CalculateLevelUpReward(
+        progression.PreviousLevel,
+        progression.Level);
+    if (granted == 0)
+    {
+        return 0;
+    }
+
+    context.State.Skill.CurrentSp = checked(context.State.Skill.CurrentSp + granted);
+    return granted;
+}
 }

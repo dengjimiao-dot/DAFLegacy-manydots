@@ -7,6 +7,8 @@ public sealed class ServerOptions
     public string HomeDirectory { get; set; } = AppContext.BaseDirectory;
 
     public AdminOptions Admin { get; set; } = new();
+    public LoggingOptions Logging { get; set; } = new();
+    public PacketCaptureOptions PacketCapture { get; set; } = new();
     public McpOptions Mcp { get; set; } = new();
     public ListenerOptions Entrance { get; set; } = new() { Port = 8080 };
     public ListenerOptions CharacterDatagram { get; set; } = new() { Host = "127.0.0.1", Port = 2311 };
@@ -78,6 +80,42 @@ public sealed class AdminOptions
 /// 不开端口、不建线程、零内存驻留。Host 默认回环，改非回环等同主动暴露
 /// 协议流与游戏数据。
 /// </summary>
+/// <summary>
+/// 统一文件日志（docs/design/07 §11 日志统一）。Directory 相对 HomeDirectory
+/// 解析；MaximumFileBytes 为 0 表示不轮转（参考项目 server.log 语义）。
+/// </summary>
+public sealed class LoggingOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    public string Directory { get; set; } = "logs";
+
+    public string FileName { get; set; } = "server.log";
+
+    public int QueueCapacity { get; set; } = 8192;
+
+    public long MaximumFileBytes { get; set; }
+}
+
+/// <summary>
+/// 逐包十六进制捕获（自参考项目 PacketFileLogger 迁移，默认关闭；
+/// 暴露协议流，开启前确认部署边界）。Directory 缺省时落 logs/。
+/// </summary>
+public sealed class PacketCaptureOptions
+{
+    public bool Enabled { get; set; }
+
+    public string Directory { get; set; } = string.Empty;
+
+    public string FileName { get; set; } = "packet_log.txt";
+
+    public int QueueCapacity { get; set; } = 4096;
+
+    public long MaximumFileBytes { get; set; } = 64L * 1024 * 1024;
+
+    public int HexDumpLimit { get; set; } = 256;
+}
+
 public sealed class McpOptions
 {
     public bool Enabled { get; set; }

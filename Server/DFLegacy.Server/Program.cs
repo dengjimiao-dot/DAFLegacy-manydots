@@ -90,10 +90,33 @@ builder.Services.AddHostedService(serviceProvider =>
     serviceProvider.GetRequiredService<GameplayDatagramService>());
 builder.Services.AddHostedService<ProbeService>();
 
+// 统一日志（docs/design/07 §11 日志统一）：控制台之外再挂有界队列文件日志器，
+// 全部 ILogger 事件共享同一批记录；日志器随主机 Dispose 排空退出。
+builder.Logging.AddProvider(new BoundedQueueFileLoggerProvider(options.Logging, options.HomeDirectory));
+
 var app = builder.Build();
 
 // 快照/日志通道开关（= EnablePacketTracing）；Tap 通道由 MCP 模块宿主自行接入。
-app.Services.GetRequiredService<RuntimeState>().TracingEnabled = options.EnablePacketTracing;
+var runtimeState = app.Services.GetRequiredService<RuntimeState>();
+runtimeState.TracingEnabled = options.EnablePacketTracing;
+
+// 逐包十六进制捕获（默认关闭）：作为 Tap 漏斗的附加端口挂在既有多端口分发上，
+// 与 DAF-MCP 并存互不挤占（docs/design/09 §4.1）。
+PacketFileLogSink? packetCaptureSink = null;
+if (options.PacketCapture.Enabled)
+{
+    packetCaptureSink = new PacketFileLogSink(options.PacketCapture, options.HomeDirectory);
+    runtimeState.AddTapSink(packetCaptureSink);
+}
+
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    if (packetCaptureSink is not null)
+    {
+        runtimeState.RemoveTapSink(packetCaptureSink);
+        packetCaptureSink.Dispose();
+    }
+});
 
 // Party real-time datagrams relay through the gameplay UDP listener: the
 // endpoint table advertises this server for every peer, and this resolver

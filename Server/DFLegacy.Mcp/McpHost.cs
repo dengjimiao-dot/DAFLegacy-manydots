@@ -42,7 +42,7 @@ public sealed class McpHost : IHostedService
 
         // 构造即接入漏斗：宿主在全部 hosted service 构造完成、任何 StartAsync
         // 之前被创建，保证网络监听器的第一个包起 TapSink 就已在位。
-        _runtime.TapSink = _tapHub;
+        _runtime.AddTapSink(_tapHub);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -98,14 +98,14 @@ public sealed class McpHost : IHostedService
                 "DAF-MCP failed to start at http://{Host}:{Port}/mcp; the module stays disabled and the game services are unaffected.",
                 mcp.Host,
                 mcp.Port);
-            _runtime.TapSink = null;
+            _runtime.RemoveTapSink(_tapHub);
             _app = null;
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _runtime.TapSink = null;
+        _runtime.RemoveTapSink(_tapHub);
         if (_app is null)
         {
             return;

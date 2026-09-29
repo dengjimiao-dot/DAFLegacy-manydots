@@ -68,6 +68,7 @@ RegisterSelfTest("megaphone", () =>
     return Task.CompletedTask;
 });
 RegisterSelfTest("protocol-golden", () => ProtocolGoldenSmokeTests.RunAsync(Check));
+RegisterSelfTest("file-logger", () => FileLoggerSmokeTests.RunAsync(Check));
 RegisterSelfTest("party", () =>
 {
     PartySmokeTests.Run(Check);

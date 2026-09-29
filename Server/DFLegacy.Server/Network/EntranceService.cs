@@ -5034,27 +5034,6 @@ public sealed class EntranceService(
         }
     }
 
-    private static string ToSpacedHex(ReadOnlySpan<byte> bytes)
-    {
-        if (bytes.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        return string.Create(bytes.Length * 3 - 1, bytes.ToArray(), (span, buffer) =>
-        {
-            const string HexChars = "0123456789ABCDEF";
-            for (var i = 0; i < buffer.Length; i++)
-            {
-                span[i * 3] = HexChars[buffer[i] >> 4];
-                span[i * 3 + 1] = HexChars[buffer[i] & 0xF];
-                if (i < buffer.Length - 1)
-                {
-                    span[i * 3 + 2] = ' ';
-                }
-            }
-        });
-    }
 
     private void LogPacket(string direction, RuntimeSession session, PacketFrame frame, PacketFrame? rawFrame = null)
     {
@@ -5067,10 +5046,10 @@ public sealed class EntranceService(
         }
 
         var bodyLimit = Math.Min(frame.Body.Length, options.HexDumpLimit);
-        var body = ToSpacedHex(frame.Body.AsSpan(0, bodyLimit));
+        var body = HexDump.ToSpacedHex(frame.Body.AsSpan(0, bodyLimit));
         var wire = (rawFrame ?? frame).Encode();
         var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + PacketFrame.HeaderLength);
-        var raw = ToSpacedHex(wire.AsSpan(0, rawLimit));
+        var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
         string? plainText = null;
         try
         {
@@ -5103,10 +5082,10 @@ public sealed class EntranceService(
         }
 
         var payloadLimit = Math.Min(packet.Payload.Length, options.HexDumpLimit);
-        var payloadDump = ToSpacedHex(packet.Payload.AsSpan(0, payloadLimit));
+        var payloadDump = HexDump.ToSpacedHex(packet.Payload.AsSpan(0, payloadLimit));
         var wire = packet.Encode();
         var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + GameServerPacket.HeaderLength);
-        var raw = ToSpacedHex(wire.AsSpan(0, rawLimit));
+        var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
         string? plainText = null;
         try
         {

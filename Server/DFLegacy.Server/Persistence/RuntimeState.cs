@@ -61,8 +61,71 @@ public sealed class RuntimeState
     // TracingEnabled 由组合根启动时置位（= EnablePacketTracing）。
     public bool TracingEnabled { get; set; }
 
-    /// <summary>MCP 模块激活时由模块宿主注入；默认 null，零开销。</summary>
+    /// <summary>单槽 Tap 端口（兼容既有调用与测试）；与 <see cref="AddTapSink"/>
+    /// 注册的端口按并集分发，任一 Active 即发布（docs/design/09 §4.1 多端口扩展）。</summary>
     public IPacketTapSink? TapSink { get; set; }
+
+    /// <summary>注册附加 Tap 端口（如逐包捕获），与单槽端口并存；线程安全。</summary>
+    public void AddTapSink(IPacketTapSink sink)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        lock (_tapSinkGate)
+        {
+            _additionalTapSinks.Add(sink);
+            Volatile.Write(ref _tapSinkSnapshot, [.. _additionalTapSinks]);
+        }
+    }
+
+    /// <summary>注销先前注册的 Tap 端口；返回是否命中。</summary>
+    public bool RemoveTapSink(IPacketTapSink sink)
+    {
+        lock (_tapSinkGate)
+        {
+            if (!_additionalTapSinks.Remove(sink))
+            {
+                return false;
+            }
+
+            Volatile.Write(ref _tapSinkSnapshot, [.. _additionalTapSinks]);
+            return true;
+        }
+    }
+
+    private readonly object _tapSinkGate = new();
+    private readonly List<IPacketTapSink> _additionalTapSinks = [];
+    private IPacketTapSink[] _tapSinkSnapshot = [];
+
+    /// <summary>包事件唯一漏斗的统一分发口：单槽端口 + 注册端口并集。</summary>
+    private void PublishToTapSinks(
+        Guid sessionId,
+        string service,
+        string direction,
+        byte type,
+        byte protocolId,
+        int totalLength,
+        uint crc32,
+        bool crcValid,
+        TapDecodeMode decodeMode,
+        ReadOnlySpan<byte> body,
+        ReadOnlySpan<byte> wire = default)
+    {
+        if (TapSink is { Active: true } propertySink)
+        {
+            propertySink.Publish(
+                sessionId, service, direction, type, protocolId, totalLength,
+                crc32, crcValid, decodeMode, body, wire);
+        }
+
+        foreach (var sink in Volatile.Read(ref _tapSinkSnapshot))
+        {
+            if (sink.Active)
+            {
+                sink.Publish(
+                    sessionId, service, direction, type, protocolId, totalLength,
+                    crc32, crcValid, decodeMode, body, wire);
+            }
+        }
+    }
 
     public RuntimeSession Add(string service, string remoteEndpoint)
     {
@@ -90,22 +153,18 @@ public sealed class RuntimeState
         int dumpLimit,
         PacketFrame? rawFrame = null)
     {
-        var tapSink = TapSink;
-        if (tapSink is { Active: true })
-        {
-            tapSink.Publish(
-                session.Id,
-                session.Service,
-                direction,
-                frame.Type,
-                frame.ProtocolId,
-                frame.TotalLength,
-                frame.DeclaredCrc32,
-                frame.HasValidCrc32,
-                TapDecodeMode.ClientCmd,
-                frame.Body,
-                wire: rawFrame?.Encode() ?? default);
-        }
+        PublishToTapSinks(
+            session.Id,
+            session.Service,
+            direction,
+            frame.Type,
+            frame.ProtocolId,
+            frame.TotalLength,
+            frame.DeclaredCrc32,
+            frame.HasValidCrc32,
+            TapDecodeMode.ClientCmd,
+            frame.Body,
+            wire: rawFrame?.Encode() ?? default);
 
         if (!TracingEnabled)
         {
@@ -160,10 +219,7 @@ public sealed class RuntimeState
 
     public void TracePacket(RuntimeSession session, string direction, GameServerPacket packet, int dumpLimit)
     {
-        var tapSink = TapSink;
-        if (tapSink is { Active: true })
-        {
-            tapSink.Publish(
+        PublishToTapSinks(
                 session.Id,
                 session.Service,
                 direction,
@@ -174,7 +230,6 @@ public sealed class RuntimeState
                 crcValid: true,
                 TapDecodeMode.Server,
                 packet.Payload);
-        }
 
         if (!TracingEnabled)
         {
@@ -211,21 +266,17 @@ public sealed class RuntimeState
         int dumpLimit,
         byte protocolId = byte.MaxValue)
     {
-        var tapSink = TapSink;
-        if (tapSink is { Active: true })
-        {
-            tapSink.Publish(
-                session.Id,
-                session.Service,
-                direction,
-                type: 2,
-                protocolId,
-                datagram.Length,
-                crc32: 0,
-                crcValid: true,
-                TapDecodeMode.None,
-                datagram);
-        }
+        PublishToTapSinks(
+            session.Id,
+            session.Service,
+            direction,
+            type: 2,
+            protocolId,
+            datagram.Length,
+            crc32: 0,
+            crcValid: true,
+            TapDecodeMode.None,
+            datagram);
 
         if (!TracingEnabled)
         {

@@ -33,8 +33,19 @@ jobs:
             echo "::error::不得引入共享构建配置（会削弱 EnableWindowsTargeting 护栏）"
             exit 1
           fi
+          # grep 输出的路径格式随实现而异：Git Bash 给出 "./Client/x.csproj"，
+          # Windows 工具链给出反斜杠分隔。此处先归一化为仓库相对路径再比对，
+          # 否则白名单永远匹配不上唯一被允许的那个文件。
           hits=$(grep -rl 'EnableWindowsTargeting' --include='*.csproj' --include='*.props' --include='*.targets' . || true)
-          bad=$(echo "$hits" | grep -v '^Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj$' || true)
+          bad=""
+          while IFS= read -r hit; do
+            path=$(printf '%s' "$hit" | tr '\134' '/')
+            path=${path#./}
+            case "$path" in
+              ''|'Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj') continue ;;
+              *) bad="$bad${bad:+, }$path" ;;
+            esac
+          done <<< "$hits"
           if [ -n "$bad" ]; then
             echo "::error::EnableWindowsTargeting 只允许出现在 Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj，发现于：$bad"
             exit 1

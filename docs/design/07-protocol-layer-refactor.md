@@ -529,7 +529,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **试点与组 2-3 挂载**(9 协议,注册组 `session.connection` / `session.login` / `progression.character`):CHECK_CONNECTION 0、EXIT 3、ANTIBOT 161、LOGIN 1、SET_UDP_IP_PORT 2、GET_USERINFO 8、CREATE_CHARACTER 5、DELETE_CHARACTER 6、RETURN_SELECT_CHARACTER 7。EXIT 的"body 短于 2 字节回落 No-channel-handler 警告"与 LOGIN 的"兜底 canned ACK([1,0,0,0,0])"均按现状逐字节保留。
 - **状态域对象化先行**:HandleClientAsync 约 78 个闭包变量一次性迁入 11 个域类的公共字段(用字段而非属性:Interlocked/Volatile 排空需 ref 语义);旧链路经 `session` 别名访问,新 handler 经 `ctx.State` 访问同一存储,无双份状态。SELFTESTS 653 项内联检查全绿,行为零变化。
 - **测试基建**:golden 框架 `SelfTests/Protocol/` 直接消费 `tools/packet_bytes.json`(csproj 复制到输出目录);SelfTest 入口注册表化(`--selftest-<name>` 单跑、`--selftest-list`、`--selftest-all` 汇总表;既有内联检查整体保留为 `program-inline` 套件,拆分随后续阶段抽取)。
-- **Parser 外置**:`Network/Handlers/Login/LoginParsers`、`Network/Handlers/Characters/CharacterParsers`、共享 `Network/Parsers/ClientBodyParsers`(长度前缀字段读取逐字搬迁);`Network/Builders/CharacterPacketBuilders` 承接 USERINFO 名册/初始背包构建;`Network/Sessions/SessionLocationPersistence` 收口位置持久化。
+- **Parser 外置**:`Network/Handlers/Login/LoginParsers`、`Network/Handlers/Characters/CharacterParsers`、共享 `Network/Parsers/ClientBodyParsers`(长度前缀字段读取逐字搬迁);`Network/Builders/CharacterPacket/CharacterPacketBuilders` 承接 USERINFO 名册/初始背包构建;`Network/Sessions/SessionLocationPersistence` 收口位置持久化。
 
 ### 11.2 登记偏差(相对 §4 原文)
 
@@ -584,6 +584,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **验证**:Server / Mcp / SelfTests 三项目全量重建 0 错误 0 告警;SelfTests 21 套件全绿(`protocol-golden`、`packet-tap-funnel`、`file-logger`、`mcp-module-loader` 均覆盖本次改动路径)。真机冒烟仍为遗留项(见 §11.4)。
 - **同轮处置**:`tools/gen_packet_names.py` 删除——其唯一产物即本次删除的字符串表文件,脚本内写死机器绝对路径,且输出目录 `Server/DFLegacy.Server/Protocol/` 在 R7 目录重组后已不存在(保留即等于留一个会复活已删文件的入口)。`tools/PacketDumper` 保留待重写:它是 `tools/packet_bytes.json` 黄金样本库的生成器(SelfTests 经 csproj 直接消费),价值不可弃,但不在解决方案内、仍调用 R7 前的 `GameProtocolEngine.CreateXxx` 与 `PacketPlainText`,当前不能编译。另记:`PacketTypes.cs` 的重生成脚本尚未随枚举落地(当前为一次性生成),与 PacketDumper 重写一并待补。
 - **`Services/` 并入 `Infrastructure/`**(2026-09-29,前置条件已具备):`FatigueResetService`(每日 06:00 疲劳重置)与 `WeaknessRecoveryService`(每分钟推进虚弱恢复)移入 `Infrastructure/`,空目录 `Services/` 移除;命名空间不变,调用点零改动。既定前置"R6 事件入队改造"经核实已完成——两者的通知回调在 `SelectCharacterHandler` 领租处即写目标会话 `session.Events`(`ConnectionEventKind.FatigueReset` / `WeaknessRecovered`),服务侧只经 `CharacterSessionRegistry` 转交回调,不再直写他人连接流。至此项目根只余 `Program.cs` 与 SDK 约定的 `Properties/`。
+- **组队报文模型归位与 `Builders/CharacterPacket/` 目录**(2026-09-29,按 B1 语义化):① 五个组队 TCP 报文模型(`PartyWireSlot` / `PartyInfoWireBlock` / `PartySettingsRequest` / `PeerRequestFrame` / `PeerResponseFrame`)自 `Network/Protocol/GameDatagramProtocol.cs` 移出、逐字落 `Network/Protocol/PartyWireModels.cs`——它们属频道命令面(CMD 10-14 请求体、NOTI 7-10 块),不含 UDP 数据报结构,与数据报协议同文件属误置;② 初始化包家族 `CharacterPacketBuilders`(主文件 + 8 个功能块 partial,共 718 行)自 `Network/Builders/` 根移入 `Network/Builders/CharacterPacket/`,与同目录的组构建器 `CharactersPacketBuilders`(Characters 协议组,R7 产物,527 行静态类)区分开——两者此前仅差一个字母且同在 Builders 根,易混。**Builders 目录规则随之明确:根只放共享基建(`PacketBodyWriter.cs`),子目录放组构建器与流程家族**。命名空间不变,调用点零改动;全量重建 0 错误 0 告警,SelfTests 21 套件全绿。
 
 ### 11.4 遗留项
 

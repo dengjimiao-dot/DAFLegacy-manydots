@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <cwchar>
 
@@ -170,36 +171,39 @@ namespace
         std::array<unsigned char, 6> Replacement;
     };
 
-    constexpr std::array<CodePatch, 37> Patches = { {
+    std::array<CodePatch, 37> BuildPatches() noexcept
+    {
+        const auto& settings = dfl::ijl15_config::Get();
+        return { {
         {
-            dfl::dnf_patches::DisableDebuggerDetection,
+            settings.DisableDebuggerDetection,
             0x0040AEE0,
             {0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68},
             {0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3}
         },
         {
-            dfl::dnf_patches::AllowMultipleClientInstances,
+            settings.AllowMultipleClientInstances,
             // FindWindowA: always continue with creation of another game window.
             0x008F7AF6,
             {0x74, 0x12, 0x50, 0xFF, 0x15, 0x08},
             {0xEB, 0x12, 0x50, 0xFF, 0x15, 0x08}
         },
         {
-            dfl::dnf_patches::AllowMultipleClientInstances,
+            settings.AllowMultipleClientInstances,
             // CreateMutexA/GetLastError: treat an existing mutex as success.
             0x008A859C,
             {0x75, 0x23, 0x39, 0x7D, 0xEC, 0x72},
             {0xEB, 0x23, 0x39, 0x7D, 0xEC, 0x72}
         },
         {
-            dfl::dnf_patches::DisableStartupMinimize,
+            settings.DisableStartupMinimize,
             // Shell_TrayWnd FindWindowA: skip the minimize command.
             0x0040D5BE,
             {0x74, 0x32, 0x57, 0x68, 0x9F, 0x01},
             {0xEB, 0x32, 0x57, 0x68, 0x9F, 0x01}
         },
         {
-            dfl::dnf_patches::DisableStartupMinimize,
+            settings.DisableStartupMinimize,
             // Disable the static startup event that minimizes existing windows.
             0x00991820,
             {0x6A, 0x01, 0xB9, 0xF4, 0xD6, 0xB5},
@@ -227,21 +231,21 @@ namespace
             {0xC6, 0x40, 0x10, 0x01, 0xE8, 0x41}
         },
         {
-            dfl::dnf_patches::SinglePermanentAvatarPeriodOption,
+            settings.SinglePermanentAvatarPeriodOption,
             // Use the third period button as the popup's open/close state.
             0x00868BE0,
             {0x8B, 0x83, 0xCC, 0x07, 0x00, 0x00},
             {0x8B, 0x83, 0xD4, 0x07, 0x00, 0x00}
         },
         {
-            dfl::dnf_patches::SinglePermanentAvatarPeriodOption,
+            settings.SinglePermanentAvatarPeriodOption,
             // Begin layout at period button three, which retains attribute 3.
             0x00868C27,
             {0x8D, 0xB3, 0xCC, 0x07, 0x00, 0x00},
             {0x8D, 0xB3, 0xD4, 0x07, 0x00, 0x00}
         },
         {
-            dfl::dnf_patches::SinglePermanentAvatarPeriodOption,
+            settings.SinglePermanentAvatarPeriodOption,
             // Stop after positioning that button so it occupies the first row.
             0x00868C71,
             {0x83, 0xFF, 0x48, 0x7C, 0xB9, 0x5F},
@@ -304,7 +308,7 @@ namespace
             {0x7F, 0x01, 0x00, 0x00, 0x08, 0x00}
         },
         {
-            true,
+            settings.EnablePerformanceOverlay,
             // Always enter the 2008DF performance call site. The hook below
             // decides whether to run the native renderer and always draws
             // the IJL15 FPS/Committed overlay.
@@ -313,49 +317,49 @@ namespace
             {0x90, 0x90, 0x8B, 0xCF, 0xE8, 0xF5}
         },
         {
-            dfl::dnf_patches::ForcePlainTextLogs,
+            settings.ForcePlainTextLogs,
             // DNF.trc logger: skip the rotate/xor transform call.
             0x008CE742,
             {0xE8, 0xB9, 0x0F, 0x03, 0x00, 0x8B},
             {0x90, 0x90, 0x90, 0x90, 0x90, 0x8B}
         },
         {
-            dfl::dnf_patches::ForcePlainTextLogs,
+            settings.ForcePlainTextLogs,
             // DNF.trc rotation header: keep the following stack cleanup byte.
             0x008CE801,
             {0xE8, 0xFA, 0x0E, 0x03, 0x00, 0x83},
             {0x90, 0x90, 0x90, 0x90, 0x90, 0x83}
         },
         {
-            dfl::dnf_patches::ForcePlainTextLogs,
+            settings.ForcePlainTextLogs,
             // DNF.trc rotation header: keep the following stack cleanup byte.
             0x008CE859,
             {0xE8, 0xA2, 0x0E, 0x03, 0x00, 0x83},
             {0x90, 0x90, 0x90, 0x90, 0x90, 0x83}
         },
         {
-            dfl::dnf_patches::ForcePlainTextLogs,
+            settings.ForcePlainTextLogs,
             // DNF.trc rotation header: keep the following stack cleanup byte.
             0x008CE8E1,
             {0xE8, 0x1A, 0x0E, 0x03, 0x00, 0x83},
             {0x90, 0x90, 0x90, 0x90, 0x90, 0x83}
         },
         {
-            dfl::dnf_patches::ForcePlainTextLogs,
+            settings.ForcePlainTextLogs,
             // DNF.trc rotation header: keep the following stack cleanup byte.
             0x008CE938,
             {0xE8, 0xC3, 0x0D, 0x03, 0x00, 0x83},
             {0x90, 0x90, 0x90, 0x90, 0x90, 0x83}
         },
         {
-            dfl::dnf_patches::ForcePlainTextLogs,
+            settings.ForcePlainTextLogs,
             // NeopleEngine.LOG writer: skip the rotate/xor transform call.
             0x008FF935,
             {0xE8, 0xC6, 0xFD, 0xFF, 0xFF, 0x57},
             {0x90, 0x90, 0x90, 0x90, 0x90, 0x57}
         },
         {
-            dfl::dnf_patches::RemoveCustomPopupAnnouncementTitle,
+            settings.RemoveCustomPopupAnnouncementTitle,
             // NOTI 126/131 message type zero first formats the received body
             // through client string 640, which adds the announcement title.
             // Pass the original 0x100-byte receive buffer to popup 44 instead.
@@ -446,16 +450,85 @@ namespace
             {0xE9, 0x25, 0x00, 0x00, 0x00, 0x41}
         }
     } };
-
-    constexpr std::uintptr_t PerformanceOverlayGate = 0x0083F992;
+    }
 
     bool IsPatchEnabled(const CodePatch& patch) noexcept
     {
-        if (patch.Address == PerformanceOverlayGate)
-        {
-            return dfl::ijl15_config::Get().EnablePerformanceOverlay;
-        }
         return patch.Enabled;
+    }
+
+    bool ValidatePatchRanges(
+        const std::array<CodePatch, 37>& patches) noexcept
+    {
+        const auto& settings = dfl::ijl15_config::Get();
+        const auto* base = reinterpret_cast<const unsigned char*>(DnfImageBase);
+        const auto* dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+        if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE)
+        {
+            return false;
+        }
+
+        const auto* ntHeaders = reinterpret_cast<const IMAGE_NT_HEADERS32*>(
+            base + dosHeader->e_lfanew);
+        if (ntHeaders->Signature != IMAGE_NT_SIGNATURE
+            || ntHeaders->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+        {
+            return false;
+        }
+
+        const std::uintptr_t imageEnd = DnfImageBase
+            + ntHeaders->OptionalHeader.SizeOfImage;
+        const auto rangeFitsImage =
+            [imageEnd](std::uintptr_t address, std::size_t size) noexcept
+        {
+            return address >= DnfImageBase
+                && address <= imageEnd
+                && size <= imageEnd - address;
+        };
+        const auto pointerFitsImage =
+            [imageEnd](std::uintptr_t address) noexcept
+        {
+            constexpr std::uintptr_t PointerSize = sizeof(std::uint32_t);
+            return address >= DnfImageBase
+                && address <= imageEnd
+                && PointerSize <= imageEnd - address;
+        };
+
+        for (const CodePatch& patch : patches)
+        {
+            if (!IsPatchEnabled(patch))
+            {
+                continue;
+            }
+            if (!rangeFitsImage(patch.Address, patch.Replacement.size()))
+            {
+                return false;
+            }
+        }
+
+        if (!pointerFitsImage(ClientDiamondUrlOperand)
+            || !pointerFitsImage(ClientPayUrlOperand))
+        {
+            return false;
+        }
+
+        if (settings.EnableCustomStackableUseMode1
+            && !rangeFitsImage(
+                StackableUseModeFunction,
+                OriginalStackableUseModePrologue.size()))
+        {
+            return false;
+        }
+
+        if (settings.FixMailboxArchiveRefresh
+            && !rangeFitsImage(
+                MailboxFirstInsertDirtyWrite,
+                OriginalMailboxDirtyWrite.size()))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     enum class PatchState
@@ -651,65 +724,6 @@ namespace
             return false;
         }
 
-        for (const CodePatch& patch : Patches)
-        {
-            if (!IsPatchEnabled(patch))
-            {
-                continue;
-            }
-            const std::uintptr_t endAddress =
-                patch.Address + patch.Replacement.size();
-            if (endAddress < patch.Address
-                || endAddress - DnfImageBase
-            > ntHeaders->OptionalHeader.SizeOfImage)
-            {
-                return false;
-            }
-        }
-
-        const auto clientUrlOperandFitsImage =
-            [imageSize = ntHeaders->OptionalHeader.SizeOfImage](
-                std::uintptr_t address) noexcept
-        {
-            constexpr std::uintptr_t PointerSize = sizeof(std::uint32_t);
-            const std::uintptr_t imageEnd = DnfImageBase + imageSize;
-            return address >= DnfImageBase
-                && address <= imageEnd
-                && PointerSize <= imageEnd - address;
-        };
-        if (!clientUrlOperandFitsImage(ClientDiamondUrlOperand)
-            || !clientUrlOperandFitsImage(ClientPayUrlOperand))
-        {
-            return false;
-        }
-
-        if (dfl::dnf_patches::EnableCustomStackableUseMode1)
-        {
-            const std::uintptr_t hookEnd = StackableUseModeFunction
-                + OriginalStackableUseModePrologue.size();
-            const std::uintptr_t imageEnd = DnfImageBase
-                + ntHeaders->OptionalHeader.SizeOfImage;
-            if (StackableUseModeFunction < DnfImageBase
-                || hookEnd < StackableUseModeFunction
-                || hookEnd > imageEnd)
-            {
-                return false;
-            }
-        }
-
-        if (dfl::dnf_patches::FixMailboxArchiveRefresh)
-        {
-            const std::uintptr_t hookEnd = MailboxFirstInsertDirtyWrite
-                + OriginalMailboxDirtyWrite.size();
-            const std::uintptr_t imageEnd = DnfImageBase
-                + ntHeaders->OptionalHeader.SizeOfImage;
-            if (MailboxFirstInsertDirtyWrite < DnfImageBase
-                || hookEnd < MailboxFirstInsertDirtyWrite
-                || hookEnd > imageEnd)
-            {
-                return false;
-            }
-        }
 
         return true;
     }
@@ -747,16 +761,24 @@ namespace dfl::dnf_patches
     bool Apply() noexcept
     {
         dfl::ijl15_config::Load();
-
-        std::array<PatchState, Patches.size()> states{};
-        for (std::size_t index = 0; index < Patches.size(); ++index)
+        const auto& settings = dfl::ijl15_config::Get();
+        const std::array<CodePatch, 37> patches = BuildPatches();
+        if (!ValidatePatchRanges(patches))
         {
-            if (!IsPatchEnabled(Patches[index]))
+            OutputDebugStringA(
+                "DFLegacy.Ijl15: patch addresses are outside the client image.\n");
+            return false;
+        }
+
+        std::array<PatchState, patches.size()> states{};
+        for (std::size_t index = 0; index < patches.size(); ++index)
+        {
+            if (!IsPatchEnabled(patches[index]))
             {
                 states[index] = PatchState::Applied;
                 continue;
             }
-            states[index] = Inspect(Patches[index]);
+            states[index] = Inspect(patches[index]);
             if (states[index] == PatchState::Mismatch)
             {
                 OutputDebugStringA(
@@ -766,7 +788,7 @@ namespace dfl::dnf_patches
         }
 
         const PatchState etcStackableUseModeState =
-            dfl::dnf_patches::EnableCustomStackableUseMode1
+            settings.EnableCustomStackableUseMode1
                 ? InspectEtcStackableUseModeHook()
                 : PatchState::Applied;
         if (etcStackableUseModeState == PatchState::Mismatch)
@@ -777,7 +799,7 @@ namespace dfl::dnf_patches
         }
 
         const PatchState mailboxDirtyHookState =
-            dfl::dnf_patches::FixMailboxArchiveRefresh
+            settings.FixMailboxArchiveRefresh
                 ? InspectMailboxDirtyHook()
                 : PatchState::Applied;
         if (mailboxDirtyHookState == PatchState::Mismatch)
@@ -788,7 +810,7 @@ namespace dfl::dnf_patches
         }
 
         const external_string_table::HookState stringTableHookState =
-            dfl::dnf_patches::UseExternalDnfStringTable
+            settings.UseExternalDnfStringTable
                 ? external_string_table::InspectHook()
                 : external_string_table::HookState::Installed;
         if (stringTableHookState
@@ -853,27 +875,27 @@ namespace dfl::dnf_patches
         }
 
         std::size_t appliedCount = 0;
-        for (std::size_t index = 0; index < Patches.size(); ++index)
+        for (std::size_t index = 0; index < patches.size(); ++index)
         {
-            if (!IsPatchEnabled(Patches[index])
+            if (!IsPatchEnabled(patches[index])
                 || states[index] == PatchState::Applied)
             {
                 continue;
             }
 
             if (!memory_patch::WriteBytes(
-                Patches[index].Address,
-                Patches[index].Replacement.data(),
-                Patches[index].Replacement.size()))
+                patches[index].Address,
+                patches[index].Replacement.data(),
+                patches[index].Replacement.size()))
             {
                 for (std::size_t rollback = 0; rollback < index; ++rollback)
                 {
                     if (states[rollback] == PatchState::Original)
                     {
                         memory_patch::WriteBytes(
-                            Patches[rollback].Address,
-                            Patches[rollback].Expected.data(),
-                            Patches[rollback].Expected.size());
+                            patches[rollback].Address,
+                            patches[rollback].Expected.data(),
+                            patches[rollback].Expected.size());
                     }
                 }
                 if (payUrlChanged)
@@ -896,23 +918,23 @@ namespace dfl::dnf_patches
         }
 
         bool mailboxDirtyHookChanged = false;
-        if (dfl::dnf_patches::FixMailboxArchiveRefresh
+        if (settings.FixMailboxArchiveRefresh
             && mailboxDirtyHookState == PatchState::Original)
         {
             if (!WriteMailboxDirtyHook())
             {
                 RestoreMailboxDirtyWrite();
                 for (std::size_t rollback = 0;
-                    rollback < Patches.size();
+                    rollback < patches.size();
                     ++rollback)
                 {
-                    if (IsPatchEnabled(Patches[rollback])
+                    if (IsPatchEnabled(patches[rollback])
                         && states[rollback] == PatchState::Original)
                     {
                         memory_patch::WriteBytes(
-                            Patches[rollback].Address,
-                            Patches[rollback].Expected.data(),
-                            Patches[rollback].Expected.size());
+                            patches[rollback].Address,
+                            patches[rollback].Expected.data(),
+                            patches[rollback].Expected.size());
                     }
                 }
                 if (payUrlChanged)
@@ -935,23 +957,23 @@ namespace dfl::dnf_patches
         }
 
         bool etcStackableUseModeChanged = false;
-        if (dfl::dnf_patches::EnableCustomStackableUseMode1
+        if (settings.EnableCustomStackableUseMode1
             && etcStackableUseModeState == PatchState::Original)
         {
             if (!WriteEtcStackableUseModeHook())
             {
                 RestoreEtcStackableUseModeFunction();
                 for (std::size_t rollback = 0;
-                    rollback < Patches.size();
+                    rollback < patches.size();
                     ++rollback)
                 {
-                    if (IsPatchEnabled(Patches[rollback])
+                    if (IsPatchEnabled(patches[rollback])
                         && states[rollback] == PatchState::Original)
                     {
                         memory_patch::WriteBytes(
-                            Patches[rollback].Address,
-                            Patches[rollback].Expected.data(),
-                            Patches[rollback].Expected.size());
+                            patches[rollback].Address,
+                            patches[rollback].Expected.data(),
+                            patches[rollback].Expected.size());
                     }
                 }
                 if (payUrlChanged)
@@ -978,23 +1000,23 @@ namespace dfl::dnf_patches
         }
 
         bool stringTableHookChanged = false;
-        if (dfl::dnf_patches::UseExternalDnfStringTable
+        if (settings.UseExternalDnfStringTable
             && stringTableHookState
                 == external_string_table::HookState::Original)
         {
             if (!external_string_table::InstallHook())
             {
                 for (std::size_t rollback = 0;
-                    rollback < Patches.size();
+                    rollback < patches.size();
                     ++rollback)
                 {
-                    if (IsPatchEnabled(Patches[rollback])
+                    if (IsPatchEnabled(patches[rollback])
                         && states[rollback] == PatchState::Original)
                     {
                         memory_patch::WriteBytes(
-                            Patches[rollback].Address,
-                            Patches[rollback].Expected.data(),
-                            Patches[rollback].Expected.size());
+                            patches[rollback].Address,
+                            patches[rollback].Expected.data(),
+                            patches[rollback].Expected.size());
                     }
                 }
                 if (etcStackableUseModeChanged)
@@ -1027,15 +1049,15 @@ namespace dfl::dnf_patches
         if (dfl::ijl15_config::Get().EnablePerformanceOverlay
             && !dfl::performance_overlay::InstallCallHook())
         {
-            for (std::size_t rollback = 0; rollback < Patches.size(); ++rollback)
+            for (std::size_t rollback = 0; rollback < patches.size(); ++rollback)
             {
-                if (IsPatchEnabled(Patches[rollback])
+                if (IsPatchEnabled(patches[rollback])
                     && states[rollback] == PatchState::Original)
                 {
                     memory_patch::WriteBytes(
-                        Patches[rollback].Address,
-                        Patches[rollback].Expected.data(),
-                        Patches[rollback].Expected.size());
+                        patches[rollback].Address,
+                        patches[rollback].Expected.data(),
+                        patches[rollback].Expected.size());
                 }
             }
             if (etcStackableUseModeChanged)
@@ -1067,7 +1089,7 @@ namespace dfl::dnf_patches
             return false;
         }
 
-        if (dfl::dnf_patches::DisableType16ChatMessageSound
+        if (settings.DisableType16ChatMessageSound
             && !dfl::message_audio::InstallType16ChatSoundHook())
         {
             OutputDebugStringA(
@@ -1099,7 +1121,7 @@ namespace dfl::dnf_patches
         // jump pointing at an IJL15 module that DllMain subsequently rejects.
         // A path-hook failure is non-fatal: all original client paths remain
         // intact and the DLL can still provide the JPEG compatibility layer.
-        if (dfl::output_paths::RedirectClientOutputPaths
+        if (settings.RedirectClientOutputPaths
             && !dfl::output_paths::InstallHook())
         {
             OutputDebugStringA(

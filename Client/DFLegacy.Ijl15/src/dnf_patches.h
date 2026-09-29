@@ -1,61 +1,33 @@
 #pragma once
 
-#include <cstdint>
+#include <cstddef>
 
+#include "ijl15_config.h"
 #include "output_paths.h"
 
 namespace dfl::dnf_patches
 {
-	inline constexpr bool DisableDebuggerDetection = true;
-	inline constexpr bool AllowMultipleClientInstances = true;
-	inline constexpr bool DisableStartupMinimize = true;
-	inline constexpr bool SinglePermanentAvatarPeriodOption = true;
-	inline constexpr bool EnableCustomStackableUseMode1 = true;
-	inline constexpr bool RemoveCustomPopupAnnouncementTitle = true;
-	inline constexpr bool UseExternalDnfStringTable = true;
-	inline constexpr bool FixMailboxArchiveRefresh = true;
-	inline constexpr bool BypassCeraPurchaseRestrictions = true;
-	// Skip the client's rotate/xor calls at the confirmed log writers so the
-	// DNF.trc and NeopleEngine streams remain plain text without changing
-	// unrelated string helpers.
-	inline constexpr bool ForcePlainTextLogs = true;
+	using dfl::ijl15_config::CeraPurchaseGate;
 
-	enum class CeraPurchaseGate
-	{
-		LegacySaleWindow,
-		PerCharacterLimit,
-		CharacterLevel,
-		ClientInventoryCapacity,
-		JobCompatibility,
-		CurrencyBalance,
-		RequiredOption,
-		GiftEligibility,
-	};
+	// Every feature switch is runtime-configurable through Config.ini beside
+	// the client executable: the [Features] section carries one key per switch
+	// (named after the Settings fields in ijl15_config.h) and the
+	// [CeraPurchaseGate] section carries one key per purchase gate. Missing
+	// keys keep the defaults in ijl15_config.cpp, which preserve the behaviour
+	// that was hard-coded before the switches became configurable.
 
-	constexpr bool ShouldBypassCeraPurchaseGate(
-		CeraPurchaseGate gate) noexcept
+	// Purchase-gate policy for the Cera shop patches: the master switch
+	// (BypassCeraPurchaseRestrictions) and the per-gate switch must both be
+	// enabled. Evaluated while the patch table is built.
+	inline bool ShouldBypassCeraPurchaseGate(CeraPurchaseGate gate) noexcept
 	{
-		if (!BypassCeraPurchaseRestrictions)
+		const auto& settings = dfl::ijl15_config::Get();
+		if (!settings.BypassCeraPurchaseRestrictions)
 		{
 			return false;
 		}
-
-		switch (gate)
-		{
-		case CeraPurchaseGate::LegacySaleWindow:
-		case CeraPurchaseGate::PerCharacterLimit:
-		case CeraPurchaseGate::CharacterLevel:
-			return true;
-
-		case CeraPurchaseGate::ClientInventoryCapacity:
-		case CeraPurchaseGate::JobCompatibility:
-		case CeraPurchaseGate::CurrencyBalance:
-		case CeraPurchaseGate::RequiredOption:
-		case CeraPurchaseGate::GiftEligibility:
-			return false;
-		}
-
-		return false;
+		return settings.BypassCeraPurchaseGates[
+			static_cast<std::size_t>(gate)];
 	}
 
 	// Add [etc] stackable item IDs here. Listed items use the client's mode-1
@@ -92,12 +64,6 @@ namespace dfl::dnf_patches
 			|| stackableType == 10
 				&& IsEtcStackableUseMode1ItemId(itemId);
 	}
-
-    // The FPS/memory overlay and mouse-wheel hook are runtime options in the
-    // Config.ini file beside DNF.exe. Their defaults are enabled there.
-	// Keep Type16Brown text but suppress the client's CHAT_MESSAGE notification
-	// sound. Type4Brown and other message types retain their normal behavior.
-	inline constexpr bool DisableType16ChatMessageSound = true;
 
 	bool IsTargetProcess() noexcept;
 	bool Apply() noexcept;

@@ -4,12 +4,10 @@
 
 namespace dfl::output_paths
 {
-    // Keep output locations relative to the client's current working directory.
-    inline constexpr bool RedirectClientOutputPaths = true;
-
-    // The 2008DF client uses this resolver for logs, crash artifacts, and the
-    // screenshot directory. Non-output paths continue through the original
-    // client implementation after the trampoline is installed.
+    // Output locations are kept relative to the client's current working
+    // directory. Whether the client's own path resolver is taken over at all
+    // is a runtime switch: [Features] RedirectClientOutputPaths in Config.ini
+    // (ijl15_config). No resolver hook is installed while it is disabled.
     bool InstallHook() noexcept;
 
     // Pure path policy used by the hook and by compatibility tests. The output

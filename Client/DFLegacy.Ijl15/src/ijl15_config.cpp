@@ -17,12 +17,47 @@ namespace
     constexpr int MaximumWindowDimension = 8192;
     constexpr char ConfigFileName[] = "Config.ini";
 
+    // Defaults for the feature switches: every patch and hook that shipped
+    // enabled stays enabled, and the Cera purchase gates keep their original
+    // on/off split. Config.ini keys override these one by one.
+    const char* const CeraPurchaseGateKeys[dfl::ijl15_config::CeraPurchaseGateCount] = {
+        "LegacySaleWindow",
+        "PerCharacterLimit",
+        "CharacterLevel",
+        "ClientInventoryCapacity",
+        "JobCompatibility",
+        "CurrencyBalance",
+        "RequiredOption",
+        "GiftEligibility",
+    };
+
     const dfl::ijl15_config::Settings DefaultSettings{
         DefaultWindowWidth,
         DefaultWindowHeight,
         true,
         true,
-        dfl::ijl15_config::ScaleFilterMode::Native};
+        dfl::ijl15_config::ScaleFilterMode::Native,
+        true, // DisableDebuggerDetection
+        true, // AllowMultipleClientInstances
+        true, // DisableStartupMinimize
+        true, // SinglePermanentAvatarPeriodOption
+        true, // EnableCustomStackableUseMode1
+        true, // RemoveCustomPopupAnnouncementTitle
+        true, // UseExternalDnfStringTable
+        true, // FixMailboxArchiveRefresh
+        true, // BypassCeraPurchaseRestrictions
+        { true, // LegacySaleWindow
+          true, // PerCharacterLimit
+          true, // CharacterLevel
+          false, // ClientInventoryCapacity
+          false, // JobCompatibility
+          false, // CurrencyBalance
+          false, // RequiredOption
+          false }, // GiftEligibility
+        true, // ForcePlainTextLogs
+        true, // DisableType16ChatMessageSound
+        false, // RedirectClientOutputPaths
+    };
 
     dfl::ijl15_config::Settings CurrentSettings = DefaultSettings;
     bool ConfigLoaded = false;
@@ -208,6 +243,76 @@ namespace dfl::ijl15_config
                 "Features",
                 "EnableMouseWheel",
                 DefaultSettings.EnableMouseWheel);
+            CurrentSettings.DisableDebuggerDetection = ReadBoolean(
+                path,
+                "Features",
+                "DisableDebuggerDetection",
+                DefaultSettings.DisableDebuggerDetection);
+            CurrentSettings.AllowMultipleClientInstances = ReadBoolean(
+                path,
+                "Features",
+                "AllowMultipleClientInstances",
+                DefaultSettings.AllowMultipleClientInstances);
+            CurrentSettings.DisableStartupMinimize = ReadBoolean(
+                path,
+                "Features",
+                "DisableStartupMinimize",
+                DefaultSettings.DisableStartupMinimize);
+            CurrentSettings.SinglePermanentAvatarPeriodOption = ReadBoolean(
+                path,
+                "Features",
+                "SinglePermanentAvatarPeriodOption",
+                DefaultSettings.SinglePermanentAvatarPeriodOption);
+            CurrentSettings.EnableCustomStackableUseMode1 = ReadBoolean(
+                path,
+                "Features",
+                "EnableCustomStackableUseMode1",
+                DefaultSettings.EnableCustomStackableUseMode1);
+            CurrentSettings.RemoveCustomPopupAnnouncementTitle = ReadBoolean(
+                path,
+                "Features",
+                "RemoveCustomPopupAnnouncementTitle",
+                DefaultSettings.RemoveCustomPopupAnnouncementTitle);
+            CurrentSettings.UseExternalDnfStringTable = ReadBoolean(
+                path,
+                "Features",
+                "UseExternalDnfStringTable",
+                DefaultSettings.UseExternalDnfStringTable);
+            CurrentSettings.FixMailboxArchiveRefresh = ReadBoolean(
+                path,
+                "Features",
+                "FixMailboxArchiveRefresh",
+                DefaultSettings.FixMailboxArchiveRefresh);
+            CurrentSettings.BypassCeraPurchaseRestrictions = ReadBoolean(
+                path,
+                "Features",
+                "BypassCeraPurchaseRestrictions",
+                DefaultSettings.BypassCeraPurchaseRestrictions);
+            for (std::size_t gate = 0;
+                gate < dfl::ijl15_config::CeraPurchaseGateCount;
+                ++gate)
+            {
+                CurrentSettings.BypassCeraPurchaseGates[gate] = ReadBoolean(
+                    path,
+                    "CeraPurchaseGate",
+                    CeraPurchaseGateKeys[gate],
+                    DefaultSettings.BypassCeraPurchaseGates[gate]);
+            }
+            CurrentSettings.ForcePlainTextLogs = ReadBoolean(
+                path,
+                "Features",
+                "ForcePlainTextLogs",
+                DefaultSettings.ForcePlainTextLogs);
+            CurrentSettings.DisableType16ChatMessageSound = ReadBoolean(
+                path,
+                "Features",
+                "DisableType16ChatMessageSound",
+                DefaultSettings.DisableType16ChatMessageSound);
+            CurrentSettings.RedirectClientOutputPaths = ReadBoolean(
+                path,
+                "Features",
+                "RedirectClientOutputPaths",
+                DefaultSettings.RedirectClientOutputPaths);
             CurrentSettings.ScaleFilter = ReadScaleFilter(
                 path,
                 DefaultSettings.ScaleFilter);

@@ -70,6 +70,8 @@ if(BUILD_TESTING)
     add_executable(ijl15_tests
         src/external_string_table.cpp
         src/external_string_table.h
+        src/ijl15_config.cpp
+        src/ijl15_config.h
         src/memory_patch.cpp
         src/memory_patch.h
         src/output_paths.cpp

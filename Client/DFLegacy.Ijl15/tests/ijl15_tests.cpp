@@ -188,7 +188,7 @@ bool TestCustomStackableUseModePolicy()
 {
     using dfl::dnf_patches::ShouldUseStackableMode1;
 
-    return dfl::dnf_patches::EnableCustomStackableUseMode1
+    return dfl::ijl15_config::Get().EnableCustomStackableUseMode1
         && ShouldUseStackableMode1(7'518u, 10u)
         && ShouldUseStackableMode1(7'519u, 10u)
         && ShouldUseStackableMode1(1'121u, 10u)
@@ -202,12 +202,17 @@ bool TestCustomStackableUseModePolicy()
 
 bool TestCustomPopupPatchConfiguration()
 {
-    return dfl::dnf_patches::RemoveCustomPopupAnnouncementTitle;
+    return dfl::ijl15_config::Get().RemoveCustomPopupAnnouncementTitle;
 }
 
 bool TestMailboxArchiveRefreshPatchConfiguration()
 {
-    return dfl::dnf_patches::FixMailboxArchiveRefresh;
+    return dfl::ijl15_config::Get().FixMailboxArchiveRefresh;
+}
+
+bool TestRelativeOutputPathConfiguration()
+{
+    return !dfl::ijl15_config::Get().RedirectClientOutputPaths;
 }
 
 bool TestCeraPurchaseGatePolicy()
@@ -247,7 +252,7 @@ bool TestExternalStringTableConfiguration()
         '7', '2', '3', '>', 0, 'x'};
 
     wchar_t path[MAX_PATH]{};
-    return dfl::dnf_patches::UseExternalDnfStringTable
+    return dfl::ijl15_config::Get().UseExternalDnfStringTable
         && std::wcscmp(
             dfl::external_string_table::RelativePath,
             L"Plugin\\dnf.str") == 0
@@ -360,6 +365,10 @@ int main()
     if (!TestExternalStringTableConfiguration())
     {
         return Fail("external CP936 dnf.str configuration failed");
+    }
+    if (!TestRelativeOutputPathConfiguration())
+    {
+        return Fail("relative output path redirection is enabled by default");
     }
     if (!TestRelativeOutputPathPolicy())
     {

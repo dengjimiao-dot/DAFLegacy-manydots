@@ -9,6 +9,8 @@ namespace DFLegacy.Protocol;
 /// Layouts mirror the GameProtocolEngine serializers (TX) and the confirmed
 /// command parsers (RX). Unknown bodies degrade to labeled hex instead of
 /// guessing field boundaries.
+/// 当前未接入任何链路（Tap 与控制台追踪只输出原始字节与报文名），保留备后续
+/// 离线工具或重新接入富化使用。
 /// </summary>
 public static class PacketPlainText
 {

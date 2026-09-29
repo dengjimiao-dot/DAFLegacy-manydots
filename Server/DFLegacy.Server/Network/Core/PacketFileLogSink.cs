@@ -6,9 +6,9 @@ namespace DFLegacy.Server;
 /// <summary>
 /// 逐包十六进制捕获(自参考项目 PacketFileLogger.cs 迁移,变体:实现
 /// <see cref="IPacketTapSink"/> 挂在既有 Tap 漏斗上,不做全局静态)。
-/// 默认关闭;开启后每收发一帧写两条:元信息行(方向/类型/协议/长度/CRC/
-/// 明文解码口径)与受限长度的 body、wire 十六进制。只做排版,不涉及任何
-/// 加解密(PacketPlainText 等工具在 Network/Core 独立提供)。
+/// 默认关闭;开启后每收发一帧写两条:元信息行(方向/类型/协议/报文名/长度/CRC/
+/// 口径分类)与受限长度的 body、wire 十六进制。只做排版,不涉及任何加解密与
+/// 字段解码。
 /// </summary>
 public sealed class PacketFileLogSink : IPacketTapSink, IDisposable
 {
@@ -62,7 +62,7 @@ public sealed class PacketFileLogSink : IPacketTapSink, IDisposable
         ReadOnlySpan<byte> body,
         ReadOnlySpan<byte> wire = default)
     {
-        var protocolName = PacketNames.TryGet(type, protocolId, out var name) ? name : "-";
+        var protocolName = PacketTypeNames.TryGetName(type, protocolId, out var name) ? name : "-";
         var line = new StringBuilder();
         line.Append('[')
             .Append(DateTime.Now.ToString("HH:mm:ss.fff"))

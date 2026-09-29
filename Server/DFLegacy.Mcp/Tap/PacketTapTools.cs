@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using DFLegacy.Protocol;
 using DFLegacy.Server;
 using ModelContextProtocol.Server;
 
@@ -41,7 +40,6 @@ public sealed class PacketTapTools(PacketTapHub hub, RuntimeState runtime)
         wireHex = @event.Wire is null ? null : Convert.ToHexString(@event.Wire),
         wireTruncated = @event.WireTruncated,
         bodyLengthOnWire = @event.Wire?.Length,
-        plainText = @event.PlainText,
     };
 
     private static string KindName(byte type) => type switch
@@ -173,7 +171,7 @@ public sealed class PacketTapTools(PacketTapHub hub, RuntimeState runtime)
             // 循环变量用 int：byte 到 255 时自增会回绕，`<= byte.MaxValue` 变死循环。
             for (var protocolId = 0; protocolId <= byte.MaxValue; protocolId++)
             {
-                if (!PacketNames.TryGet(type, (byte)protocolId, out var name) || name is null)
+                if (!PacketTypeNames.TryGetName(type, (byte)protocolId, out var name) || name is null)
                 {
                     continue;
                 }
@@ -199,49 +197,5 @@ public sealed class PacketTapTools(PacketTapHub hub, RuntimeState runtime)
         }
 
         return ToJson(new { query = normalized, matches });
-    }
-
-    [McpServerTool(Name = "protocol_decode", ReadOnly = true),
-     Description("离线复用服务端字段级解码器：对提交的 bodyHex 做明文解码，返回解码文本或 null（未知包号）。")]
-    public string ProtocolDecode(
-        [Description("帧类型：0=NOTI（走服务端解码器）、1=CMD（走客户端指令解码器）")] byte type,
-        [Description("包号")] byte protocolId,
-        [Description("body 的十六进制字符串（可含空格）")] string bodyHex,
-        [Description("true=按服务端下行解码器（DecodeServer）解读，默认按客户端上行解读")] bool fromServer = false)
-    {
-        byte[] body;
-        try
-        {
-            body = Convert.FromHexString(bodyHex.Replace(" ", "").Replace("\n", "").Replace("\r", ""));
-        }
-        catch (FormatException exception)
-        {
-            return ToJson(new { decoded = (string?)null, error = $"bodyHex is not valid hex: {exception.Message}" });
-        }
-
-        string? decoded = null;
-        string? error = null;
-        try
-        {
-            decoded = fromServer
-                ? PacketPlainText.DecodeServer(type, protocolId, body)
-                : PacketPlainText.Decode(type, protocolId, body);
-            if (decoded is null)
-            {
-                error = "No decoder for this type/protocolId; body returned as null.";
-            }
-        }
-        catch (Exception exception)
-        {
-            error = $"Decode failed: {exception.Message}";
-        }
-
-        return ToJson(new
-        {
-            decoded,
-            bodyLength = body.Length,
-            bodyHex = Convert.ToHexString(body),
-            error,
-        });
     }
 }

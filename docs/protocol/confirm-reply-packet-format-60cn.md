@@ -3,7 +3,7 @@
 > - **目的**:回答"未实现的包,如何确认服务端应答回包(服务端→客户端)的字段格式与长度"。结论:不靠猜,客户端解析代码本身就是格式的权威定义——**case 内读取顺序 = 线上字段顺序,读取器游标推进量 = 字段宽度,全部推进之和 = 精确载荷长度**(帧总长 = 6 + 载荷)。
 > - **验证环境**:客户端主程序 IDA 库(ImageBase 0x400000, Hex-Rays 就绪),经 ida-pro-mcp HTTP 端点 `http://127.0.0.1:13337/mcp` 操作,文中所有地址均已在 IDB 实证。
 > - **配套工具**:`tools/extract_noti_readers.py`(批量提取某 NOTI 的读取序列);帧头与加解密实证见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> - **服务端对应物**:回包构建 `Server/DFLegacy.Server/Protocol/GameServerPacket.cs`(6B 头自动写长度);明文回读 `Protocol/PacketPlainText.cs`;分发 `Network/EntranceService.cs` + `Protocol/GameProtocolEngine.cs`。
+> - **服务端对应物**:回包构建 `Server/DFLegacy.Server/Network/Core/GameServerPacket.cs`(6B 头自动写长度);明文回读 `Network/Core/PacketPlainText.cs`(当前保留未接入);分发 `Network/EntranceService.cs` + `Network/Protocol/GameProtocolEngine.cs`。
 
 ## 1. 核心原理
 
@@ -180,13 +180,13 @@ dstr message      // cap=0x200(512B)
 | 库存刷新(自己) | NOTI 14 UPDATE_ITEM_LIST 单条目 `{slot, item, n-1, st, dur, seal}`(或 count=0 时 item=0xFFFF 清槽),与抓包中物品移动同格式 |
 | 广播(全服) | **NOTI 130**(§6.2 布局)给所有在线会话:`characterSessions` 现有 `NotifyMessageAll` 只发 NOTI 12,需新增 megaphone 通知通道(新 builder `CreateMegaphoneNotification` + registry 租约方法 + 全服遍历);服务器喇叭(13)= 全服,频道喇叭(14)= 本频道,单频道架构下先同全服、留范围注释 |
 | 兜底 | type 13/14 但 slot 校验失败 → `CreateUseStackableItemError`/静默+日志,不广播 |
-| 文档/明文 | `client-packet-enums-60cn.md` NOTI 130 行补 ✅ 与长度公式(12+a+b);`PacketPlainText.cs` 补 NOTI 130 与 CMD 17 type 13/14/15 的明文解码 case |
+| 文档/明文 | `client-packet-enums-60cn.md` NOTI 130 行补 ✅ 与长度公式(12+a+b);`PacketPlainText.cs` 补 NOTI 130 与 CMD 17 type 13/14/15 的明文解码 case(该解码器当前保留未接入,补 case 属重新接入时的工作) |
 | 待确认 | type 14 ↔ 物品 37 映射(抓一次频道喇叭);flag 字节语义;type 15 属于哪种喇叭 |
 
 ## 7. 工具与产物
 
 - `tools/extract_noti_readers.py`:对指定 NOTI 批量提取读取序列(`python tools/extract_noti_readers.py 58 59 60 61 62 63 64 70 71`;`--all` 全表)。输出为平铺序列,含一次循环体(标 `fixed>=`),循环结构与计数字段需按其打印的 case 区间人工核对。
-- 提取结果按仓库惯例回填两处:`docs/protocol/client-packet-enums-60cn.md` 对应行的"回包字节/长度"列;`Protocol/PacketPlainText.cs` 的 `DecodeNoti` 加 case,使包追踪日志 `text=` 输出明文字段而非 hex 兜底。
+- 提取结果按仓库惯例回填两处:`docs/protocol/client-packet-enums-60cn.md` 对应行的"回包字节/长度"列;`Network/Core/PacketPlainText.cs` 的 `DecodeNoti` 加 case(该解码器当前保留未接入,重新接入后包追踪日志即可输出明文字段而非 hex 兜底)。
 - 实现顺序遵循 `docs/servers4a21/feature-backfill-plan-vs-s4a21.md` 的"文档先行"约定:布局进文档 → 评审 → 动代码。
 
 ## 8. 坑与注意事项

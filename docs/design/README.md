@@ -45,7 +45,7 @@
 ### 09 · DAF-MCP 协议包实时监听(已实现)
 
 - 代码落点:
-  - `Server/DFLegacy.Mcp/`:独立模块项目(`McpModule`、`McpHost`、`Tap/PacketTap{Event,Hub,Filter,Tools}`、`Tap/PacketNamesResource`)——§6 全部 7 个工具(`packet_watch/get/wait`、`session_list`、`packet_names_search`、`protocol_decode`、`tap_status`)均已提供。
+  - `Server/DFLegacy.Mcp/`:独立模块项目(`McpModule`、`McpHost`、`Tap/PacketTap{Event,Hub,Filter,Tools}`、`Tap/PacketNamesResource`)——§6 全部 6 个工具(`packet_watch/get/wait`、`session_list`、`packet_names_search`、`tap_status`)均已提供。
   - `Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`:遥测接缝;`Infrastructure/RuntimeState.cs`:漏斗改造;`Infrastructure/McpModuleLoader.cs`:反射加载器。
 - 配置:`server.json` → `DFLegacy.Mcp.{Enabled,Host,Port}`(`Enabled` 代码默认 `false`;当前本地 `server.json` 已开启,`127.0.0.1:12222`)。发布:`publish-mcp.bat` / `publish-mcp.sh` 单独发布模块 DLL。
 - 接入与验收:见 [README.md §MCP](../../README.md)(智能体接入配置、工具清单)。

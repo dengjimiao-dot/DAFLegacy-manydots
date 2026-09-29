@@ -2,7 +2,7 @@
 
 > 来源：对 `DNF_ACT1_0918/DF/DNF.exe` 的静态逆向（2026-09-28，IDA Professional 9.1 批处理 + 原始 PE 扫描）。
 > 用途：确认客户端对"活动"的支持范围与协议入口，指导 `Server/DFLegacy.Server` 活动相关
-> NOTI 包的实现；同时为 `Protocol/PacketNames.cs` 注释中引用的
+> NOTI 包的实现；同时为 `Network/Core/PacketTypes.cs` 头注释中引用的
 > `docs/protocol/client-packet-enums-60cn.md` 补上 NOTI 名字表实测数据（见附录 A）。
 > 仅用于自有程序兼容性研究。
 >
@@ -41,8 +41,10 @@
 
 - 名字指针表 @ **VA 0xB54170**（文件偏移 0x752770），175 项 × 4 字节，**下标即 wire ID**；
   表尾第 154–174 项为 `NOTI_NO_NAME` 占位。紧随其后（VA 0xB54430）是 CMD 名字表，
-  与 `Protocol/PacketNames.cs` 头注释完全吻合（该注释中的 0xB54170/0xB54430 为 VA）。
-- `PacketNames.cs` 中 C# 数组下标 + 10 = wire ID（其数组缺前 10 个 ID 的表项），
+  与 `Network/Core/PacketTypes.cs` 头注释完全吻合（该注释中的 0xB54170/0xB54430 为 VA）。
+- 原 `Protocol/PacketNames.cs`（2026-09-29 删除，报文名反查并入 `Network/Core/PacketTypes.cs`
+  的 `PacketTypeNames`，名称即 `NotiPacketType` / `CmdPacketType` 成员名）中
+  C# 数组下标 + 10 = wire ID（其数组缺前 10 个 ID 的表项），
   已用 6 个点交叉验证：MESSAGE 12、FATIGUE 36、SERVEREVENT 69、SERVER_BROADCAST 86、
   EVENT_INFO 120、MEGAPHONE_MSG 130（服务端已实现的喇叭 `MegaphoneMessageNotification = 130`）。
 - ⚠️ 名字字符串在文件里有两份拷贝：被表引用的一份在 VA 0xA88230–0xA89600；
@@ -148,9 +150,9 @@ IDConfirmEvent` 是 UI 消息/观察者模式的基类（"窗口事件"），与
 | 86 | SERVER_BROADCAST | ❌ 未实现 | payload 按本文 §3.2 布局发；type=1/2 的字段含义与字符串表 0x689/0x104B 的格式串内容需实测核对 |
 | 69 | SERVEREVENT | ❌ 未实现 | payload `{flag, type, ?}`；type=1 + flag 可触发全服特效（雪花类，字符串表 75/76） |
 
-验证方法：项目已有包追踪输出报文名能力（`Protocol/PacketPlainText.cs`，
-`case 120` 已有解码），可按 §3 的 payload 布局补充 69/86 的解码分支，
-再用真实客户端连服观察。
+验证方法：项目已有包追踪输出报文名能力（`Network/Core/PacketTypes.cs` 的两张枚举经
+`PacketTypeNames.TryGetName` 反查）；字段级解码器 `PacketPlainText` 当前保留未接入，
+可按 §3 的 payload 布局重新接入后补 69/86 的解码分支，再用真实客户端连服观察。
 
 ## 6. 边界（这版客户端"不支持"什么）
 
@@ -163,7 +165,7 @@ IDConfirmEvent` 是 UI 消息/观察者模式的基类（"窗口事件"），与
 ## 附录 A：NOTI 名字表全量（wire ID → 名称）
 
 提取自 VA 0xB54170 表（下标即 wire ID）。0–153 有名，154–174 为 `NOTI_NO_NAME`。
-与 `Protocol/PacketNames.cs` 的映射（数组下标 + 10）一致。
+与客户端名字表（现物化为 `Network/Core/PacketTypes.cs` 的 `NotiPacketType`，下标即 wire ID）的映射一致。
 
 ```
   0 ENUM_NOTIPACKET_CHECK_CONNECTION      1 ENUM_NOTIPACKET_CHANNELINFO

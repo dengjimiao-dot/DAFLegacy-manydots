@@ -18,7 +18,7 @@
 
 | 协议(60A1 号) | 现状 | 证据 |
 |---|---|---|
-| CMD 128/129/130 黑名单 | **未实现**;全仓库无数据结构/存储/handler;128/129 掉入兜底只打日志(ES:12249-12254) | 60A1 名表 PacketNames.cs:171-172 |
+| CMD 128/129/130 黑名单 | **未实现**;全仓库无数据结构/存储/handler;128/129 掉入兜底只打日志(ES:12249-12254) | 60A1 名表 `CmdPacketType.REGISITER_TO_BLACKLIST`(128)/`DELETE_TO_BLACKLIST`(129)/`REQUEST_BLACKLIST`(130) |
 | CMD 10/11 REQUEST/RESPONSE_PEER(双人交易)+ NOTI 7/8/15/16/17/18 | **未实现**:无常量、无 handler、无 builder | 枚举表标注 ❌;CMD 26 处注明"此版交易 NOTI 15-18 未实现" |
 | 邮件手续费 | **无**:CMD 97 只扣信内 gold(ES:3814),无费用概念 | ES:3695-3896、14050-14103 |
 | 邮件多附件 | **不支持**:单附件模型(ES:3724;JsonGameStore.cs:2370-2377) | — |
@@ -33,8 +33,8 @@
 
 | 协议 | 现状 | 证据 |
 |---|---|---|
-| **CMD 130 错配**(最高优先) | 60A1 名表 130=REQUEST_BLACKLIST,却被 `ExchangeServerCharacterInfoCommand = 130` 占用并回桩 `[1,0]`;EXCHANGE_SERVER_CHARAC_INFO 实际是 139/140(PacketNames.cs:176) | GPE:370、457-458、496-500 |
-| CMD 82 CALL_MEMER_LIST | 被注册为 `PrivateStorePollCommand=82`,回 18B 空商店固定桩,不解析请求;真正的私人商店 CMD 85-89 全未注册 | GPE:362、456、482-494;PacketNames.cs:148 |
+| **CMD 130 错配**(最高优先) | 60A1 名表 130=REQUEST_BLACKLIST,却被 `ExchangeServerCharacterInfoCommand = 130` 占用并回桩 `[1,0]`;EXCHANGE_SERVER_CHARAC_INFO 实际是 139/140(`CmdPacketType.EXCHANGE_SERVER_CHARAC_INFO` / `_RET`) | GPE:370、457-458、496-500 |
+| CMD 82 CALL_MEMER_LIST | 被注册为 `PrivateStorePollCommand=82`,回 18B 空商店固定桩,不解析请求;真正的私人商店 CMD 85-89 全未注册 | GPE:362、456、482-494;`CmdPacketType.CALL_MEMER_LIST`(82) |
 | CMD 41 USE_SKILL | 只回成功字节,材料扣减全靠 CMD 18 | ES:10475-10524 |
 | CMD 148 ALLDIE_MONSTER | 纯日志 | ES:10754-10762 |
 | CMD 26 SET_ITEMTRADE_STATE | 实现为"把锁定物品卖给 NPC"(算价加币+回 SELL 包),非玩家交易 | ES:9483-9568 |

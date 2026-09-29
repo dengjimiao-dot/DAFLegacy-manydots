@@ -1,6 +1,6 @@
 # 09 · DAF-MCP 总网关（一）：协议包实时监听（Packet Tap）
 
-- 状态：**已实现**（2026-09-29 核定：G1 协议包监听随 commit `7e12da7` 落地，代码见 `Server/DFLegacy.Mcp/`、`Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs` 与 `Infrastructure/McpModuleLoader.cs`，§6 全部 7 个工具均已提供；G2 PVF 工具组尚未实施，见 §15.2）
+- 状态：**已实现**（2026-09-29 核定：G1 协议包监听随 commit `7e12da7` 落地，代码见 `Server/DFLegacy.Mcp/`、`Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs` 与 `Infrastructure/McpModuleLoader.cs`，§6 全部 6 个工具均已提供，原列于此的 `protocol_decode` 已随字段级解码器断开接线而下线；G2 PVF 工具组尚未实施，见 §15.2）
 
 ---
 
@@ -17,7 +17,7 @@
 | P5 | **不过多侵入业务代码** | 业务文件（`Network/*.cs`）只做删除（去掉 `EnablePacketTracing` 门卫）；抓包分发收敛在 `RuntimeState` 单一漏斗；侵入清单见 §5.2 |
 | P6 | **只读观测** | 全部工具只读；写操作类工具须先补鉴权再立项（§14） |
 
-与已有设施的关系：管理平台 `GET /api/packets` **不改动、不依赖**（那是管理界面的 400 条快照查询）；`EnablePacketTracing` 开关继续只管快照与日志，**开 MCP 不需要开包追踪**；`PacketPlainText` / `PacketNames` 在富化阶段复用（§4.2）；G2 复用 `ScriptFileSystem` / `PvfArchiveReader`（§15.2）。
+与已有设施的关系：管理平台 `GET /api/packets` **不改动、不依赖**（那是管理界面的 400 条快照查询）；`EnablePacketTracing` 开关继续只管快照与日志，**开 MCP 不需要开包追踪**；报文名反查（`PacketTypeNames`，单源为 `Network/Core/PacketTypes.cs` 的两张协议号枚举）在富化阶段复用（§4.2）；字段级明文解码器 `PacketPlainText` 当前保留但未接入（§4.2 附注）；G2 复用 `ScriptFileSystem` / `PvfArchiveReader`（§15.2）。
 
 非目标：不做包注入/重放/篡改；不做 Web UI；不做跨机暴露（默认回环绑定，Host 改非回环等同主动暴露，见 §9）；不改 `RuntimeState` 快照队列语义。
 
@@ -26,9 +26,9 @@
 | 术语 | 含义 |
 | --- | --- |
 | 包 / 帧 / 数据报 | "包"泛指一次协议收发；"帧"指 TCP 通道的定长头帧（`PacketFrame`/`GameServerPacket`）；"数据报"指 UDP（`GameDatagramProtocol`） |
-| 报文名 | `PacketNames.TryGet` 给出的枚举名（如 `ENUM_NOTIPACKET_CHANNELINFO`），源自 60CN 客户端逆向；**不是**"报名" |
+| 报文名 | `PacketTypeNames.TryGetName` 给出的枚举名（如 `ENUM_NOTIPACKET_CHANNELINFO`），源自 60CN 客户端逆向；**不是**"报名" |
 | 包号 | `ProtocolId` 字节，报文名对应的数字编号 |
-| 明文（PlainText） | `PacketPlainText` 对 body 的字段级解码文本；未知/失败为 null，不是整包 hex |
+| 明文（PlainText） | 曾指 `PacketPlainText` 对 body 的字段级解码文本；该解码器当前保留未接入，事件模型中已无此字段（§4.2） |
 | wire / 线路原始帧 | 含帧头与 CRC 的线上字节；RX 方向含客户端密文，与"解码后 body"相对 |
 | 漏斗 | `RuntimeState` 的 `TracePacket`/`TraceDatagram`——全部包事件唯一的汇聚分发点（§5.1） |
 | 游标（Seq） | 跨全部服务的全局单调事件序号，`packet_watch` 的续读位置 |
@@ -57,7 +57,7 @@
 
 | MCP 能力 | 提供内容 |
 | --- | --- |
-| Tools | `packet_watch`、`packet_get`、`packet_wait`、`session_list`、`packet_names_search`、`protocol_decode`、`tap_status`（§6） |
+| Tools | `packet_watch`、`packet_get`、`packet_wait`、`session_list`、`packet_names_search`、`tap_status`（§6） |
 | Resources | `packet-names://noti`、`packet-names://cmd`（报文名注册表全文） |
 | Prompts | 可选：`analyze-window` |
 | 工具发现 | **协议内建，零自研**：`tools/list` / `resources/list` / `prompts/list` 由官方 SDK 自动实现——`[McpServerToolType]` 工具类自动入列，JSON Schema 由参数类型 + `[Description]` 生成；新工具组加文件即自动入列 |
@@ -81,7 +81,7 @@
 │                            │  IPacketTapSink ▼                              │
 │  ┌── DFLegacy.Mcp（独立模块项目，默认关闭，运行期加载）──────────────────────────┐ │
 │  │  McpModule（入口）: Enabled && DLL 存在 → 激活，否则静默                    │ │
-│  │  ├─ G1 PacketTapHub：富化（报文名/明文）+ seq / ring / 订阅者通道池            │ │
+│  │  ├─ G1 PacketTapHub：富化（报文名）+ seq / ring / 订阅者通道池                  │ │
 │  │  ├─ G2 PvfTools（后续）: DI 注入 ScriptFileSystem                          │ │
 │  │  └─ G3+ …（后续工具组，各一个静态工具类文件）                                 │ │
 │  │  自持 WebApplication → {Mcp.Host}:{Mcp.Port}/mcp（§8 配置）                 │ │
@@ -143,20 +143,19 @@ public interface IPacketTapSink
 // PacketTapEvent.cs —— MCP 面向智能体的富事件模型（字段演进不动 Server）
 public sealed record PacketTapEvent(
     long Seq, DateTimeOffset Timestamp, Guid SessionId, string Service, string Direction,
-    byte Type, byte ProtocolId, string? PacketName,        // PacketNames.TryGet 结果
+    byte Type, byte ProtocolId, string? PacketName,        // PacketTypeNames.TryGetName 结果
     int TotalLength, byte[] Body, bool BodyTruncated,      // 解密后 body，截断到 MaxBodyBytes=4096
-    byte[]? Wire, bool WireTruncated,                      // 线路原始帧（仅 RX 有：含头、含客户端密文）
-    string? PlainText);                                    // PacketPlainText 解码结果，未知/失败为 null
+    byte[]? Wire, bool WireTruncated);                     // 线路原始帧（仅 RX 有：含头、含客户端密文）
 
 // PacketTapHub : IPacketTapSink —— 实现接缝
-//   Publish() 内：字节拷贝截断 → PacketNames.TryGet / PacketPlainText.Decode(Server)（按 decodeMode）
+//   Publish() 内：字节拷贝截断 → PacketTypeNames.TryGetName（报文名富化）
 //   → 记全局 seq、入 ring、按订阅者谓词预筛后扇出
 ```
 
 - `Type` 沿用现有 Trace 语义：0=NOTI 或 entrance 协议帧（两者同为 0，按 `Service` 区分）、1=CMD、2=UDP 数据报；`Direction` 沿用 `RX`/`TX`/`RX-UDP`/`TX-UDP`/`RX-UDP-NAT`/`RX-UDP-NAT-KEEPALIVE`；`Service` 沿用 `entrance:{port}` / `channel:{port}` / `character-datagram:{port}`。
 - hex 字符串不在事件里：ring 存 `byte[]`，工具返回时才格式化。
 - `Wire` 仅 RX TCP 帧路径有（客户端密文，逆向有价值）；TX 线路帧可由 body + 帧头推导，不占内存。
-- 富化在 hub 做：每包一次报文名查询 + 一次明文解码；try/catch 包裹，追踪绝不影响会话。
+- 富化在 hub 做：每包一次报文名查询；try/catch 包裹，追踪绝不影响会话。字段级明文解码（`PacketPlainText`）当前保留未接入——重新接入即在此处补一次解码（附注：§4.1 的 `decodeMode` 口径分类保留，用于标识 body 来源）。
 
 ---
 
@@ -299,8 +298,7 @@ McpModuleLoader.TryAttach(builder, options);
     "bodyLength": 120,
     "bodyHex": "0100AC00…", "bodyTruncated": false,
     "wireHex": "…", "wireTruncated": false,
-    "crc32": "0x1A2B3C4D", "crcValid": true,
-    "plainText": "pos=(104,212) …"
+    "crc32": "0x1A2B3C4D", "crcValid": true
   }],
   "nextSeq": 1043,
   "ringOldestSeq": 311,
@@ -336,12 +334,11 @@ McpModuleLoader.TryAttach(builder, options);
 | `packet_wait` | `filter`, `timeoutMs` | 第一条匹配事件或 `{timedOut:true}` | "点了强化等回包"式往返验证 |
 | `session_list` | — | `SessionSnapshot[]`（直接 DI `RuntimeState.Sessions()`） | 找要盯的 sessionId |
 | `packet_names_search` | `query`, `limit` | Noti/Cmd 表中匹配的 `{type, protocolId, name}` | 先查"包号↔名字"再过滤 watch |
-| `protocol_decode` | `type`, `protocolId`, `bodyHex` | 明文文本或 null | 离线复用服务端解码器 |
 | `tap_status` | — | 当前 seq、ring 占用/容量、订阅数、是否已启用 | 确认抓包通道活着 |
 
 ### 6.4 Resources
 
-`packet-names://noti` / `packet-names://cmd`：整张报文名注册表 JSON（源自 60A1 客户端逆向，见 `PacketNames.cs` 头注释）。
+`packet-names://noti` / `packet-names://cmd`：整张报文名注册表 JSON（源自 60A1 客户端逆向，见 `Network/Core/PacketTypes.cs` 头注释）。
 
 ---
 
@@ -392,7 +389,7 @@ McpModuleLoader.TryAttach(builder, options);
 
 1. 默认回环绑定，与 Admin API 同一防线（ADMIN_API.md §1.2 的警告同样适用：不要 NAT/反代 MCP 端口）。
 2. `Host` 可配置（§8）：**改非回环地址等同主动暴露协议流与游戏数据**，v1 无鉴权，跨机场景必须先叠加防火墙/反代认证或等鉴权能力落地（§14.2）。
-3. 工具集只读；`protocol_decode` 只作用于智能体提交的字节串。
+3. 工具集只读；工具只作用于智能体提交的字节串与内存中的 ring。
 4. 默认关闭 = 出厂无新攻击面；开启后默认也只多一个回环端口。
 5. 单包截断常量同时是内存上界与 DoS 防线。
 6. 无鉴权（本机信任模型，与 Admin 现状一致）；跨机需求出现时先补 Bearer Token（§14.2）。
@@ -420,7 +417,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ### 10.2 典型分析流程（G1）
 
-1. **验证一个新实现的 TX 包**：`packet_names_search` 确认包号 → `packet_watch(filter={protocolId, kind:"noti"}, waitMs=15000)` 挂起 → 触发客户端操作 → 读 `plainText` 与 `bodyHex` 比对预期布局。
+1. **验证一个新实现的 TX 包**：`packet_names_search` 确认包号 → `packet_watch(filter={protocolId, kind:"noti"}, waitMs=15000)` 挂起 → 触发客户端操作 → 读 `bodyHex` 按报文布局比对（字段级解码当前未接入，比对以字节与 `docs/protocol/packet-detail-*.md` 为准）。
 2. **逆向未知 RX 包**：`packet_watch(filter={kind:"cmd"})` 盯客户端上行 → 可疑包 `packet_get` 拿完整 `bodyHex` + `wireHex`（密文）→ 结合报文名注册表给字段假设 → 下次抓包验证。
 3. **往返时序排查**：`session_list` 锁定会话 → `packet_watch(filter={sessionId})` 全量跟踪，按 `seq` 还原请求/响应配对（含 CRC 失败、UDP NAT 探测等异常事件）。
 
@@ -444,7 +441,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ### M3 · G1 辅助能力
 
-- `packet_names_search`、`protocol_decode`、Resources、（可选）stdio 适配进程
+- `packet_names_search`、Resources、（可选）stdio 适配进程（原列于此的 `protocol_decode` 已随字段级解码器断开接线而下线）
 
 ### M4 · G2 PVF 工具组（另开档细化，见 §15.2）
 
@@ -455,7 +452,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 **单元（SelfTests）**
 
 - 漏斗（自实现 `IPacketTapSink`，不依赖 Mcp 项目）：`_tracingEnabled=false` 且无 TapSink → 快照队列保持空（`/api/packets` 回归）；仅 TapSink 激活 → 收到的原始参数正确、快照仍为空；两者同开 → 双通道各自正确。
-- PacketTapHub（Mcp 项目）：富化正确（报文名/明文按 `decodeMode`）；seq 单调且跨服务连续；ring 超容淘汰最旧；订阅通道满 DropOldest 且计数正确；无订阅者 `Publish` 零分配（`GC.GetAllocatedBytesForCurrentThread` 前后差断言）。
+- PacketTapHub（Mcp 项目）：富化正确（报文名按 `decodeMode` 口径分类）；seq 单调且跨服务连续；ring 超容淘汰最旧；订阅通道满 DropOldest 且计数正确；无订阅者 `Publish` 零分配（`GC.GetAllocatedBytesForCurrentThread` 前后差断言）。
 - filter：各维度匹配与 AND/OR 组合；`afterSeq` 早于 `OldestSeq` 时 `cursorLapsed=true`。
 - 加载器：`Enabled=false` → 不尝试加载；`Enabled=true` 无 DLL → 警告 + 继续；DLL 在位但初始化抛错 → 警告 + 继续、`TapSink` 保持 null。
 
@@ -467,14 +464,14 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 **人工验收**
 
-- ZCode 挂 MCP，边操作客户端边让智能体实时复述收发包（登录、选角、进图、捡物品各一轮），核对报文名与明文字段。
+- ZCode 挂 MCP，边操作客户端边让智能体实时复述收发包（登录、选角、进图、捡物品各一轮），核对报文名与 body 字节。
 
 ---
 
 ## 13. 性能预算
 
 - **MCP 关闭（默认）**：热路径新增 = 一次 `TraceX` 调用 + `TapActive` 空判断 + `_tracingEnabled` 判断。纳秒级。
-- **仅 Tap 激活**：每包一次字节拷贝（受截断常量约束）+ 一次报文名查询 + 一次明文解码（未知包立即 null）+ 入队一次——与现有 `LogPacket` 同类工作量。
+- **仅 Tap 激活**：每包一次字节拷贝（受截断常量约束）+ 一次报文名查询 + 入队一次——与现有 `LogPacket` 同类工作量，且少于解码接入时的开销。
 - **订阅前预筛**：hub 出队侧按订阅者谓词过滤，UDP 热流量不冲击只订 `cmd` 的订阅者。
 - **关闭时模块零驻留**：不开端口、无线程、无定时器。
 
@@ -545,7 +542,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 | 能力 | ServerS4A21（前代） | DAF-MCP（本档） | 结论 |
 | --- | --- | --- | --- |
-| 服务端包捕获 | `PacketFileLogger`：`--packet-capture` 开关（默认关）→ 4096 有界异步队列 → 落盘 `packet_log.txt`（64MB 上限，满则丢 + 计数告警） | `PacketTapHub`：`Enabled`（默认关）→ ring(4096) + 订阅通道(1024, DropOldest) → MCP 长轮询 | **继承全部工程纪律**（有界队列、丢弃计数、默认关闭、截断上限）；消费端从"人 tail 文件"升级为"智能体游标实时拉取"，且多出报文名/明文富化 |
+| 服务端包捕获 | `PacketFileLogger`：`--packet-capture` 开关（默认关）→ 4096 有界异步队列 → 落盘 `packet_log.txt`（64MB 上限，满则丢 + 计数告警） | `PacketTapHub`：`Enabled`（默认关）→ ring(4096) + 订阅通道(1024, DropOldest) → MCP 长轮询 | **继承全部工程纪律**（有界队列、丢弃计数、默认关闭、截断上限）；消费端从"人 tail 文件"升级为"智能体游标实时拉取"，且多出报文名富化 |
 | 带外抓包 | `PvfProxy` 独立进程：TCP 中间人（7001/10011 → 7002/10012），逐行日志，bat 编排拉起全家桶 | 不需要：tap 在进程内协议层（解密后帧 + RX wire 双份） | 中间人方案保留为 fallback 认知：当需要抓"不经服务端代码路径"的流量时它仍是正解 |
 | PVF 读取 | `Tool/PvfLib` 独立库：`PvfDecryptor`（Decrypt/Guard + zlib）、`PvfUnpacker/PvfPacker`、`ScriptParser`（Parse → 节点树） | G2（§15.2）：现有 `ScriptFileSystem/PvfArchiveReader` 覆盖读路径；`pvf_parse_script` 参考 `ScriptParser` 思路 | PvfLib 的能力面是 G2 的验收参照；但其"独立成库"的组织方式**不采纳**——PVF 工具归入 `DFLegacy.Mcp` 单一项目（P4） |
 
@@ -560,7 +557,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 | 维度 | 文件日志 + 中间人（前代） | 进程内 tap + 标准 MCP（本档） |
 | --- | --- | --- |
 | 目标消费者 | 人：事后翻日志、grep、离线脚本 | 智能体：实时游标跟踪、按字段过滤、结构化返回 |
-| 看到的数据 | 线路字节（代理侧是密文；服务端侧按固定头长解帧） | 解密后的帧 + 报文名 + 明文字段 + RX wire 双份 |
+| 看到的数据 | 线路字节（代理侧是密文；服务端侧按固定头长解帧） | 解密后的帧 + 报文名 + RX wire 双份 |
 | 崩溃时 | **文件已落盘，可事后验尸** | ring 在内存，随进程消失 |
 | 侵入性 | 代理方案对服务端零侵入 | 需要漏斗改造（§5.2，净行数为负） |
 | 消费门槛 | 任何工具都能读文件 | 需要 MCP 客户端 |
@@ -588,6 +585,6 @@ MCP 的日志走**主进程的 ILoggerFactory**（`Attach` 时注入，`McpHost`
 
 ### 17.2 明确不打印的（设计红线）
 
-1. **包内容不进日志**：body/wire hex、报文名、明文只经 MCP 工具流返回给订阅的智能体，不写日志——避免双份记录、避免协议数据落盘、避免热路径字符串开销。
+1. **包内容不进日志**：body/wire hex、报文名只经 MCP 工具流返回给订阅的智能体，不写日志——避免双份记录、避免协议数据落盘、避免热路径字符串开销。
 2. **逐次工具调用不打日志**：`packet_watch` 是 10 秒级长轮询，逐调用记 Info 会淹没真正的问题；调用频次与丢弃统计由 `tap_status` 工具按需提供，`subscriberDropped` 计数随事件返回。
 3. **ring/订阅通道丢弃不逐条告警**：仅计数上报；若需告警，未来可加"丢弃率超阈值"一条 Warning（§14 候选）。

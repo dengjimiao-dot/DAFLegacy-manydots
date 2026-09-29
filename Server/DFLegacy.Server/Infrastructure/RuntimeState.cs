@@ -195,7 +195,7 @@ public sealed class RuntimeState
         int dumpLimit)
     {
         var dumpLength = Math.Min(frame.Body.Length, Math.Max(0, dumpLimit));
-        PacketNames.TryGet(frame.Type, frame.ProtocolId, out var packetName);
+        PacketTypeNames.TryGetName(frame.Type, frame.ProtocolId, out var packetName);
         _recentPackets.Enqueue(new PacketTraceSnapshot(
             DateTimeOffset.Now,
             session.Id,
@@ -237,7 +237,7 @@ public sealed class RuntimeState
         }
 
         var dumpLength = Math.Min(packet.Payload.Length, Math.Max(0, dumpLimit));
-        PacketNames.TryGet(packet.Type, packet.ProtocolId, out var packetName);
+        PacketTypeNames.TryGetName(packet.Type, packet.ProtocolId, out var packetName);
         _recentPackets.Enqueue(new PacketTraceSnapshot(
             DateTimeOffset.Now,
             session.Id,

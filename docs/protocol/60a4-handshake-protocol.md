@@ -138,6 +138,6 @@
    `ChannelScript.pvf`）、协议 1/3 与 10 接收端协议号、协议 18 的用途。
 2. 核对大区名下标顺序对选区界面渲染的影响。
 3. 追查 0x9bc7a0/0x9bc7e0 的 `ror 0x13 / xor 0x02a886ae` 混淆对所属通道。
-4. 项目 `PacketNames.cs` 引用的 `.rdata 0xB54170/0xB54430` 包名表在本样本中不存在
+4. 项目 `Network/Core/PacketTypes.cs` 头注释引用的 `.rdata 0xB54170/0xB54430` 包名表在本样本中不存在
    （`ENUM_NOTIPACKET_*` 字符串未找到）；该地址来源（应为另一构建/dump）待回溯，
    属游戏服包枚举，不影响握手层。

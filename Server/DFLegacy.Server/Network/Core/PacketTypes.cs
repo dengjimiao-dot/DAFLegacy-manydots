@@ -1,9 +1,16 @@
+using System.Diagnostics.CodeAnalysis;
+using DFLegacy.Protocol;
+
 namespace DFLegacy.Server;
 
 // 60CN 客户端协议号枚举（镜像参考项目 Network/Core/PacketTypes 形态，
 // 07 §4.8.3 规则 5）：CMD / NOTI 分向分表——两向共用 0–255 号段且同号不同义，
 // 禁止合并为同一张表。数据源 tools/packet_id_map.json（IDA 提取的客户端加密
-// 字符串表），由 tools 脚本生成，请勿手改单条。
+// 字符串表），枚举成员按该表逐项生成，请勿手改单条。
+//
+// 成员名即客户端包名表的去前缀形态：60A1 包名表位于 .rdata 0xB54170（NOTI）
+// 与 0xB54430（CMD），逐项对照见 docs/protocol/client-packet-enums-60cn.md。
+// 文件末尾 PacketTypeNames 为手写的报文名反查，重生成枚举成员时一并保留。
 
 /// <summary>客户端上行命令（CMD）协议号；值即客户端 opcode。</summary>
 public enum CmdPacketType : ushort
@@ -334,4 +341,35 @@ public enum NotiPacketType : ushort
     DPROTO = 0x0099, // 153： ENUM_NOTIPACKET_DPROTO
 
     // 0x009A-0x00AE 为 NOTI_NO_NAME 占位（无名称,未登记）
+}
+
+/// <summary>
+/// 协议号 → 报文名反查（<c>ENUM_CMDPACKET_*</c> / <c>ENUM_NOTIPACKET_*</c>）。
+/// 名称的唯一来源就是上面两张枚举本身（07 §4.8.3 规则 5），此处只按客户端包名表
+/// 习惯补 <c>ENUM_*</c> 前缀，不另存一份名称副本。类型字节非 0/1、或该项未登记
+/// 时返回 false。
+/// </summary>
+public static class PacketTypeNames
+{
+    private const string CommandPrefix = "ENUM_CMDPACKET_";
+    private const string NotificationPrefix = "ENUM_NOTIPACKET_";
+
+    public static bool TryGetName(byte type, byte protocolId, [NotNullWhen(true)] out string? name)
+    {
+        Type? enumType = type switch
+        {
+            GameProtocolEngine.NotificationPacketType => typeof(NotiPacketType),
+            GameProtocolEngine.CommandPacketType => typeof(CmdPacketType),
+            _ => null,
+        };
+        if (enumType is null || !Enum.IsDefined(enumType, (ushort)protocolId))
+        {
+            name = null;
+            return false;
+        }
+
+        name = (type == GameProtocolEngine.CommandPacketType ? CommandPrefix : NotificationPrefix)
+            + Enum.GetName(enumType, (ushort)protocolId);
+        return true;
+    }
 }

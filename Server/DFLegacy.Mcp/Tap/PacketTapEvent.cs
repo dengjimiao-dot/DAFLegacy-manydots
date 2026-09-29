@@ -13,7 +13,7 @@ namespace DFLegacy.Mcp;
 /// <param name="Direction">RX / TX / RX-UDP / TX-UDP / RX-UDP-NAT / RX-UDP-NAT-KEEPALIVE 等。</param>
 /// <param name="Type">0=NOTI 或 entrance 协议帧、1=CMD、2=UDP 数据报。</param>
 /// <param name="ProtocolId">包号（报文名对应的数字编号）；UDP 无报文名时为 255。</param>
-/// <param name="PacketName">PacketNames.TryGet 结果（60CN 客户端逆向枚举名），未知为 null。</param>
+/// <param name="PacketName">PacketTypeNames.TryGetName 结果（60CN 客户端逆向枚举名），未知为 null。</param>
 /// <param name="TotalLength">线路总长（含帧头；UDP 为数据报长度）。</param>
 /// <param name="Crc32">帧头声明的 CRC32（UDP/无 CRC 路径为 0）。</param>
 /// <param name="CrcValid">CRC 是否通过校验。</param>
@@ -21,7 +21,6 @@ namespace DFLegacy.Mcp;
 /// <param name="BodyTruncated">body 是否被截断。</param>
 /// <param name="Wire">线路原始帧，仅 RX TCP 帧路径有（含帧头与客户端密文）。</param>
 /// <param name="WireTruncated">wire 是否被截断。</param>
-/// <param name="PlainText">PacketPlainText 字段级解码文本，未知/失败为 null。</param>
 public sealed record PacketTapEvent(
     long Seq,
     DateTimeOffset Timestamp,
@@ -37,5 +36,4 @@ public sealed record PacketTapEvent(
     byte[] Body,
     bool BodyTruncated,
     byte[]? Wire,
-    bool WireTruncated,
-    string? PlainText);
+    bool WireTruncated);

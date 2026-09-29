@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using DFLegacy.Protocol;
 using DFLegacy.Server;
 using Microsoft.Extensions.Logging;
 
@@ -7,7 +6,7 @@ namespace DFLegacy.Mcp;
 
 /// <summary>
 /// G1 抓包枢纽（docs/design/09-mcp-packet-tap.md §4.2/§6/§7）：实现
-/// <see cref="IPacketTapSink"/> 接缝，Publish 内完成字节拷贝截断 → 报文名/明文
+/// <see cref="IPacketTapSink"/> 接缝，Publish 内完成字节拷贝截断 → 报文名
 /// 富化 → 记全局 seq → 入 ring → 按订阅者谓词预筛后扇出。所有追踪路径都
 /// try/catch 包裹——追踪绝不影响会话。
 /// </summary>
@@ -71,7 +70,7 @@ public sealed class PacketTapHub : IPacketTapSink
         try
         {
             PublishCore(sessionId, service, direction, type, protocolId, totalLength,
-                crc32, crcValid, decodeMode, body, wire);
+                crc32, crcValid, body, wire);
         }
         catch (Exception exception)
         {
@@ -88,7 +87,6 @@ public sealed class PacketTapHub : IPacketTapSink
         int totalLength,
         uint crc32,
         bool crcValid,
-        TapDecodeMode decodeMode,
         ReadOnlySpan<byte> body,
         ReadOnlySpan<byte> wire)
     {
@@ -107,22 +105,7 @@ public sealed class PacketTapHub : IPacketTapSink
             wireTruncated = wire.Length > MaxWireBytes;
         }
 
-        string? plainText = null;
-        try
-        {
-            plainText = decodeMode switch
-            {
-                TapDecodeMode.ClientCmd => PacketPlainText.Decode(type, protocolId, bodyCopy),
-                TapDecodeMode.Server => PacketPlainText.DecodeServer(type, protocolId, bodyCopy),
-                _ => null,
-            };
-        }
-        catch
-        {
-            // 明文解码失败降级为 null，绝不让追踪影响会话。
-        }
-
-        PacketNames.TryGet(type, protocolId, out var packetName);
+        PacketTypeNames.TryGetName(type, protocolId, out var packetName);
         var timestamp = DateTimeOffset.Now;
 
         lock (_gate)
@@ -142,8 +125,7 @@ public sealed class PacketTapHub : IPacketTapSink
                 bodyCopy,
                 bodyTruncated,
                 wireCopy,
-                wireTruncated,
-                plainText);
+                wireTruncated);
             _ring.Enqueue(@event);
             while (_ring.Count > RingCapacity)
             {

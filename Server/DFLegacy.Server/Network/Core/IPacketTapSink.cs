@@ -1,18 +1,19 @@
 namespace DFLegacy.Server;
 
 /// <summary>
-/// 明文富化提示：告诉 Tap 消费方按哪套现有解码器解读 body。取值镜像
-/// <see cref="PacketPlainText"/> 在 LogPacket 两个重载里的选择逻辑。
+/// body 口径分类：告诉 Tap 消费方这段原始字节来自哪一路，便于判读来源或后续
+/// 接入字段级解码器。取值沿用原 LogPacket 两个重载的分类口径；当前服务端未接入
+/// 解码器（<c>Network/Core/PacketPlainText.cs</c> 保留未用），本分类只作来源标识。
 /// </summary>
 public enum TapDecodeMode
 {
-    /// <summary>不解码（UDP 数据报、无法归类的帧）。</summary>
+    /// <summary>无口径（数据报、无法归类的帧）。</summary>
     None,
 
-    /// <summary>客户端上行 body：<see cref="PacketPlainText.Decode"/>，未知或非 CMD 为 null。</summary>
+    /// <summary>客户端上行 body（客户端密文已解密的 CMD body）。</summary>
     ClientCmd,
 
-    /// <summary>服务端下行 payload：<see cref="PacketPlainText.DecodeServer"/>。</summary>
+    /// <summary>服务端下行 payload。</summary>
     Server,
 }
 

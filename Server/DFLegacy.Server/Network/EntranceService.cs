@@ -1344,26 +1344,16 @@ public sealed class EntranceService(
         var wire = (rawFrame ?? frame).Encode();
         var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + PacketFrame.HeaderLength);
         var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
-        string? plainText = null;
-        try
-        {
-            plainText = PacketPlainText.Decode(frame.Type, frame.ProtocolId, frame.Body);
-        }
-        catch
-        {
-            // Tracing must never break the session.
-        }
-
         var idLabel = frame.Type == GameProtocolEngine.NotificationPacketType ? "NOTI" : "CMD";
         // Received command bodies are the TryDecode product (the wire carries
         // the client's rolling-transform ciphertext); server-built frames are
         // plaintext, so only RX keeps the decode label.
         var bodyLabel = direction == "RX" ? "TryDecodeBody" : "body";
         logger.LogInformation(
-            "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} {BodyLabel}=({BodyLen}B) [{Body}]{BodySuffix} crc={Crc:X8} valid={Valid} text={Text}\n  raw: {Raw}{RawSuffix}",
+            "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} {BodyLabel}=({BodyLen}B) [{Body}]{BodySuffix} crc={Crc:X8} valid={Valid}\n  raw: {Raw}{RawSuffix}",
             idLabel, session.Id, frame.ProtocolId, $"0x{frame.ProtocolId:X2}",
             frame.TotalLength, bodyLabel, frame.Body.Length, body, frame.Body.Length > bodyLimit ? "..." : "",
-            frame.DeclaredCrc32, frame.HasValidCrc32, plainText ?? "-",
+            frame.DeclaredCrc32, frame.HasValidCrc32,
             raw, wire.Length > rawLimit ? "..." : "");
     }
 
@@ -1380,22 +1370,11 @@ public sealed class EntranceService(
         var wire = packet.Encode();
         var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + GameServerPacket.HeaderLength);
         var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
-        string? plainText = null;
-        try
-        {
-            plainText = PacketPlainText.DecodeServer(packet.Type, packet.ProtocolId, packet.Payload);
-        }
-        catch
-        {
-            // Tracing must never break the session.
-        }
-
         var idLabel = packet.Type == GameProtocolEngine.NotificationPacketType ? "NOTI" : "CMD";
         logger.LogInformation(
-            "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} body=({BodyLen}B) [{Body}]{BodySuffix} text={Text}\n  raw: {Raw}{RawSuffix}",
+            "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} body=({BodyLen}B) [{Body}]{BodySuffix}\n  raw: {Raw}{RawSuffix}",
             idLabel, session.Id, packet.ProtocolId, $"0x{packet.ProtocolId:X2}",
             packet.TotalLength, packet.Payload.Length, payloadDump, packet.Payload.Length > payloadLimit ? "..." : "",
-            plainText ?? "-",
             raw, wire.Length > rawLimit ? "..." : "");
     }
 }

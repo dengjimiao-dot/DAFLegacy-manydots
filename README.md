@@ -145,7 +145,7 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 }
 ```
 
-工具均为只读（`packet_watch` 实时跟踪、`packet_get` 取单包详情、`packet_wait` 等回包、`packet_names_search` 查包号↔报文名、`protocol_decode` 离线解码、`session_list`、`tap_status`）。详见 `docs/design/09-mcp-packet-tap.md`。
+工具均为只读（`packet_watch` 实时跟踪、`packet_get` 取单包详情、`packet_wait` 等回包、`packet_names_search` 查包号↔报文名、`session_list`、`tap_status`）。详见 `docs/design/09-mcp-packet-tap.md`。
 
 ### 启动器
 

@@ -9,49 +9,102 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 var failures = new List<string>();
 
+// SelfTest 注册表运行器(07 §6·R0,参照 ServerS4A21 的 --selftest-* 形态):
+// --selftest-<name> 单跑一个套件,--selftest-list 列出全部,
+// --selftest-all 或无参数全跑并输出汇总表;套件间异常互不传染。
+var selfTestSuites = new List<(string Name, Func<Task> Run)>();
+void RegisterSelfTest(string name, Func<Task> run) => selfTestSuites.Add((name, run));
+
 static ScriptFileSystem CreateScripts(ServerOptions options) =>
     new(options, NullLogger<ScriptFileSystem>.Instance);
 
 static ItemCatalog CreateItems(ScriptFileSystem scripts) =>
     new(scripts, NullLogger<ItemCatalog>.Instance);
 
-EquipmentReinforcementSmokeTests.Run(Check);
-await HiddenDungeonQuestSmokeTests.RunAsync(Check);
-QuestMapSmokeTests.Run(Check);
-QuestPvpRankSmokeTests.Run(Check);
-AvatarCompoundSmokeTests.Run(Check);
-WorldMapSmokeTests.Run(Check);
-DungeonClearExperienceSmokeTests.Run(Check);
-ItemSealingSmokeTests.Run(Check);
-AntibotReportSmokeTests.Run(Check);
-MegaphoneSmokeTests.Run(Check);
-await ProtocolGoldenSmokeTests.RunAsync(Check);
-PartySmokeTests.Run(Check);
-await CompoundItemSmokeTests.RunAsync(Check);
-await EquipmentQualitySmokeTests.RunAsync(Check);
+RegisterSelfTest("equipment-reinforcement", () =>
+{
+    EquipmentReinforcementSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("hidden-dungeon-quest", () => HiddenDungeonQuestSmokeTests.RunAsync(Check));
+RegisterSelfTest("quest-map", () =>
+{
+    QuestMapSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("quest-pvp-rank", () =>
+{
+    QuestPvpRankSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("avatar-compound", () =>
+{
+    AvatarCompoundSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("world-map", () =>
+{
+    WorldMapSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("dungeon-clear-experience", () =>
+{
+    DungeonClearExperienceSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("item-sealing", () =>
+{
+    ItemSealingSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("antibot-report", () =>
+{
+    AntibotReportSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("megaphone", () =>
+{
+    MegaphoneSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("protocol-golden", () => ProtocolGoldenSmokeTests.RunAsync(Check));
+RegisterSelfTest("party", () =>
+{
+    PartySmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("compound-item", () => CompoundItemSmokeTests.RunAsync(Check));
+RegisterSelfTest("equipment-quality", () => EquipmentQualitySmokeTests.RunAsync(Check));
+RegisterSelfTest("packet-tap-funnel", () =>
+{
+    PacketTapFunnelSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("mcp-module-loader", () =>
+{
+    McpModuleLoaderSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("random-source", () =>
+{
+    RandomSourceSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("pvf-script", () =>
+{
+    PvfScriptSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("path-resolver", () =>
+{
+    PathResolverSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
 
-var defaultServerOptions = new ServerOptions();
-Check(!defaultServerOptions.EnablePacketTracing, "packet tracing is disabled by default");
-Check(defaultServerOptions.GameplayDatagram.MonsterObjectType == 0x0211,
-    "DFLegacy IRDMonster network object type is 0x211");
-Check(defaultServerOptions.HexDumpLimit <= 64, "default packet dump limit stays lightweight");
-Check(!defaultServerOptions.Mcp.Enabled
-    && defaultServerOptions.Mcp.Host == "127.0.0.1"
-    && defaultServerOptions.Mcp.Port == 12222,
-    "DAF-MCP is loopback-bound on port 12222 and disabled by default");
-
-PacketTapFunnelSmokeTests.Run(Check);
-McpModuleLoaderSmokeTests.Run(Check);
-
-var sharedRandomValue = GameRandomSource.Shared.Next(10_000);
-Check(sharedRandomValue is >= 0 and < 10_000
-    && GameRandomSource.Shared.GetStatus() is { Provider: "Random.Shared" },
-    "live game random source is the pure managed Random.Shared implementation");
-
-RandomSourceSmokeTests.Run(Check);
-PvfScriptSmokeTests.Run(Check);
-PathResolverSmokeTests.Run(Check);
-
+// 既有 Program.cs 内联检查整体作为一个套件运行:其状态(目录表、名册
+// 注册表等)按原有线性顺序共享,拆分为独立套件随后续阶段逐步抽取。
+async Task RunProgramInlineSuite()
+{
 var characterSessions = new CharacterSessionRegistry(
     NullLogger<CharacterSessionRegistry>.Instance);
 var sharedCharacterId = Guid.NewGuid();
@@ -9539,6 +9592,78 @@ Check(generatedClearReward.FreeGoldAmount == 388,
                 MonsterDropKind.Recipe),
         "gold, equipment, recipe and world-drop branches can coexist while zero-weight pools stay empty");
 }
+}
+
+RegisterSelfTest("program-inline", RunProgramInlineSuite);
+
+var selfTestNames = selfTestSuites.Select(static suite => suite.Name).ToArray();
+var selectedSuites = new List<(string Name, Func<Task> Run)>();
+var hadSelectionError = false;
+foreach (var argument in args.Where(static value => value.StartsWith("--selftest-", StringComparison.Ordinal)))
+{
+    if (argument == "--selftest-all")
+    {
+        continue;
+    }
+
+    if (argument == "--selftest-list")
+    {
+        Console.WriteLine(string.Join('\n', selfTestNames));
+        return 0;
+    }
+
+    var requestedName = argument["--selftest-".Length..];
+    var matches = selfTestSuites.Where(suite => suite.Name == requestedName).ToList();
+    if (matches.Count == 0)
+    {
+        Console.Error.WriteLine(
+            $"Unknown self test '{requestedName}'. Available: {string.Join(", ", selfTestNames)}");
+        hadSelectionError = true;
+        break;
+    }
+
+    selectedSuites.AddRange(matches);
+}
+
+if (hadSelectionError)
+{
+    return 2;
+}
+
+if (selectedSuites.Count == 0)
+{
+    selectedSuites.AddRange(selfTestSuites);
+}
+
+var suiteResults = new List<(string Name, bool Passed, int NewFailures, string? Error)>();
+foreach (var selectedSuite in selectedSuites)
+{
+    var failureBaseline = failures.Count;
+    try
+    {
+        await selectedSuite.Run();
+        suiteResults.Add((selectedSuite.Name, failures.Count == failureBaseline, failures.Count - failureBaseline, null));
+    }
+    catch (Exception exception)
+    {
+        suiteResults.Add((
+            selectedSuite.Name,
+            false,
+            failures.Count - failureBaseline,
+            $"{exception.GetType().Name}: {exception.Message}"));
+    }
+}
+
+if (suiteResults.Count > 1 || args.Contains("--selftest-all"))
+{
+    var nameWidth = Math.Max("Suite".Length, suiteResults.Max(static result => result.Name.Length));
+    Console.WriteLine($"SelfTest summary: {"Suite".PadRight(nameWidth)}  Result  Failures  Error");
+    foreach (var result in suiteResults)
+    {
+        Console.WriteLine(
+            $"  {result.Name.PadRight(nameWidth)}  {(result.Passed ? "PASS" : "FAIL")}  {result.NewFailures}  {result.Error ?? "-"}");
+    }
+}
 
 if (failures.Count > 0)
 {
@@ -9547,6 +9672,7 @@ if (failures.Count > 0)
     {
         Console.Error.WriteLine(" - " + failure);
     }
+
     return 1;
 }
 

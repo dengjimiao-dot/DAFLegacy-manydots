@@ -408,4 +408,420 @@ public sealed class ChannelSessionSenders(
             context.State.Inventory.WarehouseCapacity);
         await context.Outbound.SendAsync(warehouseRefresh, "WAREHOUSE_STATE", cancellationToken);
     }
+
+    // ---- Quest-flow helpers (migrated verbatim from the former local
+    // functions; the dungeon branches keep delegating wrappers).
+
+    public uint GetAuthoritativeQuestTrigger(
+    ConnectionContext context,
+    QuestDefinition definition,
+    IEnumerable<CharacterItemRecord>? inventory,
+    int gold,
+    uint victoryPoints) => QuestPvpRankRequirement.IsPvpRank(definition)
+        ? QuestPvpRankRequirement.GetTrigger(definition,
+            pvpExperienceCatalog.GetGradeForPoints(context.State.Character.Active?.PvpPoints ?? 0))
+        : QuestItemRequirementPlanner.GetInitialTrigger(
+            definition, inventory, gold, victoryPoints);
+
+    public List<CharacterQuestRecord> RefreshSeekingQuestTriggers(
+    ConnectionContext context,
+    
+    IEnumerable<CharacterQuestRecord> quests,
+    IEnumerable<CharacterItemRecord> inventory,
+    int gold,
+    uint victoryPoints,
+    out List<(ushort QuestId, uint OldTrigger, uint NewTrigger)> changes)
+{
+    changes = [];
+    var refreshed = new List<CharacterQuestRecord>();
+    foreach (var quest in quests)
+    {
+        if (!questCatalog.TryGetDefinition(quest.QuestId, out var definition)
+            || !QuestItemRequirementPlanner.IsSeeking(definition))
+        {
+            refreshed.Add(quest);
+            continue;
+        }
+
+        var trigger = QuestItemRequirementPlanner.GetInitialTrigger(
+            definition,
+            inventory,
+            gold,
+            victoryPoints);
+        refreshed.Add(quest with { Trigger = trigger });
+        if (trigger != quest.Trigger)
+        {
+            changes.Add((quest.QuestId, quest.Trigger, trigger));
+        }
+    }
+
+    return refreshed;
 }
+
+    public async Task GrantQuestItemDropsAsync(
+        ConnectionContext context,
+        Func<QuestDefinition, IEnumerable<CharacterItemRecord>, IReadOnlyList<QuestItemDrop>> planDrops,
+        string source,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null || context.State.Dungeon.CurrentDungeonId == 0)
+    {
+        return;
+    }
+
+    var plannedInventory = context.State.Inventory.Main.ToDictionary(
+        pair => pair.Key,
+        pair => pair.Value);
+    var plannedWarehouseCapacity = context.State.Inventory.WarehouseCapacity;
+    var changedSlots = new HashSet<ushort>();
+    var grantedDrops = new List<(ushort QuestId, QuestItemDrop Drop)>();
+    foreach (var activeQuest in context.State.Quest.Current.ToArray())
+    {
+        if (!questCatalog.TryGetDefinition(
+                activeQuest.QuestId,
+                out var definition))
+        {
+            continue;
+        }
+
+        foreach (var drop in planDrops(definition, plannedInventory.Values))
+        {
+            if (CharacterWarehouseProgression.TryGetItemTargetCapacity(
+                    drop.ItemId,
+                    out var targetCapacity))
+            {
+                plannedWarehouseCapacity = Math.Max(
+                    plannedWarehouseCapacity,
+                    targetCapacity);
+                grantedDrops.Add((activeQuest.QuestId, drop));
+                continue;
+            }
+
+            var taskItem = CharacterItemIdentity.Ensure(
+                new CharacterMailAttachmentRecord(
+                drop.ItemId,
+                drop.Count,
+                Durability: itemCatalog.GetInitialDurability(drop.ItemId),
+                SealState: CharacterItemSealing.GetInitialSealState(
+                    itemCatalog,
+                    drop.ItemId)),
+                itemCatalog);
+            if (!CharacterInventoryPlanner.TryPlace(
+                    plannedInventory,
+                    taskItem,
+                    itemCatalog,
+                    GetInventoryWeightLimit(context, context.State.Character.Active),
+                    out var placement,
+                    out var failure))
+            {
+                logger.LogWarning(
+                    "Could not grant quest item {ItemId} x{Count} for quest {QuestId} from {Source}: {Failure}.",
+                    drop.ItemId,
+                    drop.Count,
+                    activeQuest.QuestId,
+                    source,
+                    failure);
+                continue;
+            }
+
+            plannedInventory = placement.Inventory;
+            changedSlots.UnionWith(placement.ChangedSlots);
+            grantedDrops.Add((activeQuest.QuestId, drop));
+        }
+    }
+
+    var plannedQuests = RefreshSeekingQuestTriggers(context, 
+        context.State.Quest.Current,
+        plannedInventory.Values,
+        context.State.Currency.Gold,
+        context.State.Currency.VictoryPoints,
+        out var triggerChanges);
+    if (changedSlots.Count == 0
+        && triggerChanges.Count == 0
+        && plannedWarehouseCapacity == context.State.Inventory.WarehouseCapacity)
+    {
+        return;
+    }
+
+    var saved = await store.SaveCharacterQuestProgressAsync(
+        context.State.Login.AccountName,
+        context.State.Character.Active.Id,
+        plannedInventory.Values,
+        plannedQuests,
+        context.State.Quest.CompletedIds,
+        cancellationToken,
+        warehouseCapacity: plannedWarehouseCapacity,
+        expectedWarehouseCapacity: context.State.Inventory.WarehouseCapacity);
+    if (saved is null)
+    {
+        logger.LogWarning(
+            "Could not persist quest item grants from {Source}; inventory and quest progress were left unchanged.",
+            source);
+        return;
+    }
+
+    var warehouseCapacityChanged =
+        AdoptSavedWarehouseUpgradeState(context, saved);
+    context.State.Quest.Current = plannedQuests;
+    if (changedSlots.Count > 0)
+    {
+        var itemUpdate = GameProtocolEngine.CreateUpdateItemList(
+            0,
+            changedSlots
+                .OrderBy(slot => slot)
+                .Select(slot => builders.ToGameInventoryEntry(context.State.Inventory.Main[slot]))
+                .ToArray());
+        await context.Outbound.SendAsync(itemUpdate, "QUEST_ITEMS", cancellationToken);
+    }
+
+    if (warehouseCapacityChanged)
+    {
+        await SendWarehouseStateAsync(context, cancellationToken);
+    }
+
+    foreach (var change in triggerChanges)
+    {
+        var triggerUpdate = GameProtocolEngine.CreateSetQuestTriggerReply(
+            change.QuestId,
+            change.NewTrigger);
+        await context.Outbound.SendAsync(triggerUpdate, "QUEST_TRIGGER", cancellationToken);
+    }
+
+    foreach (var grant in grantedDrops)
+    {
+        logger.LogInformation(
+            "Granted quest item from {Source}: quest={QuestId}, item={ItemId}, count={Count}.",
+            source,
+            grant.QuestId,
+            grant.Drop.ItemId,
+            grant.Drop.Count);
+    }
+
+    }
+
+    public async Task SendAcceptableQuestListAsync(ConnectionContext context, CancellationToken cancellationToken)
+{
+    var acceptable = GameProtocolEngine.CreateAcceptableQuestList(
+        GetAcceptableQuestIds(context));
+    await context.Outbound.SendAsync(acceptable, "QUEST_LIST", cancellationToken);
+}
+
+    public async Task SendCurrentSkillInfoAsync(ConnectionContext context, CancellationToken cancellationToken)
+{
+    var skillInfo = GameProtocolEngine.CreateSkillInfo(
+        checked((ushort)Math.Min(context.State.Skill.CurrentSp, ushort.MaxValue)),
+        GetCurrentGameSkills(context));
+    await context.Outbound.SendAsync(skillInfo, "SKILL_INFO", cancellationToken);
+    }
+
+    // ---- Town-appearance / character-detail senders (migrated verbatim
+    // from the former local functions; the legacy chain keeps its copies
+    // until groups 12/14 migrate).
+
+    public async Task SendCurrentEquipmentStateAsync(
+    ConnectionContext context,
+    GameCharacterCombatStats? validatedStats = null,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null)
+    {
+        return;
+    }
+
+    var projectedStats = validatedStats
+        ?? characterStatCatalog.Get(context.State.Character.Active);
+    var equipment = GameProtocolEngine.CreateCurrentCharacterDetails(
+        context.State.Character.LocalUserId,
+        experience: context.State.Character.Active.Experience,
+        learnedSkills: GetCurrentGameSkills(context),
+        combatStats: projectedStats,
+        equippedItems: builders.CreateWornEquipmentSnapshot(
+            context.State.Inventory.Equipped.Values,
+            context.State.Inventory.Creature),
+        equippedCreatureLevel: CharacterPacketBuilders.GetEquippedCreatureLevel(
+            context.State.Inventory.Creature),
+        staminaRecoveryPercentage: GetProjectedStaminaRecovery(context));
+    await context.Outbound.SendAsync(equipment, "CHARACTER_DETAILS", cancellationToken);
+    context.State.Character.LastProjectedCombatStats = projectedStats;
+}
+
+public async Task SendEquippedCreatureDeathAsync(
+    ConnectionContext context,
+    bool force = false,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null
+        || !context.State.Inventory.Creature.TryGetValue(
+            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+            out var equippedCreature)
+        || equippedCreature.CountOrValue == 0)
+    {
+        return;
+    }
+
+    var creatureUid = equippedCreature.CountOrValue;
+    var stomach = Math.Clamp(
+        (int)(equippedCreature.CreatureStomach ?? 100),
+        0,
+        CreatureHungerPlanner.MaximumStomach);
+    if (stomach != 0)
+    {
+        context.State.Weakness.CreatureDeathNotificationsSent.Remove(creatureUid);
+        return;
+    }
+
+    if (!force
+        && context.State.Weakness.CreatureDeathNotificationsSent.Contains(creatureUid))
+    {
+        return;
+    }
+
+    var died = GameProtocolEngine.CreateDiedCreature(context.State.Character.LocalUserId);
+    await context.Outbound.SendAsync(died, "CREATURE_DIED", cancellationToken);
+    context.State.Weakness.CreatureDeathNotificationsSent.Add(creatureUid);
+    logger.LogInformation(
+        "Sent DIED_CREATURE for Creature uid {CreatureUid}, area user {UserId}.",
+        creatureUid,
+        context.State.Character.LocalUserId);
+}
+
+public async Task SendEquippedCreatureHungerAsync(
+    ConnectionContext context,
+    bool forceDeathNotification = false,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null
+        || !context.State.Inventory.Creature.TryGetValue(
+            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+            out var equippedCreature)
+        || equippedCreature.CountOrValue == 0)
+    {
+        return;
+    }
+
+    var creatureState = GameProtocolEngine.CreateCreatureState(
+        equippedCreature.CountOrValue,
+        (uint)Math.Clamp(
+            (int)(equippedCreature.CreatureStomach ?? 100),
+            0,
+            CreatureHungerPlanner.MaximumStomach));
+    await context.Outbound.SendAsync(creatureState, "CREATURE_STATE", cancellationToken);
+    await SendEquippedCreatureDeathAsync(context, forceDeathNotification, cancellationToken);
+}
+
+public async Task SendEquippedCreatureResponseAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null
+        || !context.State.Inventory.Creature.ContainsKey(
+            CharacterCreatureInventoryLayout.EquippedCreatureSlot))
+    {
+        return;
+    }
+
+    var creatureResponse =
+        GameProtocolEngine.CreateCreatureResponse(context.State.Character.LocalUserId);
+    await context.Outbound.SendAsync(creatureResponse, "CREATURE_RESPONSE", cancellationToken);
+}
+
+public async Task SendTownAppearanceAsync(
+    ConnectionContext context,
+    bool waitForTownActor = false,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null || context.State.Dungeon.CurrentDungeonId != 0)
+    {
+        return;
+    }
+
+    if (waitForTownActor)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+    }
+
+    // The original server equips the Creature and establishes
+    // its town state before broadcasting the mode-zero basic
+    // user record containing item id, name and alive state.
+    await SendEquippedCreatureHungerAsync(
+        context,
+        // Only AREA_USERS reconstruction needs to replay a
+        // persisted death marker. Ordinary equipment updates
+        // keep the transition de-duplicated.
+        forceDeathNotification: waitForTownActor,
+        cancellationToken);
+
+    var appearance = builders.CreateTownAppearancePacket(
+        context.State.Character.Active,
+        context.State.Character.LocalUserId,
+        context.State.Inventory.Equipped.Values,
+        context.State.Inventory.Creature.Values,
+        HasActivePremiumService(context, GameProtocolEngine.BlackDiamondServiceType));
+    await context.Outbound.SendAsync(appearance, "TOWN_APPEARANCE", cancellationToken);
+
+    // Mode zero is the compact town-actor appearance
+    // projection: Avatar slots 0..8, weapon slot 9, plus the
+    // dedicated title and Creature fields. It drops other worn
+    // objects omitted from its compact list, so immediately
+    // rebuild the authoritative equipment projection with
+    // subtype one.
+    await SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
+    await SendInitialStaminaStateAsync(context, cancellationToken);
+}
+
+public async Task ValidateAndCorrectCharacterStatsAsync(
+    ConnectionContext context,
+    string reason,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Character.Active is null)
+    {
+        return;
+    }
+
+    var validation = characterStatCatalog.Validate(
+        context.State.Character.Active,
+        context.State.Character.LastProjectedCombatStats);
+    if (context.State.Dungeon.CurrentDungeonId == 0)
+    {
+        // Mode zero first updates level/growtype on the town
+        // actor. Mode one then overwrites the unequipped stat
+        // block with the PVF-derived authoritative snapshot.
+        await SendTownAppearanceAsync(context, cancellationToken: cancellationToken);
+    }
+    else
+    {
+        await SendCurrentEquipmentStateAsync(context, validation.Expected, cancellationToken);
+    }
+
+    logger.LogInformation(
+        "Validated PVF character attributes after {Reason} for {CharacterId}; level={Level}, job={Job}, growType={GrowType}, awakening={AwakeningType}, correctionRequired={CorrectionRequired}, mismatches={Mismatches}.",
+        reason,
+        context.State.Character.Active.Id,
+        context.State.Character.Active.Level,
+        context.State.Character.Active.Job,
+        context.State.Character.Active.GrowType & 0x0F,
+        Math.Max(context.State.Character.Active.AwakeningType, context.State.Character.Active.GrowType >> 4),
+        !validation.IsCorrect,
+        validation.MismatchedFields.Count == 0
+            ? "none"
+            : string.Join(',', validation.MismatchedFields));
+}
+
+public async Task SendInitialStaminaStateAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken = default)
+{
+    if (context.State.Weakness.StaminaStateInitialized || context.State.Character.Active is null)
+    {
+        return;
+    }
+
+    // DFLegacy NOTI 4 owns the weakness percentage. Persisted
+    // weakness is restored after the authoritative combat-stat
+    // projection; active black diamond always projects full stamina.
+    var stamina = GameProtocolEngine.CreateStamina(
+        GetProjectedStaminaRecovery(context));
+    await context.Outbound.SendAsync(stamina, "STAMINA_NOTI", cancellationToken);
+    context.State.Weakness.StaminaStateInitialized = true;
+}}

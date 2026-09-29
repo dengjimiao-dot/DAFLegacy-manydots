@@ -14,7 +14,7 @@
 | `publish.sh` | 不存在 | **新增**，Linux/macOS 发布入口，产出同一目录布局 |
 | `stop.bat` | `taskkill` 结束 `DFLegacy.Server.exe` | **保留**；服务端须支持 `SIGTERM` 优雅退出（R7） |
 | `build-native.ps1` × 2 | PowerShell + 必须 Visual Studio CMake 生成器 | **保留 2 个**（`DFLegacy.Ijl15` 与 `DFLegacy.RandomNative` 的 Windows 原生构建），均由 `patch.bat` 调用；`random` 那份随模块保留至 `Client/DFLegacy.RandomNative/` |
-| `.github/workflows/build.yml` | `runs-on: windows-latest` | **单 job**：护栏扫描 + 服务端自测 + `publish.bat` + 服务端包校验（2026-09-23 修订，见 [4.5](#45-运维模型变更2026-09-23-修订流水线只出服务端包)；修订前为 portable 矩阵 + windows-full 双 job） |
+| `.github/workflows/build.yml` | `runs-on: windows-latest` | **单 job**：护栏扫描 + 服务端自测，不做发布（2026-09-30 修订，见 [5.1](#51-buildyml-目标结构)；2026-09-23 修订见 [4.5](#45-运维模型变更2026-09-23-修订流水线只出服务端包)；修订前为 portable 矩阵 + windows-full 双 job） |
 | `.github/workflows/release.yml` | `runs-on: windows-latest`，单平台产物 | **Linux 服务端单包**：`linux-x64`（2026-09-23 修订产物只含服务端；2026-09-29 修订移除 `windows-server` job，Windows 服务端包由本地 `publish.bat` 产出，见 [6](#6-发布流程releaseyml)） |
 
 **核心原则**：Windows 现有工作流不删除、不改变行为。跨平台能力是**新增入口**，不是替换。
@@ -227,11 +227,18 @@ ProjectReference、零原生耦合；Launcher.csproj 零 ProjectReference；解�
 > Linux 服务端包（`DFLegacy-<tag>-linux-x64.zip`）。Windows 服务端包不再由 CI
 > 产出，需要 Windows 形态时在本地执行 `publish.bat`（产物等价，见 [3.0](#30-包内容来源与复制责任)）。
 
+> **2026-09-30 修订**：`build.yml` 收敛为护栏扫描 + 服务端自测，移除
+> `publish.bat`、包内容校验与产物上传三步——push/PR 流水线不再产出任何包
+> 产物，包构建一律由本地 `publish.bat` / `patch.bat` 或 `release.yml` 承担。
+> 自测项目经 ProjectReference 传递编译服务端，编译验证不受影响。
+
 ## 5. CI 矩阵
 
 ### 5.1 `build.yml` 目标结构
 
 > **2026-09-23 修订**：`build.yml` 最终收敛为**单 job**（护栏扫描 + 服务端自测 + `publish.bat` + 服务端包校验）。以下 `portable` / `windows-full` 双 job 结构为修订前基线，保留备查。
+>
+> **2026-09-30 修订**：`build.yml` 再收敛为**只自测**（护栏扫描 + 服务端自测构建与执行），移除 `publish.bat`、包内容校验与产物上传；Windows 服务端包由本地 `publish.bat` 产出，CI 交付只剩余 `release.yml` 的 Linux 服务端包（见 [4.5](#45-运维模型变更2026-09-23-修订流水线只出服务端包)）。
 
 ```yaml
 name: build

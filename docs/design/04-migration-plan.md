@@ -100,7 +100,7 @@ ls dist/client-win-x64/launcher.json
 
 - **新增 CI 源码扫描**（唯一需要自建的一步）：检查 `Server/` 与 `tests/` 下有没有 Windows 系统库 `DllImport`（Z5）。几行 grep，**不写 MSBuild 目标、不新增共享 props**——[01 · 3.3](01-target-architecture.md#33-强制手段编译器承担绝大部分只补一处源码扫描) 说明了为什么其余 Z 规则交给编译器。
 - **确认 `EnableWindowsTargeting` 只出现在 `Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj` 内**，仓库根与 `Server/` 下不存在 `Directory.Build.props`。这是护栏生效的前提——放到全局会让 Z2 的 WinForms/WPF 分支静默通过。
-- `build.yml` 落地护栏扫描与服务端构建自测。**2026-09-23 修订**后收敛为单 job（护栏扫描 + 服务端自测 + `publish.bat` + 服务端包内容校验，见 [03 · 4.5](03-build-release-ci.md)）；修订前的 portable 矩阵 + windows-full 双 job 设计见 [03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构)。
+- `build.yml` 落地护栏扫描与服务端构建自测。**2026-09-23 修订**后收敛为单 job（护栏扫描 + 服务端自测 + `publish.bat` + 服务端包内容校验，见 [03 · 4.5](03-build-release-ci.md)）；**2026-09-30 修订**后再收敛为只自测（护栏扫描 + 服务端自测），发布与包产物步骤移除；修订前的 portable 矩阵 + windows-full 双 job 设计见 [03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构)。
 - `windows-full` job 补上原生项目的 CTest（当前 CI 未运行 `RUN_TESTS`，而 `build-native.ps1` 早已提供 `-RunTests` 开关）。
 - 新增 CI 源码扫描步骤：Server 层项目的 `.cs` 中出现 Windows 系统库 `DllImport`（`d3d9.dll`、`user32.dll`、`kernel32.dll` 等）即失败。
 - 记录基线，作为后续里程碑的回归比对基准：

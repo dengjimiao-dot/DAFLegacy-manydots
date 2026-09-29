@@ -36,132 +36,16 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
             out var moveCount,
             out var destinationListType,
             out var destinationSlot);
-        if (session.Character.Active is not null
-            && parsedMove
-            && (sourceListType == 7 || destinationListType == 7))
-        {
-            if (session.Dungeon.CurrentDungeonId != 0
-                && !await senders.SettleDungeonCreatureHungerAsync(context, 
-                    notifyClient: false,
-                    cancellationToken))
-            {
-                await senders.SendInventoryMoveNoOpAsync(context, 
-                    sourceListType,
-                    sourceSlot,
-                    destinationListType,
-                    destinationSlot,
-                    "creature hunger persistence failed");
-                return;
-            }
-
-            if (!senders.TryPlanCreatureInventoryMove(
-                    session.Inventory.Warehouse,
-                    session.Inventory.WarehouseCapacity,
-                    session.Inventory.Creature,
-                    sourceListType,
-                    sourceSlot,
-                    moveCount,
-                    destinationListType,
-                    destinationSlot,
-                    out var creatureMove,
-                    out var creatureMoveFailure))
-            {
-                await senders.SendInventoryMoveNoOpAsync(context, 
-                    sourceListType,
-                    sourceSlot,
-                    destinationListType,
-                    destinationSlot,
-                    creatureMoveFailure);
-                return;
-            }
-
-            var savedCreatureMove =
-                await store.SaveCharacterItemSpacesAsync(
-                    session.Login.AccountName,
-                    session.Character.Active.Id,
-                    session.Currency.Gold,
-                    session.Inventory.Main.Values,
-                    session.Inventory.Equipped.Values,
-                    creatureMove.Warehouse.Values,
-                    cancellationToken,
-                    avatarInventory: session.Inventory.Avatar.Values,
-                    creatureInventory: creatureMove.CreatureInventory.Values);
-            if (savedCreatureMove is null)
-            {
-                await senders.SendInventoryMoveNoOpAsync(context, 
-                    sourceListType,
-                    sourceSlot,
-                    destinationListType,
-                    destinationSlot,
-                    "creature inventory persistence failed");
-                return;
-            }
-
-            session.Character.Active = savedCreatureMove;
-            session.Inventory.Warehouse = creatureMove.Warehouse;
-            session.Inventory.Creature = creatureMove.CreatureInventory;
-            var creatureMoveReply =
-                GameProtocolEngine.CreateMoveItemSpaceReply(
-                    sourceListType,
-                    sourceSlot,
-                    creatureMove.MovedCount,
-                    destinationListType,
-                    creatureMove.ReplyDestinationSlot);
-            await context.Outbound.SendAsync(creatureMoveReply, Name, cancellationToken);
-
-            foreach (var creaturePacket in
-                     builders.CreateCreatureInventoryPackets(
-                         session.Inventory.Creature.Values))
-            {
-                await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
-            }
-
-            if (creatureMove.EquippedSlotsChanged)
-            {
-                if (creatureMove.EquippedCreatureChanged)
-                {
-                    // A newly constructed equipped
-                    // Creature object needs its death
-                    // transition again, even when the same
-                    // persisted uid was equipped earlier.
-                    session.Weakness.CreatureDeathNotificationsSent.Clear();
-                }
-
-                if (creatureMove.EquippedCreatureChanged
-                    && session.Dungeon.CurrentDungeonId == 0)
-                {
-                    // State must precede the mode-zero actor
-                    // refresh so a first equipped Creature is
-                    // constructed instead of merely replacing
-                    // an already existing map object.
-                    await senders.SendTownAppearanceAsync(context, cancellationToken: cancellationToken);
-                }
-                else
-                {
-                    await senders.SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
-                    if (creatureMove.EquippedCreatureChanged)
-                    {
-                        await senders.SendEquippedCreatureHungerAsync(context, cancellationToken: cancellationToken);
-                    }
-                }
-            }
-
-            if (sourceListType == 2 || destinationListType == 2)
-            {
-                var warehousePacket = builders.CreateWarehousePacket(
-                    session.Inventory.Warehouse.Values,
-                    session.Inventory.WarehouseCapacity);
-                await context.Outbound.SendAsync(warehousePacket, Name, cancellationToken);
-            }
-
-            logger.LogInformation(
-                "Moved Creature-space item {ItemId} from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}; count={MovedCount}.",
-                creatureMove.ItemId,
+        if (await TryHandleCreatureSpaceMoveAsync(
+                context,
+                parsedMove,
                 sourceListType,
                 sourceSlot,
+                moveCount,
                 destinationListType,
                 destinationSlot,
-                creatureMove.MovedCount);
+                cancellationToken))
+        {
             return;
         }
 
@@ -621,112 +505,16 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
             return;
         }
 
-        // A forward cargo withdrawal carries the occupied
-        // cargo source and an explicit empty bag target.
-        // Treat it as a newly entering bag item: fill every
-        // compatible partial stack before allocating a slot.
-        if (sourceListType == 2
-            && destinationListType == 0
-            && !session.Inventory.Main.ContainsKey(destinationSlot)
-            && senders.IsCompatibleMainInventorySlot(sourceItem, destinationSlot))
-        {
-            var withdrawnCount = moveCount <= 0
-                ? sourceItem.CountOrValue
-                : Math.Min(sourceItem.CountOrValue, (uint)moveCount);
-            var withdrawal = new CharacterMailAttachmentRecord(
-                sourceItem.ItemId,
-                withdrawnCount,
-                sourceItem.State,
-                sourceItem.Durability,
-                sourceItem.SealState,
-                EquipmentQualitySeed:
-                    sourceItem.EquipmentQualitySeed,
-                InstanceId: sourceItem.InstanceId);
-            if (!CharacterInventoryPlanner.TryPlace(
-                    session.Inventory.Main,
-                    withdrawal,
-                    itemCatalog,
-                    senders.GetInventoryWeightLimit(context, session.Character.Active),
-                    destinationSlot,
-                    out var withdrawalPlan,
-                    out var withdrawalFailure))
-            {
-                await senders.SendInventoryMoveNoOpAsync(context, 
-                    sourceListType,
-                    sourceSlot,
-                    destinationListType,
-                    destinationSlot,
-                    $"forward warehouse withdrawal failed: {withdrawalFailure}");
-                return;
-            }
-
-            var plannedWarehouse = session.Inventory.Warehouse.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value);
-            if (withdrawnCount < sourceItem.CountOrValue)
-            {
-                plannedWarehouse[sourceSlot] = sourceItem with
-                {
-                    CountOrValue = sourceItem.CountOrValue - withdrawnCount
-                };
-            }
-            else
-            {
-                plannedWarehouse.Remove(sourceSlot);
-            }
-
-            var savedWithdrawal = await store.SaveCharacterItemSpacesAsync(
-                session.Login.AccountName,
-                session.Character.Active.Id,
-                session.Currency.Gold,
-                withdrawalPlan.Inventory.Values,
-                session.Inventory.Equipped.Values,
-                plannedWarehouse.Values,
-                cancellationToken);
-            if (savedWithdrawal is null)
-            {
-                await senders.SendInventoryMoveNoOpAsync(context, 
-                    sourceListType,
-                    sourceSlot,
-                    destinationListType,
-                    destinationSlot,
-                    "forward warehouse withdrawal persistence failed");
-                return;
-            }
-
-            session.Character.Active = savedWithdrawal;
-            session.Inventory.Main = withdrawalPlan.Inventory;
-            session.Inventory.Warehouse = plannedWarehouse;
-
-            var withdrawReply =
-                GameProtocolEngine.CreateMoveItemSpaceReply(
-                    sourceListType,
-                    sourceSlot,
-                    withdrawnCount,
-                    destinationListType,
-                    destinationSlot);
-            await context.Outbound.SendAsync(withdrawReply, Name, cancellationToken);
-
-            foreach (var refresh in new[]
-                     {
-                         builders.CreateMainInventoryPacket(
-                             session.Currency.Gold,
-                             session.Currency.VictoryPoints,
-                             session.Inventory.Main.Values,
-                             withdrawalPlan.DestinationSlot),
-                         builders.CreateWarehousePacket(
-                             session.Inventory.Warehouse.Values,
-                             session.Inventory.WarehouseCapacity)
-                     })
-            {
-                await context.Outbound.SendAsync(refresh, Name, cancellationToken);
-            }
-
-            logger.LogInformation(
-                "Withdrew item {ItemId} from forward cargo slot {CargoSlot}; automatic main destination starts at {MainSlot}.",
-                sourceItem.ItemId,
+        if (await TryHandleForwardWarehouseWithdrawalAsync(
+                context,
+                sourceListType,
                 sourceSlot,
-                withdrawalPlan.DestinationSlot);
+                moveCount,
+                destinationListType,
+                destinationSlot,
+                sourceItem,
+                cancellationToken))
+        {
             return;
         }
 
@@ -939,174 +727,16 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
             }
         }
 
-        session.Character.Active = await store.SaveCharacterItemSpacesAsync(
-            session.Login.AccountName,
-            session.Character.Active.Id,
-            session.Currency.Gold,
-            session.Inventory.Main.Values,
-            session.Inventory.Equipped.Values,
-            session.Inventory.Warehouse.Values,
-            cancellationToken,
-            avatarInventory: session.Inventory.Avatar.Values) ?? session.Character.Active;
-
-        var moveReply = GameProtocolEngine.CreateMoveItemSpaceReply(
+        await SendMoveCompletionAsync(
+            context,
             sourceListType,
             sourceSlot,
             requestedCount,
             destinationListType,
-            destinationSlot);
-        await context.Outbound.SendAsync(moveReply, Name, cancellationToken);
-
-        if (sourceListType == 2 || destinationListType == 2)
-        {
-            if (sourceListType == 2 && destinationListType == 0)
-            {
-                // CMD 19 already removes a deposited item from the
-                // main inventory. A redundant full list-zero snapshot
-                // makes the old client select the category of the last
-                // reconstructed item, unexpectedly changing the active
-                // bag tab. Withdrawals still need the snapshot because
-                // automatic stacking can update more than one bag slot.
-                var refreshMain = builders.CreateMainInventoryPacket(
-                    session.Currency.Gold,
-                    session.Currency.VictoryPoints,
-                    session.Inventory.Main.Values,
-                    preferredLastSlot: destinationSlot);
-                await context.Outbound.SendAsync(refreshMain, Name, cancellationToken);
-            }
-
-            var refreshWarehouse = builders.CreateWarehousePacket(
-                session.Inventory.Warehouse.Values,
-                session.Inventory.WarehouseCapacity);
-            await context.Outbound.SendAsync(refreshWarehouse, Name, cancellationToken);
-
-            logger.LogInformation(
-                "Moved character cargo item {ItemId} from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}.",
-                sourceItem.ItemId,
-                sourceListType,
-                sourceSlot,
-                destinationListType,
-                destinationSlot);
-            return;
-        }
-
-        if (sourceListType == 0)
-        {
-            // Protocol 19's internal removal is guarded by
-            // a client-side pending-operation vector. Some
-            // equipment paths leave that vector empty. A
-            // move into an occupied worn slot swaps the old
-            // equipment back into this source slot, so the
-            // authoritative update must preserve that item
-            // instead of always deleting the source.
-            if (EntranceService.ShouldUseIncrementalMainMoveRefresh(
-                    sourceListType,
-                    sourceSlot,
-                    destinationListType,
-                    destinationSlot))
-            {
-                // CMD 19 completes the client transaction; NOTI 14
-                // only reconciles the two changed slots and therefore
-                // does not reconstruct every inventory category.
-                await senders.SendMainInventoryMoveDeltaAsync(context, cancellationToken,
-                    sourceSlot,
-                    destinationSlot);
-            }
-            else if (movedWithinMainList
-                || (destinationListType == 3 && displacedItem is not null))
-            {
-                // DFLegacy does not reliably replace existing
-                // objects across the quick-slot (3..8) and
-                // bag (9+) regions, nor during an occupied
-                // equipment swap, when protocol 14 carries
-                // only one slot. Refresh the complete main
-                // list so both endpoints are authoritative.
-                var refreshBag = builders.CreateMainInventoryPacket(
-                    session.Currency.Gold,
-                    session.Currency.VictoryPoints,
-                    session.Inventory.Main.Values,
-                    preferredLastSlot: movedWithinMainList
-                        ? destinationSlot
-                        : sourceSlot);
-                await context.Outbound.SendAsync(refreshBag, Name, cancellationToken);
-            }
-            else
-            {
-                var sourceUpdateEntry = session.Inventory.Main.TryGetValue(
-                    sourceSlot,
-                    out var sourceReplacement)
-                        ? builders.ToGameInventoryEntry(sourceReplacement)
-                        : new GameInventoryEntry(
-                            sourceSlot,
-                            ushort.MaxValue,
-                            0);
-                var updateSourceItem =
-                    GameProtocolEngine.CreateUpdateItemList(
-                        0,
-                        [sourceUpdateEntry]);
-                await context.Outbound.SendAsync(updateSourceItem, Name, cancellationToken);
-            }
-        }
-
-        if (sourceListType == 1 || destinationListType == 1)
-        {
-            var refreshAvatar = builders.CreateAvatarInventoryPacket(
-                session.Inventory.Avatar.Values);
-            await context.Outbound.SendAsync(refreshAvatar, Name, cancellationToken);
-        }
-
-        if (sourceListType == 3 || destinationListType == 3)
-        {
-            if (destinationListType == 3)
-            {
-                if (displacedItem is null)
-                {
-                    var addWornItem =
-                        GameProtocolEngine.CreateUpdateItemList(
-                            3,
-                            [builders.ToGameInventoryEntry(
-                                session.Inventory.Equipped[destinationSlot])]);
-                    await context.Outbound.SendAsync(addWornItem, Name, cancellationToken);
-                }
-            }
-
-            // The launcher enables the client's existing
-            // notification-14 construction path for empty
-            // worn slots. Keep that incremental path for
-            // additions; removals are synchronized below
-            // through the subtype-one snapshot.
-        }
-
-        var replacedWornItem = destinationListType == 3
-            && displacedItem is not null;
-        if (replacedWornItem)
-        {
-            // The drag controller still owns the old worn
-            // object while the command reply is processed.
-            await Task.Delay(
-                TimeSpan.FromMilliseconds(100),
-                cancellationToken);
-        }
-
-        if (session.Dungeon.CurrentDungeonId == 0
-            && ((sourceListType == 3
-                    && sourceSlot <= EquippedTitleSlot)
-                || (destinationListType == 3
-                    && destinationSlot <= EquippedTitleSlot)))
-        {
-            await senders.SendTownAppearanceAsync(context, cancellationToken: cancellationToken);
-        }
-        else if (sourceListType == 3 || replacedWornItem)
-        {
-            await senders.SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
-        }
-
-        logger.LogInformation(
-            "Moved item {ItemId} from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}",
-            sourceItem.ItemId,
-            sourceListType,
-            sourceSlot,
-            destinationListType,
-            destinationSlot);
+            destinationSlot,
+            sourceItem,
+            movedWithinMainList,
+            displacedItem,
+            cancellationToken);
     }
 }

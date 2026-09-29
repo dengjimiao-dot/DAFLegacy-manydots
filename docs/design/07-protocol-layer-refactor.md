@@ -577,5 +577,5 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 ### 11.4 遗留项
 
 - **SELECT_CHARACTER(CMD 4,组 3 最复杂段)**:已于 R1 收尾完成(SelectCharacterHandler + CharacterPacketBuilders 初始化包家族)。
-- 协议迁移已全部完成(71/71 挂载);MoveItemSpaceHandler 约 1,100 行超出 4.7 单文件上限,子流程拆分待办;R6 清退(定时器收编)未完成(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
+- 协议迁移已全部完成(71/71 挂载);纯规划器已归位 `Game/Inventory/`(空间校验族 + 精灵移动规划簇,senders 留薄委托);`MoveItemSpaceHandler` 已按子流程拆为四个 partial 文件(742/155/195/134 行,均低于 §4.7 上限);R6 剩余项为定时器收编(4 处 WhenAny,需真机时序对拍)。(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
 - 真机冒烟复测未做:已挂载的 9 协议需按 §7.4 清单在真机回归(登录→选角→建/删角→返回选角)。

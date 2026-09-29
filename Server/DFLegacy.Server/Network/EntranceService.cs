@@ -122,6 +122,19 @@ public sealed class EntranceService(
         registry.Register("session.connection", new CheckConnectionHandler(options));
         registry.Register("session.connection", new ExitHandler(loggerFactory.CreateLogger<ExitHandler>()));
         registry.Register("session.connection", new AntibotHandler(loggerFactory.CreateLogger<AntibotHandler>()));
+        registry.Register("social.mailbox", new MailboxOpenHandler(_sessionSenders));
+        registry.Register("social.mailbox", new MailboxExtractHandler(
+            store,
+            itemCatalog,
+            _characterPacketBuilders,
+            _sessionSenders));
+        registry.Register("social.mailbox", new MailboxStateHandler(store, _sessionSenders));
+        registry.Register("social.mailbox", new MailboxSendHandler(
+            store,
+            itemCatalog,
+            characterSessions,
+            _characterPacketBuilders,
+            _sessionSenders));
         registry.Register("social.chat", new SendMessageHandler(
             store,
             characterSessions,
@@ -172,6 +185,7 @@ public sealed class EntranceService(
         _sessionSenders = new ChannelSessionSenders(
             store,
             itemCatalog,
+            characterStatCatalog,
             questCatalog,
             dungeonCatalog,
             pvpExperienceCatalog,
@@ -272,13 +286,6 @@ public sealed class EntranceService(
             session.Dungeon.ReturnY = session.Character.Y;
             session.Dungeon.ReturnDirection = session.Character.Direction;
 
-            uint GetInventoryWeightLimit(CharacterRecord character) =>
-                CharacterInventoryPlanner.CalculateMainInventoryWeightAllowance(
-                    characterStatCatalog.Get(character).InventoryLimit,
-                    session.Inventory.Equipped.Values,
-                    session.Inventory.Creature.Values,
-                    itemCatalog);
-
             CharacterWarehouseUpgradeItemSettlement PlanWarehouseUpgradeSettlement(
                 IEnumerable<CharacterItemRecord> inventory,
                 IEnumerable<CharacterItemRecord> warehouse,
@@ -301,18 +308,6 @@ public sealed class EntranceService(
                     : settlement with { Capacity = targetCapacity };
             }
 
-            bool AdoptSavedWarehouseUpgradeState(CharacterRecord savedCharacter)
-            {
-                var previousCapacity = session.Inventory.WarehouseCapacity;
-                session.Character.Active = savedCharacter;
-                session.Inventory.Main = (savedCharacter.Inventory ?? [])
-                    .ToDictionary(item => item.Slot);
-                session.Inventory.Warehouse = (savedCharacter.Warehouse ?? [])
-                    .ToDictionary(item => item.Slot);
-                session.Inventory.WarehouseCapacity = CharacterWarehouseProgression.Normalize(
-                    savedCharacter.WarehouseCapacity);
-                return session.Inventory.WarehouseCapacity != previousCapacity;
-            }
             logger.LogInformation(
                 "Entrance client {SessionId} connected from {Remote} on local port {Port}",
                 runtimeSession.Id, remote, localPort);
@@ -385,15 +380,14 @@ public sealed class EntranceService(
                     }
                 }
 
-                async Task SendWarehouseStateAsync()
-                {
-                    var warehouseRefresh = CreateWarehousePacket(
-                        session.Inventory.Warehouse.Values,
-                        session.Inventory.WarehouseCapacity);
-                    await warehouseRefresh.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, warehouseRefresh);
-                }
+            bool AdoptSavedWarehouseUpgradeState(CharacterRecord savedCharacter) =>
+                _sessionSenders.AdoptSavedWarehouseUpgradeState(connectionContext, savedCharacter);
+
+            uint GetInventoryWeightLimit(CharacterRecord character) =>
+                _sessionSenders.GetInventoryWeightLimit(connectionContext, character);
+
+                Task SendWarehouseStateAsync() =>
+                    _sessionSenders.SendWarehouseStateAsync(connectionContext, serverToken);
 
                 async Task SendTypedMessageNotificationAsync(
                     GameMessageType messageType,
@@ -2496,424 +2490,9 @@ public sealed class EntranceService(
 
 
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.MailboxOpenCommand)
-                        {
-                            if (session.Character.Active is null)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 22);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
 
-                            var openReply = GameProtocolEngine.CreateMailboxOpenReply();
-                            await openReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, openReply);
-                            await SendMailboxStateAsync(notifyNewMail: true);
-                            continue;
-                        }
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId
-                                == GameProtocolEngine.MailboxExtractItemCommand)
-                        {
-                            if (session.Character.Active is null
-                                || !TryReadMailboxExtract(request.Body, out var mailId))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 10);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
 
-                            var mail = (await store.GetCharacterMailsAsync(
-                                    session.Character.Active.Id,
-                                    serverToken))
-                                .FirstOrDefault(candidate => candidate.Id == mailId);
-                            if (mail is null
-                                || mail.Gold == 0 && mail.Attachment is null
-                                || mail.Gold > int.MaxValue - session.Currency.Gold
-                                || !TryPlanMailAttachment(
-                                    session.Inventory.Main,
-                                    session.Inventory.Avatar,
-                                    session.Inventory.Creature,
-                                    mail.Attachment,
-                                    itemCatalog,
-                                    GetInventoryWeightLimit(session.Character.Active),
-                                    out var plannedInventory,
-                                    out var plannedAvatarInventory,
-                                    out var plannedCreatureInventory,
-                                    out var mailDestinationListType,
-                                    out var destinationSlot))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: mail is null ? (byte)10 : (byte)4);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var plannedGold = checked(session.Currency.Gold + mail.Gold);
-                            var mailUpgradeTarget = session.Inventory.WarehouseCapacity;
-                            var isWarehouseUpgradeAttachment = mail.Attachment is { } attachment
-                                && CharacterWarehouseProgression.TryGetItemTargetCapacity(
-                                    attachment.ItemId,
-                                    out mailUpgradeTarget);
-                            var plannedWarehouseCapacity = isWarehouseUpgradeAttachment
-                                ? Math.Max(session.Inventory.WarehouseCapacity, mailUpgradeTarget)
-                                : session.Inventory.WarehouseCapacity;
-                            var claim = await store.ClaimCharacterMailAsync(
-                                session.Login.AccountName,
-                                session.Character.Active.Id,
-                                mail.Id,
-                                plannedGold,
-                                plannedInventory.Values,
-                                session.Inventory.Equipped.Values,
-                                serverToken,
-                                plannedAvatarInventory.Values,
-                                plannedCreatureInventory.Values,
-                                warehouseCapacity: plannedWarehouseCapacity,
-                                expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
-                            if (claim is null)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 10);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var warehouseCapacityChanged =
-                                AdoptSavedWarehouseUpgradeState(claim.Character);
-                            session.Currency.Gold = plannedGold;
-                            session.Inventory.Avatar = (claim.Character.AvatarInventory ?? [])
-                                .ToDictionary(item => item.Slot);
-                            session.Inventory.Creature = (claim.Character.CreatureInventory ?? [])
-                                .ToDictionary(item => item.Slot);
-                            var extractReply = GameProtocolEngine.CreateMailboxExtractReply(mail.Id);
-                            await extractReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, extractReply);
-
-                            if (mail.Gold != 0 || mailDestinationListType == 0)
-                            {
-                                var inventoryUpdate = CreateMainInventoryPacket(
-                                    session.Currency.Gold,
-                                    session.Currency.VictoryPoints,
-                                    session.Inventory.Main.Values,
-                                    destinationSlot);
-                                await inventoryUpdate.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, inventoryUpdate);
-                            }
-
-                            if (mailDestinationListType == 1)
-                            {
-                                var avatarUpdate = CreateAvatarInventoryPacket(
-                                    session.Inventory.Avatar.Values);
-                                await avatarUpdate.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, avatarUpdate);
-                            }
-
-                            if (mailDestinationListType == 7)
-                            {
-                                foreach (var creatureUpdate in
-                                         CreateCreatureInventoryPackets(
-                                             session.Inventory.Creature.Values))
-                                {
-                                    await creatureUpdate.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, creatureUpdate);
-                                }
-                            }
-
-                            if (warehouseCapacityChanged
-                                || isWarehouseUpgradeAttachment)
-                            {
-                                await SendWarehouseStateAsync();
-                            }
-
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.MailboxStateCommand)
-                        {
-                            if (session.Character.Active is null
-                                || !TryReadMailboxState(
-                                    request.Body,
-                                    out var mailId,
-                                    out var mailState))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 10);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var isKnownMail = session.Mailbox.KnownIds.Contains(mailId);
-                            if (mailState == 0)
-                            {
-                                var deleted = await store.DeleteCharacterMailAsync(
-                                    session.Character.Active.Id,
-                                    mailId,
-                                    serverToken);
-                                if (!deleted && !isKnownMail)
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 10);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    continue;
-                                }
-
-                                session.Mailbox.KnownIds.Remove(mailId);
-                            }
-                            else if (!isKnownMail
-                                || !await store.SetCharacterMailStateAsync(
-                                    session.Character.Active.Id,
-                                    mailId,
-                                    mailState,
-                                    serverToken))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 10);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var stateReply = GameProtocolEngine.CreateMailboxStateReply(
-                                mailId,
-                                mailState);
-                            await stateReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, stateReply);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.MailboxSendCommand)
-                        {
-                            if (session.Character.Active is null
-                                || !TryReadMailboxSend(request.Body, out var sendRequest))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 10);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            if (sendRequest.Gold > session.Currency.Gold)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 17);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var plannedInventory = session.Inventory.Main.ToDictionary(
-                                pair => pair.Key,
-                                pair => pair.Value);
-                            CharacterMailAttachmentRecord? attachment = null;
-                            ushort? sourceSlot = null;
-                            if (sendRequest.ItemId != 0)
-                            {
-                                if (sendRequest.ListType != 0
-                                    || sendRequest.CountOrValue == 0
-                                    || !plannedInventory.TryGetValue(
-                                        sendRequest.Slot,
-                                        out var sourceItem)
-                                    || sourceItem.ItemId != sendRequest.ItemId)
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 7);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    continue;
-                                }
-
-                                if (!itemCatalog.TryGetDefinition(
-                                        sourceItem.ItemId,
-                                        out var sourceDefinition)
-                                    || !CharacterItemSealing.CanTrade(
-                                        sourceItem,
-                                        sourceDefinition))
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 7);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    continue;
-                                }
-
-                                var isEquipment = sourceDefinition.IsEquipment;
-                                if (!isEquipment
-                                    && sendRequest.CountOrValue > sourceItem.CountOrValue)
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 7);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    continue;
-                                }
-
-                                var attachmentValue = isEquipment
-                                    ? sourceItem.CountOrValue
-                                    : sendRequest.CountOrValue;
-                                attachment = new CharacterMailAttachmentRecord(
-                                    sourceItem.ItemId,
-                                    attachmentValue,
-                                    sourceItem.State,
-                                    sourceItem.Durability,
-                                    sourceItem.SealState,
-                                    EquipmentQualitySeed:
-                                        sourceItem.EquipmentQualitySeed,
-                                    InstanceId: sourceItem.InstanceId);
-                                sourceSlot = sourceItem.Slot;
-                                var remaining = isEquipment
-                                    ? 0
-                                    : sourceItem.CountOrValue - attachmentValue;
-                                if (remaining == 0)
-                                {
-                                    plannedInventory.Remove(sourceItem.Slot);
-                                }
-                                else
-                                {
-                                    plannedInventory[sourceItem.Slot] = sourceItem with
-                                    {
-                                        CountOrValue = remaining
-                                    };
-                                }
-                            }
-                            else if (sendRequest.ListType != 0
-                                || sendRequest.Slot != 0
-                                || sendRequest.CountOrValue != 0)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 7);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var plannedGold = session.Currency.Gold - sendRequest.Gold;
-                            var sendResult = await store.SendCharacterMailFromCharacterAsync(
-                                session.Login.AccountName,
-                                session.Character.Active.Id,
-                                sendRequest.Recipient,
-                                new CreateCharacterMailRequest(
-                                    session.Character.Active.Name,
-                                    sendRequest.Text,
-                                    sendRequest.Gold,
-                                    attachment),
-                                plannedGold,
-                                plannedInventory.Values,
-                                session.Inventory.Equipped.Values,
-                                serverToken);
-                            if (!sendResult.Sent || sendResult.Sender is null)
-                            {
-                                var errorCode = sendResult.Failure switch
-                                {
-                                    CharacterMailSendFailure.RecipientMailboxFull => (byte)90,
-                                    CharacterMailSendFailure.SenderStateChanged => (byte)17,
-                                    CharacterMailSendFailure.RecipientNotFound => (byte)10,
-                                    _ => (byte)7
-                                };
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            session.Character.Active = sendResult.Sender;
-                            session.Currency.Gold = plannedGold;
-                            session.Inventory.Main = plannedInventory;
-                            var sendReply = GameProtocolEngine.CreateCommandReply(
-                                request,
-                                success: true);
-                            await sendReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, sendReply);
-
-                            var senderUpdates = new List<GameInventoryEntry>();
-                            if (sendRequest.Gold != 0)
-                            {
-                                senderUpdates.Add(new GameInventoryEntry(
-                                    Slot: 0,
-                                    ItemId: 0,
-                                    CountOrValue: checked((uint)session.Currency.Gold)));
-                            }
-
-                            if (sourceSlot.HasValue)
-                            {
-                                senderUpdates.Add(session.Inventory.Main.TryGetValue(
-                                        sourceSlot.Value,
-                                        out var remainingItem)
-                                    ? ToGameInventoryEntry(remainingItem)
-                                    : new GameInventoryEntry(
-                                        sourceSlot.Value,
-                                        ushort.MaxValue,
-                                        0));
-                            }
-
-                            if (senderUpdates.Count > 0)
-                            {
-                                var inventoryUpdate = GameProtocolEngine.CreateUpdateItemList(
-                                    0,
-                                    senderUpdates);
-                                await inventoryUpdate.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, inventoryUpdate);
-                            }
-
-                            characterSessions.NotifyMailReceived(
-                                sendResult.RecipientCharacterId);
-                            if (sendResult.RecipientCharacterId == session.Character.Active.Id
-                                && Interlocked.Exchange(ref session.Mailbox.PendingAlarm, 0) != 0)
-                            {
-                                await SendNewMailAlarmAsync();
-                            }
-
-                            continue;
-                        }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.AcceptQuestCommand)
@@ -11539,108 +11118,6 @@ public sealed class EntranceService(
     private GameInventoryEntry ToGameInventoryEntry(CharacterItemRecord item) =>
         _characterPacketBuilders.ToGameInventoryEntry(item);
 
-    private static bool TryPlanMailAttachment(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
-        IReadOnlyDictionary<ushort, CharacterItemRecord> avatarInventory,
-        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory,
-        CharacterMailAttachmentRecord? attachment,
-        ItemCatalog catalog,
-        uint weightLimit,
-        out Dictionary<ushort, CharacterItemRecord> plannedInventory,
-        out Dictionary<ushort, CharacterItemRecord> plannedAvatarInventory,
-        out Dictionary<ushort, CharacterItemRecord> plannedCreatureInventory,
-        out byte? destinationListType,
-        out ushort? destinationSlot)
-    {
-        plannedInventory = inventory.ToDictionary(pair => pair.Key, pair => pair.Value);
-        plannedAvatarInventory = avatarInventory.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value);
-        plannedCreatureInventory = creatureInventory.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value);
-        destinationListType = null;
-        destinationSlot = null;
-        if (attachment is null)
-        {
-            return true;
-        }
-
-        if (CharacterWarehouseProgression.TryGetItemTargetCapacity(
-                attachment.ItemId,
-                out _))
-        {
-            destinationListType = 0;
-            return true;
-        }
-
-        if (!catalog.TryGetDefinition(attachment.ItemId, out var definition))
-        {
-            return false;
-        }
-
-        if (definition.InventoryCategory == ItemInventoryCategory.Avatar)
-        {
-            if (!CharacterAvatarInventoryPlanner.TryPlace(
-                    avatarInventory,
-                    attachment,
-                    catalog,
-                    out var avatarPlacement,
-                    out _))
-            {
-                return false;
-            }
-
-            plannedAvatarInventory = avatarPlacement.Inventory;
-            destinationListType = 1;
-            destinationSlot = avatarPlacement.DestinationSlot;
-            return true;
-        }
-
-        if (definition.InventoryCategory == ItemInventoryCategory.Creature)
-        {
-            var creatureItem = new CharacterItemRecord(
-                ushort.MaxValue,
-                attachment.ItemId,
-                attachment.CountOrValue,
-                attachment.State,
-                attachment.Durability,
-                attachment.SealState,
-                InstanceId: attachment.InstanceId);
-            if (!CharacterCreatureInventoryPlanner.TryPlace(
-                    creatureInventory,
-                    creatureItem,
-                    catalog,
-                    preferredEmptySlot: null,
-                    out var creaturePlacement,
-                    out _))
-            {
-                return false;
-            }
-
-            plannedCreatureInventory = creaturePlacement.Inventory;
-            destinationListType = 7;
-            destinationSlot = creaturePlacement.DestinationSlot;
-            return true;
-        }
-
-        if (!CharacterInventoryPlanner.TryPlace(
-                inventory,
-                attachment,
-                catalog,
-                weightLimit,
-                out var placement,
-                out _))
-        {
-            return false;
-        }
-
-        plannedInventory = placement.Inventory;
-        destinationListType = 0;
-        destinationSlot = placement.DestinationSlot;
-        return true;
-    }
-
     private GameMailEntry ToGameMailEntry(CharacterMailRecord mail) =>
         _characterPacketBuilders.ToGameMailEntry(mail);
 
@@ -12635,93 +12112,6 @@ public sealed class EntranceService(
         ushort ItemId,
         uint RequestedCount);
 
-    private static bool TryReadMailboxExtract(byte[] body, out uint mailId)
-    {
-        mailId = 0;
-        if (body.Length < 2 + sizeof(uint))
-        {
-            return false;
-        }
-
-        mailId = BinaryPrimitives.ReadUInt32LittleEndian(
-            body.AsSpan(2, sizeof(uint)));
-        return mailId != 0;
-    }
-
-    private static bool TryReadMailboxState(
-        byte[] body,
-        out uint mailId,
-        out ushort state)
-    {
-        mailId = 0;
-        state = 0;
-        if (body.Length != sizeof(ushort) + sizeof(uint) + sizeof(ushort))
-        {
-            return false;
-        }
-
-        mailId = BinaryPrimitives.ReadUInt32LittleEndian(
-            body.AsSpan(sizeof(ushort), sizeof(uint)));
-        state = BinaryPrimitives.ReadUInt16LittleEndian(
-            body.AsSpan(sizeof(ushort) + sizeof(uint), sizeof(ushort)));
-        return mailId != 0 && state is 0 or 2 or 3;
-    }
-
-    private static bool TryReadMailboxSend(
-        byte[] body,
-        out MailboxSendRequest request)
-    {
-        request = default;
-        if (!TryReadLengthPrefixedBytes(body, 2, out var recipientBytes, out var offset)
-            || recipientBytes.Length is 0 or >= 30
-            || body.Length - offset
-                < sizeof(uint) + sizeof(byte) + sizeof(ushort) + sizeof(ushort) + sizeof(uint))
-        {
-            return false;
-        }
-
-        var goldValue = BinaryPrimitives.ReadUInt32LittleEndian(
-            body.AsSpan(offset, sizeof(uint)));
-        offset += sizeof(uint);
-        if (goldValue > int.MaxValue)
-        {
-            return false;
-        }
-
-        var listType = body[offset++];
-        var slot = BinaryPrimitives.ReadUInt16LittleEndian(
-            body.AsSpan(offset, sizeof(ushort)));
-        offset += sizeof(ushort);
-        var itemId = BinaryPrimitives.ReadUInt16LittleEndian(
-            body.AsSpan(offset, sizeof(ushort)));
-        offset += sizeof(ushort);
-        var countOrValue = BinaryPrimitives.ReadUInt32LittleEndian(
-            body.AsSpan(offset, sizeof(uint)));
-        offset += sizeof(uint);
-        if (!TryReadLengthPrefixedBytes(body, offset, out var textBytes, out var endOffset)
-            || textBytes.Length >= 512
-            || endOffset != body.Length)
-        {
-            return false;
-        }
-
-        var recipient = ClientEncoding.GetString(recipientBytes).Trim();
-        if (string.IsNullOrWhiteSpace(recipient) || recipient.Length > 20)
-        {
-            return false;
-        }
-
-        request = new MailboxSendRequest(
-            recipient,
-            checked((int)goldValue),
-            listType,
-            slot,
-            itemId,
-            countOrValue,
-            ClientEncoding.GetString(textBytes));
-        return true;
-    }
-
     private static bool TryReadLengthPrefixedBytes(
         byte[] source,
         int offset,
@@ -12734,14 +12124,6 @@ public sealed class EntranceService(
         return PvfEncodings.Cp936Lossy();
     }
 
-    private readonly record struct MailboxSendRequest(
-        string Recipient,
-        int Gold,
-        byte ListType,
-        ushort Slot,
-        ushort ItemId,
-        uint CountOrValue,
-        string Text);
 
     private GamePassiveObjectDrop[] RegisterPassiveObjectDrops(
         DungeonRoomDefinition room,

@@ -13,6 +13,7 @@ namespace DFLegacy.Server;
 public sealed class ChannelSessionSenders(
     JsonGameStore store,
     ItemCatalog itemCatalog,
+    CharacterStatCatalog characterStatCatalog,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
     PvpExperienceCatalog pvpExperienceCatalog,
@@ -373,5 +374,38 @@ public sealed class ChannelSessionSenders(
                 "Could not send dungeon permissions to character {CharacterId}.",
                 context.State.Character.Active?.Id);
         }
+    }
+
+    public uint GetInventoryWeightLimit(ConnectionContext context, CharacterRecord character) =>
+        CharacterInventoryPlanner.CalculateMainInventoryWeightAllowance(
+            characterStatCatalog.Get(character).InventoryLimit,
+            context.State.Inventory.Equipped.Values,
+            context.State.Inventory.Creature.Values,
+            itemCatalog);
+
+    /// <summary>
+    /// Adopts a saved warehouse-upgrade state after a store round-trip; the
+    /// former AdoptSavedWarehouseUpgradeState local function. Returns true
+    /// when the capacity changed.
+    /// </summary>
+    public bool AdoptSavedWarehouseUpgradeState(ConnectionContext context, CharacterRecord savedCharacter)
+    {
+        var previousCapacity = context.State.Inventory.WarehouseCapacity;
+        context.State.Character.Active = savedCharacter;
+        context.State.Inventory.Main = (savedCharacter.Inventory ?? [])
+            .ToDictionary(item => item.Slot);
+        context.State.Inventory.Warehouse = (savedCharacter.Warehouse ?? [])
+            .ToDictionary(item => item.Slot);
+        context.State.Inventory.WarehouseCapacity = CharacterWarehouseProgression.Normalize(
+            savedCharacter.WarehouseCapacity);
+        return context.State.Inventory.WarehouseCapacity != previousCapacity;
+    }
+
+    public async Task SendWarehouseStateAsync(ConnectionContext context, CancellationToken cancellationToken)
+    {
+        var warehouseRefresh = builders.CreateWarehousePacket(
+            context.State.Inventory.Warehouse.Values,
+            context.State.Inventory.WarehouseCapacity);
+        await context.Outbound.SendAsync(warehouseRefresh, "WAREHOUSE_STATE", cancellationToken);
     }
 }

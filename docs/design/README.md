@@ -22,7 +22,7 @@
 | 04 | [迁移路线、验收与风险](04-migration-plan.md) | 跨平台重构的迁移路线、验收标准与风险登记 | **已实现** | 同上 |
 | 05 | [RandomNative 跨平台化提案](05-randomnative-crossplatform.md) | 原生随机模块跨平台化提案 | **已作废** | 后继方案 06,仅留档 |
 | 06 | [随机源降级为纯托管实现](06-random-source-managed.md) | 服务端随机源托管化(`Random/`),与 RandomNative 解耦(模块保留至 Client 层) | **已实现** | 同上 |
-| 07 | [协议层重构:收发包管线与分发架构](07-protocol-layer-refactor.md) | 把 `HandleClientAsync`(12,337 行、57 分支巨链)重构为「注册表分发 + 分域会话状态 + 出站 Channel 单写者 + 统一定时器」的 handler 架构 | **草案(待实施)** | 2026-09-28 按 ServerS4A21 现状复核 |
+| 07 | [协议层重构:收发包管线与分发架构](07-protocol-layer-refactor.md) | 把 `HandleClientAsync`(约 12,654 行、71 协议号巨链)重构为「注册表分发 + 通用管线(状态门槛/出站计账)+ 6 大类 15 组 handler(组名对齐 ServerS4A21,另预留组 16–20)+ 出站 Channel 单写者 + 统一定时器」架构 | **草案(待实施)** | 2026-09-28 复核;2026-09-29 复审刷新实测、增补 4.8 大类划分、命名规范与预留组 |
 | 08 | [SQLite 存储迁移(JsonGameStore → SQLite)](08-sqlite-storage.md) | 以同签名 `SqliteGameStore` 替换全量重写 JSON 的 `JsonGameStore`:增量写、事务边界、基线+增量迁移、一次性数据导入 | **草案** | 2026-09-28 起草;2026-09-29 基线重构定稿(统称 60A1) |
 | 09 | [DAF-MCP 总网关(一):协议包实时监听](09-mcp-packet-tap.md) | 服务端内置标准 MCP 服务器(默认关闭),`packet_watch` 游标长轮询实时暴露收发包(报文名+明文富化),供智能体边抓边分析协议 | **已实现** | 2026-09 定稿;2026-09-29 随 commit `7e12da7` 落地 |
 
@@ -31,7 +31,7 @@
 ### 07 · 协议层重构(草案)
 
 - 三个结构性问题:分发不可扩展(P1)、单写者靠纪律(P2,已有小喇叭 fire-and-forget 直写裂缝)、定时器语义埋在业务里(P3)。
-- 方案:57 分支 → 14 个 handler 组;`GameCommandRegistry` 字典分发(启动期重复注册即失败);`ChannelSessionState` 分域状态;有界 `Channel<T>` 出站泵;单点 `WhenAny` 定时器调度。strangler 式 R0–R7 迁移,约 30–49 人日。
+- 方案:71 协议号 → 15 个 handler 组、6 个功能大类(组名对齐 ServerS4A21 词汇,4.8.3 映射表);`GameCommandRegistry` 字典分发(启动期重复注册即失败)+ 通用管线(状态门槛声明式收口、出站计账单点);`ChannelSessionState` 分域状态;有界 `Channel<T>` 出站泵;单点 `WhenAny` 定时器调度。strangler 式 R0–R7 迁移,约 31–50 人日。
 - 硬约束:字节级行为冻结(golden 测试先行,旧实现产出即标准);协议核心层与领域层零改动。
 - 代码现状:未动工(`GameCommandRegistry`/`ConnectionContext`/出站泵均不存在)。
 

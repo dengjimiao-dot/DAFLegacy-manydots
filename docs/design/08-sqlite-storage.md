@@ -1,6 +1,6 @@
 # 08 · SQLite 存储迁移（JsonGameStore → SQLite）
 
-- 状态：**草案**（2026-09-28 起草；2026-09-29 基线重构定稿：统称 **60A1**，表设计模式取自 86S4A21、功能面上限兼容早期草案，见 D7）
+- 状态：**草案**（2026-09-28 起草；2026-09-29 基线重构定稿：统称 **60A1**，表设计模式取自 86S4A21、功能面上限兼容早期草案，见 D7；同日审查修订：基线 SQL 移除连接 PRAGMA（D2）、澄清 user_version 互验不变量（D3）、补齐 CHECK 约束（D7））
 - 日期：2026-09-28
 - 上级文档：[04 · 迁移计划](04-migration-plan.md)（§5 Q6 的遗留议题）、[01 · 目标架构](01-target-architecture.md)
 - 关联文档：
@@ -71,7 +71,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 | 写模型 | write-through：约 70 个 async 公有方法，每个方法末尾 `SaveLockedAsync()` 全量重写；并发 = 单把 `SemaphoreSlim` + record `with` 不可变替换 |
 | 原子性 | tmp 文件 + `File.Move(overwrite)`；无事务日志、无部分提交 |
 | 启动 | `InitializeAsync()`：读取（兼容数组/对象两种根格式）→ 9 个 `Migrate*Locked` 规范化 → 有变更即保存；文件不存在则播种 `test/test` 账号 + 预置角色 |
-| 消费方 | `Program.cs`（约 15 条 Admin API 路由）、`Network/EntranceService`（30+ 调用点，主消费者）、`Services/FatigueResetService`、`Services/WeaknessRecoveryService`、SelfTests 4 个文件 |
+| 消费方 | `Program.cs`（24 条 `/api/` Admin 路由，另有充值/GM 页面、`/health` 等 7 条页面路由）、`Network/EntranceService`（30+ 调用点，主消费者）、`Services/FatigueResetService`、`Services/WeaknessRecoveryService`、SelfTests 4 个文件 |
 | 不碰盘的层 | `Game/`（纯规则）、`GameWorld/`（PVF 静态目录）、`RuntimeState`（进程内观测）、`SerializedWriteStream`（socket 写串行化） |
 
 **结论：替换面极小。** 磁盘持久化唯一入口是 `JsonGameStore` 一个类，理论上做一个同签名的
@@ -115,15 +115,24 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 ### D2 初始化与失败清理
 
 仿 `SqliteDatabaseBootstrap`：每库每进程只初始化一次（`InitLock` + 已初始化路径去重）。
-库不存在 → 单事务执行基线 SQL + 写 `schema_metadata`；失败 → 删除 `.db/.db-wal/.db-shm`
+库不存在 → 单事务执行基线 DDL + 写 `schema_metadata`；失败 → 删除 `.db/.db-wal/.db-shm`
 三件套后抛出，绝不留下半初始化的库。
+
+连接 PRAGMA 不进基线 SQL（**2026-09-29 审查修订**）：`journal_mode=WAL` 与
+`foreign_keys` 由 bootstrap 在事务外设置——WAL 在活动事务内执行会直接报错，
+`foreign_keys` 在事务内是 no-op（实际经连接串 `ForeignKeys=true` 每连接生效）；
+`PRAGMA user_version` 可随事务提交，是基线 SQL 里唯一的 PRAGMA。
 
 ### D3 基线 + 增量迁移机制
 
 - `schema_metadata`（singleton 行：`baseline_id`、`schema_version`）+ `PRAGMA user_version`
   双写互验，不一致拒绝启动。
-- `baseline_id = 100`（数值，60A1 基线；`PRAGMA user_version` 同值 100 双写互验，
-  基线 SQL 内直接设置）；其它值 = 异构库，拒绝启动（提示备份移走）。
+- 互验不变量为两条（**2026-09-29 审查修订澄清**）：
+  1. `baseline_id == 100`（数值，60A1 基线，基线 SQL 内直接设置，**恒不变化**）；
+     其它值 = 异构库，拒绝启动（提示备份移走）。
+  2. `PRAGMA user_version == schema_metadata.schema_version`。基线建库时
+     `schema_version` 初值与 `baseline_id`、`user_version` 同为 100；此后每个
+     增量步在同一事务内同步推进两者，永不相漂移。
 - 增量步骤表 `Steps = [(version, name, Apply(conn, tx))]`：版本严格连续、每步独立事务、
   **只准写 SQL，禁止调用业务 Service/PVF**；执行序 = `step.Apply → 更新 metadata →
   PRAGMA user_version`。
@@ -194,7 +203,10 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 用不到的功能；功能面上限兼容早期草案**。
 
 - **取自 86 的模式**：每域一表、蛇形命名；可变子表带 `created_at/updated_at` 审计列；
-  显式 `idx_*` 索引与 CHECK 约束；物品单表 + `list_type` + `item_uid` 代理主键
+  显式 `idx_*` 索引与 CHECK 约束（`list_type` 容器码、三处 `slot_index` 非负、
+  `weakness_recovery` 0..100、邮件 `state` 1..3——后三项按 2026-09-29 审查修订补齐，
+  值域均经代码核实：虚弱恢复写入路径钳制在 10..100，邮件创建恒 1、客户端仅可置
+  2/3、置 0 走删除）；物品单表 + `list_type` + `item_uid` 代理主键
   （86 的 `character_inventory_items` 形态，早期草案 的五张分容器表据此合一——五容器
   共用同一 record，加容器不改表）；`schema_metadata` 基线标识 + 版本（与 86 同构）；
   **基线零业务语句**——早期草案 里的建库 UPDATE（位置修正）与 `account_dungeon_progress`
@@ -280,7 +292,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 | `AccountRecord.Cash` | 入 `accounts.cash`（null → 50,000 默认）。角色镜像与账号值由 `MigrateAccountCashLocked` 保证相等，以账号值为准 |
 | `PremiumServices` / 兼容字段 `PremiumExpireAt` | 归并进 `account_premium`（执行旧 `MigratePremiumServicesLocked` 的归并逻辑后再清源字段） |
 | 五个物品列表 | `Inventory/Equipment/Warehouse/AvatarInventory/CreatureInventory` → `character_items` container = 0/3/2/1/7 |
-| `Quests` / `CompletedQuestIds` / `RewardedQuestIds` | 前者入 `character_quests`；后两者合入 `character_completed_quests`，领过奖的行带 `rewarded_at`（导完即跑一次 `MigrateLegacyQuestRewards` 逻辑补发遗留奖励） |
+| `Quests` / `CompletedQuestIds` / `RewardedQuestIds` | 前者入 `character_quests`；后两者合入 `character_completed_quests`，领过奖的行带 `rewarded_at`（导完即跑一次 `MigrateLegacyQuestRewards` 逻辑补发遗留奖励）。JSON 无完成/领奖时间源，`completed_at`/`rewarded_at` 一律戳导入时刻，二者仅作「是否领过奖」的 NULL 判别，不作时间语义使用 |
 | `UnlockedDungeonIds` / `DungeonProgress` | 各入对应表（后者若为 null，执行登录期同款「按解锁推导难度 1」的旧迁移） |
 | 邮件 `Id` | 弃用随机 uint，按 `AUTOINCREMENT` 重新编号；`SentAt/ExpiresAt/IsNew/State` 原样入列 |
 | `UsedFatigue` + 根部 `FatigueDayKey` | `consumed` 原样；`last_reset_at` = 导入时刻最近的一个「上午 6 点」边界（Unix 秒），今日配额延续、明日照常滚动（全局日键由每角色边界列取代） |
@@ -312,7 +324,9 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   安全；但若存在导入前后按邮件 Id 引用的 Admin 脚本，需注意重编号。
 - **K3 mentor 悬空**：`MentorCharacterId` 在 JSON 是无约束 Guid；导入时解析不到目标角色置 0
   （加成随之失效，语义即「无师父」）。
-- **K4 行为差异**：账号名/角色名大小写已对齐（代码 `OrdinalIgnoreCase` ↔ 列 `COLLATE NOCASE`）；
+- **K4 行为差异**：账号名/角色名大小写已对齐（代码 `OrdinalIgnoreCase` ↔ 列 `COLLATE NOCASE`；
+  边界：NOCASE 仅折叠 ASCII 大小写，`OrdinalIgnoreCase` 是全 Unicode 折叠——对 ASCII 与
+  CJK 名称两者等价，带变音符号的拉丁字母存在判别差异，本服名称字符集不触及该边界）；
   并发写从「文件锁全量串行」变为「库锁行级串行」，只松不紧。
 - **K5 导入器回归**：导入正确性靠「导入后 `GET /api/accounts` 全量导出与 state.json 逐字段比对」
   的 SelfTest 断言兜底（M2 验收项）。

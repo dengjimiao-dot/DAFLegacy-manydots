@@ -69,6 +69,8 @@
 - **决斗场** 已有决斗经验、等级及记录同步，尚未实现房间、准备、对战及结算流程。
 - **数据持久化** 当前采用 JSON 文件，尚未接入数据库，不支持多实例共享写入。
 
+上述协议类缺口的迁移组位、命名与归属预留见 [docs/design/07-protocol-layer-refactor.md](docs/design/07-protocol-layer-refactor.md) 的 §4.8.4；存储缺口由 [docs/design/08-sqlite-storage.md](docs/design/08-sqlite-storage.md) 承载。
+
 ## 运行环境
 
 - Windows；客户端及 IJL15 为 32 位，硬件随机桥接为 64 位，建议使用 64 位 .NET 运行服务端。

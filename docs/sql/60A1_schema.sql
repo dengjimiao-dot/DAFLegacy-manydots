@@ -1,6 +1,3 @@
-PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;
-
 -- ============================================================================
 -- DFLegacy SQLite 存储基线。
 -- 设计约定（详见 docs/design/08-sqlite-storage.md）：
@@ -36,6 +33,11 @@ PRAGMA journal_mode = WAL;
 --     字节级行为由 PacketDumper golden 测试在协议层守护。
 --
 --   * 所有时间戳列：Unix 秒（INTEGER）；审计型时间戳（created_at 等）：ISO-8601 文本。
+--   * 连接 PRAGMA 不落基线 SQL：journal_mode=WAL 与 foreign_keys 由
+--     SqliteDatabaseBootstrap 在事务外设置——基线 DDL 按单事务执行（见 D2），
+--     journal_mode 在活动事务内执行会报错；foreign_keys 在事务内是 no-op，
+--     实际经连接串 ForeignKeys=true 每连接生效。PRAGMA user_version 例外：
+--     可随事务提交，保留在基线内直接设置（见下方）。
 --   * GUID 外部标识保留为 TEXT 列（account_uid / character_uid / instance_id），
 --     Admin API 与存储层公开签名继续使用 Guid。
 --   * account_id / character_id 由存储层显式分配：账号按 AccountUidRules 分段
@@ -55,8 +57,10 @@ CREATE TABLE IF NOT EXISTS schema_metadata (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 基线库的 user_version 与 baseline_id 同值（100）；schema_version 由迁移机制
--- 独立递增，两者语义不同（见 D3）。
+-- 基线建库时 schema_version 初值、PRAGMA user_version 与 baseline_id 同为 100；
+-- 此后每个增量步在同一事务内同步推进 schema_version 与 PRAGMA user_version。
+-- 启动互验不变量（见 D3）：baseline_id == 100（恒定，异构库检测）且
+-- PRAGMA user_version == schema_metadata.schema_version（随迁移推进）。
 PRAGMA user_version = 100;
 
 CREATE TABLE IF NOT EXISTS server_settings (
@@ -134,7 +138,7 @@ CREATE TABLE IF NOT EXISTS characters (
     character_id INTEGER PRIMARY KEY AUTOINCREMENT, -- = JSON CharacterNo，全局单调
     character_uid TEXT NOT NULL UNIQUE,             -- = JSON CharacterRecord.Id（Guid），Admin API 标识
     account_id INTEGER NOT NULL,
-    slot_index INTEGER NOT NULL,
+    slot_index INTEGER NOT NULL CHECK (slot_index >= 0),
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,       -- 代码比较用 OrdinalIgnoreCase，故 NOCASE
     job INTEGER NOT NULL,
     grow_type INTEGER NOT NULL DEFAULT 0,
@@ -161,7 +165,7 @@ CREATE TABLE IF NOT EXISTS characters (
     -- 虚弱恢复进度 0..100（DungeonWeaknessPolicy.FullStamina=100）。
     -- <100 即虚弱（早期草案的 is_weakened 是它的派生值，不落库）；
     -- WeaknessRecoveryService 每分钟回复。
-    weakness_recovery INTEGER NOT NULL DEFAULT 100,
+    weakness_recovery INTEGER NOT NULL DEFAULT 100 CHECK (weakness_recovery BETWEEN 0 AND 100),
     -- Town 1 area 1 is Elvengard/Gate.map (the Seria room).
     town_id INTEGER NOT NULL DEFAULT 1,
     area_id INTEGER NOT NULL DEFAULT 1,
@@ -179,7 +183,8 @@ CREATE TABLE IF NOT EXISTS characters (
     bonus_maximum_mp INTEGER NOT NULL DEFAULT 0,
     bonus_movement_speed INTEGER NOT NULL DEFAULT 0,
     bonus_all_resistance INTEGER NOT NULL DEFAULT 0,
-    -- 师徒：仅存师父角色 id（0 = 无）；不设外键，师父删除后悬空为 0 即可。
+    -- 师徒：仅存师父角色 id（0 = 无）；不设外键，删除师父后留下悬空 id，
+    -- 读取方解析不到目标角色即视为无师父（与 JSON 现状等价）。
     mentor_character_id INTEGER NOT NULL DEFAULT 0,
     mentor_exp_bonus_percent INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -207,7 +212,7 @@ CREATE TABLE IF NOT EXISTS character_items (
     item_uid INTEGER PRIMARY KEY AUTOINCREMENT,
     character_id INTEGER NOT NULL,
     list_type INTEGER NOT NULL CHECK (list_type IN (0, 1, 2, 3, 7)),
-    slot_index INTEGER NOT NULL,
+    slot_index INTEGER NOT NULL CHECK (slot_index >= 0),
     item_id INTEGER NOT NULL,
     item_count INTEGER NOT NULL DEFAULT 0,          -- JSON CountOrValue：堆叠数
     -- 低 5 位强化等级 + 高 3 位已完成再封印次数。
@@ -247,7 +252,7 @@ CREATE TABLE IF NOT EXISTS character_items (
 
 CREATE TABLE IF NOT EXISTS character_skills (
     character_id INTEGER NOT NULL,
-    slot_index INTEGER NOT NULL,
+    slot_index INTEGER NOT NULL CHECK (slot_index >= 0),
     skill_id INTEGER NOT NULL,
     skill_level INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (character_id, skill_id),
@@ -336,8 +341,9 @@ CREATE TABLE IF NOT EXISTS character_mail (
     equipment_quality_seed INTEGER NOT NULL DEFAULT 0,
     instance_id TEXT NOT NULL DEFAULT '',
     -- 领取/过期状态：1=新(未读)、2=已读进保管箱、3=已处理(尚有金币/附件时拒绝置 3)。
+    -- 代码侧创建恒 1、客户端仅可置 2/3（置 0 走删除），故 CHECK 收敛到 1..3。
     is_new INTEGER NOT NULL DEFAULT 1,
-    state INTEGER NOT NULL DEFAULT 1,
+    state INTEGER NOT NULL DEFAULT 1 CHECK (state IN (1, 2, 3)),
     -- Unix 秒。created_at = JSON SentAt；expires_at = created_at + 30 天，0 = 永不过期。
     created_at INTEGER NOT NULL DEFAULT 0,
     expires_at INTEGER NOT NULL DEFAULT 0,

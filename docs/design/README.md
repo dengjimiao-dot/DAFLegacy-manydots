@@ -21,7 +21,7 @@
 | 03 | [构建、发布与 CI](03-build-release-ci.md) | 构建、发布流程与 CI(publish 脚本、发布布局) | **已实现** | 同上 |
 | 04 | [迁移路线、验收与风险](04-migration-plan.md) | 跨平台重构的迁移路线、验收标准与风险登记 | **已实现** | 同上 |
 | 05 | [RandomNative 跨平台化提案](05-randomnative-crossplatform.md) | 原生随机模块跨平台化提案 | **已作废** | 后继方案 06,仅留档 |
-| 06 | [随机源降级为纯托管实现](06-random-source-managed.md) | 服务端随机源托管化(`Random/`),与 RandomNative 解耦(模块保留至 Client 层) | **已实现** | 同上 |
+| 06 | [随机源降级为纯托管实现](06-random-source-managed.md) | 服务端随机源托管化(`Infrastructure/`,原 `Random/` 已并入),与 RandomNative 解耦(模块保留至 Client 层) | **已实现** | 同上 |
 | 07 | [协议层重构:收发包管线与分发架构](07-protocol-layer-refactor.md) | 把 `HandleClientAsync`(约 12,654 行、71 协议号巨链)重构为「注册表分发 + 通用管线(状态门槛/出站计账)+ 6 大类 15 组 handler(组名对齐 ServerS4A21,另预留组 16–20)+ 出站 Channel 单写者 + 统一定时器」架构 | **草案(待实施)** | 2026-09-28 复核;2026-09-29 复审刷新实测、增补 4.8 大类划分、命名规范与预留组 |
 | 08 | [SQLite 存储迁移(JsonGameStore → SQLite)](08-sqlite-storage.md) | 以同签名 `SqliteGameStore` 替换全量重写 JSON 的 `JsonGameStore`:增量写、事务边界、基线+增量迁移、一次性数据导入 | **草案** | 2026-09-28 起草;2026-09-29 基线重构定稿(统称 60A1) |
 | 09 | [DAF-MCP 总网关(一):协议包实时监听](09-mcp-packet-tap.md) | 服务端内置标准 MCP 服务器(默认关闭),`packet_watch` 游标长轮询实时暴露收发包(报文名+明文富化),供智能体边抓边分析协议 | **已实现** | 2026-09 定稿;2026-09-29 随 commit `7e12da7` 落地 |
@@ -46,7 +46,7 @@
 
 - 代码落点:
   - `Server/DFLegacy.Mcp/`:独立模块项目(`McpModule`、`McpHost`、`Tap/PacketTap{Event,Hub,Filter,Tools}`、`Tap/PacketNamesResource`)——§6 全部 7 个工具(`packet_watch/get/wait`、`session_list`、`packet_names_search`、`protocol_decode`、`tap_status`)均已提供。
-  - `Server/DFLegacy.Server/Tap/IPacketTapSink.cs`:遥测接缝;`Persistence/RuntimeState.cs`:漏斗改造;`Infrastructure/McpModuleLoader.cs`:反射加载器。
+  - `Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`:遥测接缝;`Infrastructure/RuntimeState.cs`:漏斗改造;`Infrastructure/McpModuleLoader.cs`:反射加载器。
 - 配置:`server.json` → `DFLegacy.Mcp.{Enabled,Host,Port}`(`Enabled` 代码默认 `false`;当前本地 `server.json` 已开启,`127.0.0.1:12222`)。发布:`publish-mcp.bat` / `publish-mcp.sh` 单独发布模块 DLL。
 - 接入与验收:见 [README.md §MCP](../../README.md)(智能体接入配置、工具清单)。
 - 尚未实施(属后续方向,不影响本档状态):G2 PVF 工具组(§15.2)、鉴权、pcap 导出、stdio 适配、包注入(§14)。

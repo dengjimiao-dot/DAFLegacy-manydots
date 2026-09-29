@@ -214,7 +214,7 @@ Server/
 │   ├── Program.cs                +1 行：McpModuleLoader.TryAttach(...)
 │   ├── Infrastructure/McpModuleLoader.cs   ← 新增，~20 行反射加载器
 │   ├── Network/Core/IPacketTapSink.cs     ← 遥测接缝（§4.1；原 Tap/ 已并入 Network/Core）
-│   ├── Persistence/RuntimeState.cs  §5.1 漏斗改造（+~25 行）
+│   ├── Infrastructure/RuntimeState.cs  §5.1 漏斗改造（+~25 行；原 Persistence/ 移入）
 │   └── Infrastructure/ServerOptions.cs  +McpOptions{Enabled,Host,Port}（与 AdminOptions 同构，+3 属性；原 Hosting/ 已并入 Infrastructure/，见 07 §11）
 └── DFLegacy.Mcp/                 ← 新增模块项目（引用 Server + MCP SDK + AspNetCore FrameworkReference）
     ├── DFLegacy.Mcp.csproj         引 ModelContextProtocol + ModelContextProtocol.AspNetCore

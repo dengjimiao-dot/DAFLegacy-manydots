@@ -444,7 +444,7 @@ Z5（Windows 系统库 `DllImport`）是唯一"不被编译器覆盖、又完全
 | `Persistence/` | 状态持久化 | 3 |
 | `Hosting/` | 宿主配置与后台接口模型 | 3 |
 
-> 2026-09-29 修订:`Hosting/` 已并入 `Infrastructure/`,`CharacterSessionRegistry` 移 `Game/Session/`;当前目录形态以 07 §11 实施记录为准。
+> 2026-09-29 修订:`Hosting/` 已并入 `Infrastructure/`,`CharacterSessionRegistry` 移 `Game/Session/`;`Protocol/` 迁 `Network/{Core,Protocol}`;`RuntimeState` 与随机源三文件移 `Infrastructure/`,`SerializedWriteStream` 移 `Network/Core/`;当前目录形态以 07 §11 实施记录为准。
 | `Services/` | 周期性后台服务（`IHostedService`） | 2 |
 | **`GameWorld/`** | **从 PVF 解析出的只读定义与目录**（`*Catalog` / `*Definition`），**平铺**，不含运行时行为 | 25 |
 | **`Game/<业务域>/`** | **运行时业务规则**，按业务域分目录，域内平铺 | 39（9 个域） |

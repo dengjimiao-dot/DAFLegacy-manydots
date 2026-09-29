@@ -1,6 +1,6 @@
 # 06 · 随机源降级为纯托管实现（服务端与 DFLegacy.RandomNative 解耦，模块保留至 Client 层）
 
-- 状态：**已实施**（2026-09-24 标注）。服务端随机源托管化已落地（`Server/DFLegacy.Server/Random/`）；**修订：`DFLegacy.RandomNative` 不删除**，保留至 `Client/DFLegacy.RandomNative/`，仅解除服务端耦合。下文以"删除模块"为结论的表述按此修订理解
+- 状态：**已实施**（2026-09-24 标注）。服务端随机源托管化已落地（`Server/DFLegacy.Server/Infrastructure/`；2026-09-29 目录修订：原 `Random/` 三文件已并入 `Infrastructure/`，契约由本档与类头注释约束，见 07 §11）；**修订：`DFLegacy.RandomNative` 不删除**，保留至 `Client/DFLegacy.RandomNative/`，仅解除服务端耦合。下文以"删除模块"为结论的表述按此修订理解
 - 上级文档：[00 开档总纲](00-kickoff.md) · [01 目标架构](01-target-architecture.md) · [02 可移植性契约](02-portability-contracts.md) · [03 构建、发布与 CI](03-build-release-ci.md) · [04 迁移计划](04-migration-plan.md)
 - 参考实现：`ServerS4A21`（下称"参考项目"）
 - **取代 [05 · RandomNative 跨平台化提案](05-randomnative-crossplatform.md)**：本提案不做原生模块的跨平台移植；服务端与模块解耦（模块保留至 Client 层），05 的结论仍作废
@@ -201,7 +201,7 @@ B) DllImport("DFLegacy.RandomNative.dll")（现版写法）        → DllNotFou
 - 裁决的东西**不得**自行 `new Random()`（分布与可测性退化，参考项目明文禁止）；
 - 只要有一条序列客户端会复算，它**必须**走第三类，且取模语义原样保留。
 
-建议把这段规则写进 `Random/` 模块的文件头注释，作为与参考项目 `ServerRandom` 注释对等的成文约定。
+建议把这段规则写进随机源模块（现 `Infrastructure/GameRandomSource.cs`）的文件头注释，作为与参考项目 `ServerRandom` 注释对等的成文约定。
 
 ### 4.2 有意保留 `IDropRandomSource` 注入缝（对参考项目的一处偏离）
 

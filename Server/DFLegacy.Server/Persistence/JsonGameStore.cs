@@ -2026,11 +2026,11 @@ public sealed class JsonGameStore(
                 0);
         }
 
-        if (amount <= 0 || amount % 100 != 0)
+        if (amount <= 0)
         {
             return new(
                 false,
-                "充值点数必须是正整数，且为 100 的倍数。",
+                "充值点数必须是正整数。",
                 normalizedAccount,
                 amount,
                 0);

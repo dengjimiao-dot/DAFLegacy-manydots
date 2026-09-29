@@ -44,7 +44,7 @@
         <form id="mailForm" class="surface form-layout">
           <div class="section-heading">
             <h2>新邮件</h2>
-            <p>每封邮件最多携带一种物品，金币可与物品同时发送。</p>
+            <p>每封邮件最多携带一种物品，金币可与物品同时发送。点券发放到收件角色的账号，即时到账，与邮件领取无关。</p>
           </div>
           <div class="form-grid two-column">
             <label class="field span-two">
@@ -62,6 +62,10 @@
             <label class="field span-two">
               <span>正文</span>
               <textarea name="text" maxlength="255" rows="4" placeholder="邮件内容"></textarea>
+            </label>
+            <label class="field">
+              <span>点券（发放到账号）</span>
+              <input name="cera" type="number" min="0" step="1" value="0" required>
             </label>
             <label class="field">
               <span>附件类型</span>

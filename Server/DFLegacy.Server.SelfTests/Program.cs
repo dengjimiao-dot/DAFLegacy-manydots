@@ -5021,6 +5021,18 @@ try
         && accountCeraGrant.CharacterCount == 1
         && reloadedPremiumCharacter.Cash == 1_765_632,
         "account Cera grant updates every character and persists the new balance");
+    var oddCeraGrant = await reloadedPremiumStore.GrantCeraToAccountAsync("test", 137);
+    var oddCeraCharacter = (await reloadedPremiumStore.GetCharactersAsync("test"))[0];
+    var zeroCeraGrant = await reloadedPremiumStore.GrantCeraToAccountAsync("test", 0);
+    var negativeCeraGrant = await reloadedPremiumStore.GrantCeraToAccountAsync("test", -100);
+    Check(oddCeraGrant.Success
+        && oddCeraGrant.Amount == 137
+        && oddCeraCharacter.Cash == 1_765_769,
+        "account Cera grant accepts an amount that is not a multiple of 100 and persists the exact balance");
+    Check(!zeroCeraGrant.Success && !negativeCeraGrant.Success,
+        "account Cera grant rejects zero and negative amounts");
+    // 下游断言以该快照为新角色继承余额与陈旧写入基准，补记发放后需重取。
+    reloadedPremiumCharacter = (await reloadedPremiumStore.GetCharactersAsync("test"))[0];
     Check(accountDiamondGrant.Success
         && accountDiamondGrant.Days == 30
         && accountDiamondGrant.RemainingSeconds >= 2_591_990

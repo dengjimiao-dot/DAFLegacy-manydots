@@ -267,8 +267,21 @@ function bindForms() {
   $("#mailForm").addEventListener("submit", event => {
     event.preventDefault();
     runForm(event.currentTarget, async data => {
-      const item = await resolveSelectedItem();
       const character = state.characters.find(candidate => candidate.id === data.get("characterId"));
+      if (!character) {
+        throw new Error("请选择一个有效的收件角色。");
+      }
+      const item = await resolveSelectedItem();
+      const cera = Number(data.get("cera") || 0);
+      if (!Number.isInteger(cera) || cera < 0) {
+        throw new Error("点券必须是 0 或正整数。");
+      }
+      if (cera > 0) {
+        await api("/api/client-pay/cera", {
+          method: "POST",
+          body: JSON.stringify({ account: character.userName, amount: cera })
+        });
+      }
       const payload = {
         sender: data.get("sender"),
         text: data.get("text"),
@@ -278,11 +291,23 @@ function bindForms() {
         quantity: item && item.scriptKind !== "Stackable" ? 1 : Number(data.get("quantity") || 1),
         avatarAbilityIndex: Number(data.get("avatarAbilityIndex") || 0)
       };
-      await api(`/api/admin/characters/${data.get("characterId")}/mail`, {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-      return { message: `邮件已发送给 ${character?.name || "目标角色"}` };
+      try {
+        await api(`/api/admin/characters/${data.get("characterId")}/mail`, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+      } catch (error) {
+        if (cera <= 0) {
+          throw error;
+        }
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`点券已发放 ${cera}，邮件发送失败：${reason}`);
+      }
+      return {
+        message: cera > 0
+          ? `邮件已发送给 ${character.name}，并发放 ${cera} 点券`
+          : `邮件已发送给 ${character.name}`
+      };
     });
   });
 

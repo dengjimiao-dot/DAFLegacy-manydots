@@ -1,28 +1,15 @@
 {
   "DFLegacy": {
-    "Admin": {
-      "Host": "127.0.0.1",
-      "Port": 8081
-    },
-    "Mcp": {
-      "Enabled": true,
-      "Host": "127.0.0.1",
-      "Port": 12222
-    },
+    "Admin": { "Host": "127.0.0.1", "Port": 8081 },
+    "Logging": { "Enabled": false },
+    "Mcp": { "Enabled": true, "Host": "127.0.0.1", "Port": 12222 },
     "Entrance": {
       "Enabled": true,
       "Host": "127.0.0.1",
       "Port": 2311,
-      "AdditionalPorts": [
-        7001,
-        8080
-      ]
+      "AdditionalPorts": [7001, 8080]
     },
-    "CharacterDatagram": {
-      "Enabled": true,
-      "Host": "127.0.0.1",
-      "Port": 2311
-    },
+    "CharacterDatagram": { "Enabled": true, "Host": "127.0.0.1", "Port": 2311 },
     "GameplayDatagram": {
       "Enabled": true,
       "Host": "127.0.0.1",
@@ -31,11 +18,7 @@
       "MonsterObjectType": 529,
       "SenderPartyIndex": 0
     },
-    "GameProbe": {
-      "Enabled": false,
-      "Host": "127.0.0.1",
-      "Port": 7001
-    },
+    "GameProbe": { "Enabled": false, "Host": "127.0.0.1", "Port": 7001 },
     "DataPath": "data/state.json",
     "ScriptPvfPath": "../Script.pvf",
     "SkillScriptPath": "",
@@ -53,14 +36,10 @@
       "EconomicRate": 1.0,
       "ForceDrops": false
     },
-    "Experience": {
-      "MonsterMultiplier": 1.0,
-      "ClearMultiplier": 1.0
-    },
+    "Experience": { "MonsterMultiplier": 1.0, "ClearMultiplier": 1.0 },
     "MaximumPacketLength": 4194304,
     "RejectBadCrc32": false,
     "EnablePacketTracing": true,
-    "HexDumpLimit": 256,
-    "LoginHandshakeDelaySeconds": 3
+    "HexDumpLimit": 256
   }
 }

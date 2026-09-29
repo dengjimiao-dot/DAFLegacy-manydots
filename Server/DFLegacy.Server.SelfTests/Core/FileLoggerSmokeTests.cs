@@ -17,6 +17,13 @@ internal static class FileLoggerSmokeTests
         check(HexDump.ToSpacedHex([0x01, 0xAB, 0x0F]) == "01 AB 0F",
             "spaced hex renders uppercase bytes separated by single spaces");
 
+        // 开关默认值：统一文件日志与逐包捕获均为选择加入，默认不注册提供器、
+        // 不落盘（Program.cs 关时连 logs 目录都不建）。
+        check(!new LoggingOptions().Enabled,
+            "unified file logging is opt-in by default");
+        check(!new PacketCaptureOptions().Enabled,
+            "per-packet hex capture is opt-in by default");
+
         var root = Path.Combine(
             Path.GetTempPath(),
             "dflegacy-logging-" + Guid.NewGuid().ToString("N"));

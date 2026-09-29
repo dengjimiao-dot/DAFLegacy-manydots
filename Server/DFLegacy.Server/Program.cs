@@ -90,9 +90,14 @@ builder.Services.AddHostedService(serviceProvider =>
     serviceProvider.GetRequiredService<GameplayDatagramService>());
 builder.Services.AddHostedService<ProbeService>();
 
-// 统一日志（docs/design/07 §11 日志统一）：控制台之外再挂有界队列文件日志器，
-// 全部 ILogger 事件共享同一批记录；日志器随主机 Dispose 排空退出。
-builder.Logging.AddProvider(new BoundedQueueFileLoggerProvider(options.Logging, options.HomeDirectory));
+// 统一文件日志（docs/design/07 §11 日志统一）：默认关闭，开启后才挂有界队列
+// 文件日志器（全部 ILogger 事件与控制台共享同一批记录，日志器随主机 Dispose
+// 排空退出）；关闭时不注册提供器、不落盘。
+if (options.Logging.Enabled)
+{
+    builder.Logging.AddProvider(
+        new BoundedQueueFileLoggerProvider(options.Logging, options.HomeDirectory));
+}
 
 var app = builder.Build();
 

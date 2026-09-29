@@ -212,13 +212,13 @@ characterSessions.Release(broadcastLeaseTwo);
 PvfEncodings.EnsureRegistered();
 var capturedMapChatBody = Convert.FromHexString(
     "0A00030100000000000C000000B0A1B0A1B0A1B0A1B0A1B0A1");
-Check(EntranceService.TryReadSendMessage(capturedMapChatBody, out var capturedMapChat)
+Check(ChatParsers.TryReadSendMessage(capturedMapChatBody, out var capturedMapChat)
     && capturedMapChat.MessageType == (byte)GameMessageType.Type03White
     && capturedMapChat.TargetOrItemSpace == 1
     && capturedMapChat.SlotOrReserved == 0
     && Encoding.GetEncoding(936).GetString(capturedMapChat.MessageBytes) == "啊啊啊啊啊啊",
     "captured 2008 CMD 17 map-chat request parses type, target, reserved slot and CP936 text");
-Check(!EntranceService.TryReadSendMessage(
+Check(!ChatParsers.TryReadSendMessage(
         capturedMapChatBody[..^1],
         out _),
     "CMD 17 parser rejects a body shorter than its declared text length");
@@ -226,18 +226,18 @@ Check(!EntranceService.TryReadSendMessage(
 // "77777" to partner "Fight" — type 18 with the trailing partner-name dstr.
 var capturedOneToOneBody = Convert.FromHexString(
     "210012000000000000050000003737373737050000004669676874");
-Check(EntranceService.TryReadSendMessage(capturedOneToOneBody, out var capturedOneToOne)
+Check(ChatParsers.TryReadSendMessage(capturedOneToOneBody, out var capturedOneToOne)
     && capturedOneToOne.MessageType == (byte)GameMessageType.Type18DirectOutput
     && capturedOneToOne.TargetOrItemSpace == 0
     && capturedOneToOne.SlotOrReserved == 0
     && Encoding.GetEncoding(936).GetString(capturedOneToOne.MessageBytes) == "77777"
     && Encoding.GetEncoding(936).GetString(capturedOneToOne.TargetNameBytes) == "Fight",
     "captured 2008 CMD 17 1:1 chat request parses type 18, text and trailing partner name");
-Check(!EntranceService.TryReadSendMessage(
+Check(!ChatParsers.TryReadSendMessage(
         Convert.FromHexString("21001200000000000005000000373737373704000000466967"),
         out _),
     "CMD 17 type 18 parser rejects a partner name that overruns the body");
-Check(!EntranceService.TryReadSendMessage(
+Check(!ChatParsers.TryReadSendMessage(
         Convert.FromHexString("2100120000000000000500000037373737"),
         out _),
     "CMD 17 type 18 parser rejects a body without the partner-name dstr");
@@ -245,18 +245,18 @@ Check(!EntranceService.TryReadSendMessage(
 // "1111" to "Fight" — type 1 carries the partner uid and the same name dstr.
 var capturedWhisperBody = Convert.FromHexString(
     "0F00010700000000000400000031313131050000004669676874");
-Check(EntranceService.TryReadSendMessage(capturedWhisperBody, out var capturedWhisper)
+Check(ChatParsers.TryReadSendMessage(capturedWhisperBody, out var capturedWhisper)
     && capturedWhisper.MessageType == (byte)GameMessageType.Type01LightGreen
     && capturedWhisper.TargetOrItemSpace == 7
     && Encoding.GetEncoding(936).GetString(capturedWhisper.MessageBytes) == "1111"
     && Encoding.GetEncoding(936).GetString(capturedWhisper.TargetNameBytes) == "Fight",
     "captured 2008 CMD 17 whisper request parses type 1, partner uid, text and name");
 var emptyMapChatBody = Convert.FromHexString("0A000301000000000000000000");
-Check(!EntranceService.TryReadSendMessage(emptyMapChatBody, out _),
+Check(!ChatParsers.TryReadSendMessage(emptyMapChatBody, out _),
     "CMD 17 parser rejects an empty chat message");
 var capturedCreatureAutomaticMessageBody = Convert.FromHexString(
     "3100030000010000000E000000B2E2CAD4B2E2CAD4B2E2CAD4CED2");
-Check(EntranceService.TryReadSendMessage(
+Check(ChatParsers.TryReadSendMessage(
         capturedCreatureAutomaticMessageBody,
         out var capturedCreatureAutomaticMessage)
     && capturedCreatureAutomaticMessage.MessageType
@@ -268,7 +268,7 @@ Check(EntranceService.TryReadSendMessage(
     "captured 2008 CMD 124 Bobo automatic message uses the shared chat body layout");
 var capturedCreatureScriptBody = Convert.FromHexString(
     "0900030000010000002A000000D6F7C8CBA3ACCED2B6F6B5C3BAC3C4D1CADCB0A1A3ACD1DBC0E1B6BCD2AAC1F7B3F6C0B4C1CBA1ADA1AD");
-Check(EntranceService.TryReadSendMessage(
+Check(ChatParsers.TryReadSendMessage(
         capturedCreatureScriptBody,
         out var capturedCreatureScript)
     && capturedCreatureScript.MessageType == (byte)GameMessageType.Type03White
@@ -279,7 +279,7 @@ Check(EntranceService.TryReadSendMessage(
     "captured 2008 CMD 132 Creature script request uses the shared chat body layout");
 var capturedCreatureScriptType02Body = Convert.FromHexString(
     "2F000200000100000004000000DFF5DFF5");
-Check(EntranceService.TryReadSendMessage(
+Check(ChatParsers.TryReadSendMessage(
         capturedCreatureScriptType02Body,
         out var capturedCreatureScriptType02)
     && capturedCreatureScriptType02.MessageType

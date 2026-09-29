@@ -19,7 +19,7 @@ internal static class MegaphoneSmokeTests
             0x68, 0x65, 0x6C, 0x6C, 0x6F, // "hello"
         ];
 
-        check(EntranceService.TryReadSendMessage(capturedBody, out var request),
+        check(ChatParsers.TryReadSendMessage(capturedBody, out var request),
             "captured megaphone CMD 17 body parses");
         check(request.MessageType == 13, "megaphone request keeps speaker type 13");
         check(request.SlotOrReserved == 8, "megaphone request exposes speaker slot 8");

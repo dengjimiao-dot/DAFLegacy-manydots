@@ -203,7 +203,7 @@ dotnet Server/DFLegacy.Server.SelfTests/bin/Release/net10.0/DFLegacy.Server.Self
 
 - 新增 `publish.sh`，自探测 RID（[03 · 6.1](03-build-release-ci.md#61-publishsh-的-rid-处理)），支持 `PUBLISH_ALL=1` 产出全部目标。
 - 发布命令显式带 RID（`-r win-x64` / `-r linux-x64`），`publish.bat` 同步更新。
-- `release.yml` 矩阵化，产出包与各自 `.sha256`。**2026-09-23 修订**：只产出两个**服务端**包——`DFLegacy-<tag>-linux-x64.zip`（`ubuntu-latest`）与 `DFLegacy-<tag>-server-win-x64.zip`（`windows-latest`），只单独构建服务端项目；合并包与纯客户端包不再由 CI 产出，客户端产物由本地 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）。
+- `release.yml` 矩阵化，产出包与各自 `.sha256`。**2026-09-23 修订**：只产出两个**服务端**包——`DFLegacy-<tag>-linux-x64.zip`（`ubuntu-latest`）与 `DFLegacy-<tag>-server-win-x64.zip`（`windows-latest`），只单独构建服务端项目；合并包与纯客户端包不再由 CI 产出，客户端产物由本地 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）。**2026-09-29 修订**：移除 `windows-server` job，CI 发布仅保留 `DFLegacy-<tag>-linux-x64.zip`（[03 · 6](03-build-release-ci.md#6-发布流程releaseyml)）。
 - **把 `d3d8.dll` 真正放进包**（[Q13](#5-待决问题) 已决：需要分发）：在 `Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj` 里加 `Content` 项指向 `Client/Patch/` 下的**三个文件**——`d3d8.dll` 以及 `LICENSE-d3d8to9.md` / `README-d3d8to9.md`（[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll) 说明了后两者的许可义务：BSD 式条款要求二进制再分发必须随附版权声明），写法与 `Config.ini` 一致。**不要写在 CI 里**——那会让本地 `publish.bat` 与 CI 产出的包内容不一致。今天它零引用、从未进包（[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll)），所以这是 M5 的**新增**步骤，基线里没有它。
 - **包内容校验**：按 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的表在 CI 加一步检查——每个包该有的文件实际存在，缺失即失败。它拦的是 `Content`/`None` 项类型写错导致的**静默丢文件**（构建成功但文件不在包里）。
 - **更新 [03](03-build-release-ci.md) 的发布布局与发布命令章节**：把 Linux 一条路径写完整，并说明 Linux 包不含 Launcher 与 `ijl15.dll` 及其原因。**不修改仓库根 `README.md`**——面向使用者的 Windows 部署说明保持原样，Linux 相关说明一律落在 `docs/design/` 内。
@@ -213,7 +213,7 @@ dotnet Server/DFLegacy.Server.SelfTests/bin/Release/net10.0/DFLegacy.Server.Self
 | 场景 | 期望 |
 | --- | --- |
 | `ubuntu-latest` 发布 Linux 服务端包 | 产物中 apphost 经 `file` 确认为 ELF x86-64 |
-| `windows-latest` 发布 `server-win-x64` 服务端包 | 包内容与 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的服务端列一致 |
+| `windows-latest` 发布 `server-win-x64` 服务端包 | 已随 2026-09-29 修订移除该 job；Windows 服务端包由本地 `publish.bat` 产出，包内容与 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的服务端列一致 |
 | 包内容校验 | CI 按 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 按包分列校验，缺失即失败 |
 | 各 job | 相互独立，任一失败不阻断另一个已产出的产物（`fail-fast: false`） |
 | 文档 | [03](03-build-release-ci.md) 记录的 Linux 发布步骤可在干净机器上照做即得可用产物 |

@@ -313,7 +313,7 @@ Client 层 ──运行期──→ Server 层
 
 - **依赖关系是零，两个方向都是**：Client 打包只涉及 Client 层的项目，不编译 Server 的任何代码、不需要 Server 的任何产物；Server 打包则完全不触碰 Client 层。
 - **发布产物分开**：服务端包按 RID 出 `win-x64` / `linux-x64`；客户端包只出 `win-x64`。
-- **另出一个 Windows 合并包**，保留现有"服务端与 Launcher 同目录、解到客户端目录内即可用"的部署习惯——现有用户的用法不能因为分层而失效。三种交付形态的取舍见 [03 · 6](03-build-release-ci.md#6-发布流程releaseyml)；**2026-09-23 修订**：发布流水线只产出服务端两包（`linux-x64` / `server-win-x64`），合并包与纯客户端包改由本地 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）。
+- **另出一个 Windows 合并包**，保留现有"服务端与 Launcher 同目录、解到客户端目录内即可用"的部署习惯——现有用户的用法不能因为分层而失效。三种交付形态的取舍见 [03 · 6](03-build-release-ci.md#6-发布流程releaseyml)；**2026-09-23 修订**：发布流水线只产出服务端两包（`linux-x64` / `server-win-x64`），合并包与纯客户端包改由本地 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）；**2026-09-29 修订**：CI 发布仅保留 Linux 服务端包（`linux-x64`），Windows 服务端包同样改由本地 `publish.bat` 产出（[03 · 6](03-build-release-ci.md#6-发布流程releaseyml)）。
 
 ## 6. 里程碑
 
@@ -324,7 +324,7 @@ Client 层 ──运行期──→ Server 层
 | **M2** 随机源收拢 | 服务端与 `DFLegacy.RandomNative` 解耦（模块保留至 Client 层），`Random/` 模块换成纯托管的单一实现（保留 `IDropRandomSource`） | 服务端随机源无任何原生依赖 | 42 处调用点零改动；三平台随机源行为一致 |
 | **M3** PVF 脚本模块收拢 | `PvfScript/` 模块补齐编码契约与路径归一；集中编码注册 | PVF 读取三平台测试 | 含 CP936/CP949 路径表的 PVF 用例在 3 平台通过 |
 | **M4** 路径与数据契约 | `PathResolver`、`DFLEGACY_HOME`；修 R9 降级一致性 | 配置与路径契约落地 | Linux 上服务端用真实 `Script.pvf` 完整启动并接受连接 |
-| **M5** 独立打包与发布 | `publish.sh`（RID 探测）、CI 发布矩阵 | CI 绿 | `ubuntu-latest` 产出 `linux-x64` 服务端包；`windows-latest` 产出 `server-win-x64` 包（2026-09-23 修订后 CI 只出服务端两包） |
+| **M5** 独立打包与发布 | `publish.sh`（RID 探测）、CI 发布矩阵 | CI 绿 | `ubuntu-latest` 产出 `linux-x64` 服务端包（2026-09-23 修订后 CI 只出服务端包；2026-09-29 修订后仅保留 Linux 平台，`windows-latest` 发布 job 移除，Windows 形态由本地 `publish.bat` 产出） |
 
 M0–M5 是本次重构的全部承诺范围。详细任务分解与每阶段验收命令见 [04 迁移路线](04-migration-plan.md)。
 

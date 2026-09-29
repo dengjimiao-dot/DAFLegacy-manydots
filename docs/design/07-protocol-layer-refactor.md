@@ -576,6 +576,15 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 
 ### 11.4 遗留项
 
-- **SELECT_CHARACTER(CMD 4,组 3 最复杂段)**:已于 R1 收尾完成(SelectCharacterHandler + CharacterPacketBuilders 初始化包家族)。
-- 协议迁移已全部完成(71/71 挂载);纯规划器已归位 `Game/Inventory/`(空间校验族 + 精灵移动规划簇,senders 留薄委托);`MoveItemSpaceHandler` 已按子流程拆为四个 partial 文件(742/155/195/134 行,均低于 §4.7 上限);R6 剩余项为定时器收编(4 处 WhenAny,需真机时序对拍)。(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
-- 真机冒烟复测未做:已挂载的 9 协议需按 §7.4 清单在真机回归(登录→选角→建/删角→返回选角)。
+- **协议迁移**:已全部完成(71/71 协议挂载);纯规划器已归位 `Game/Inventory/`(空间校验族 + 精灵移动规划簇,senders 留薄委托);`MoveItemSpaceHandler` 已按子流程拆为四个 partial 文件(742/155/195/134 行,均低于 §4.7 上限)。
+- **R6 定时器收编(唯一未完成的机制项)**:现状实现在 `Network/EntranceService.cs` 泵层读循环顶部(L1247 起的 `while` 内,`pendingPacketRead` 同一段 `if/else-if` 链),四处形状相同——`await Task.WhenAny(pendingPacketRead, Task.Delay(remaining, serverToken))`,超时后 `request` 保持 null,执行到期动作再 `continue` 重新武装:
+
+  | # | 位置(2026-09-29 时点) | 触发状态(写入点) | 到期动作 |
+  | --- | --- | --- | --- |
+  | 1 | `EntranceService.cs:1263` | `Dungeon.SelectionDeadline`(StartGameHandler 设 30s) | `ReturnToTownFromDungeonAsync("selection-countdown-expired")` |
+  | 2 | `EntranceService.cs:1291` | `Dungeon.DeathTimeout`(DieCharacterHandler 设,Generation 校验) | 校验 Generation 未变后强制回城 |
+  | 3 | `EntranceService.cs:1331` | `Dungeon.CardSelectionDeadline`(CardSelectRightStateHandler 设 4s) | 自动翻牌/回城 |
+  | 4 | `EntranceService.cs:1378` | `Premium.ExpiryUnix`(租约回调写入) | 到期服务 `SendPremiumServiceInfoAsync(type, 0)` |
+
+  **收编方案(07 §4.5 既定设计)**:泵层合并为一个 `Task.WhenAny(readTask, eventsTask)`,四处 deadline 写入点(共约 12 处赋值/清空,分布于 StartGame/DieCharacter/CardSelectRightState/SelectDungeon/MoveMap/UseCoin/ReturnSelectCharacter 各 handler 与 `ChannelSessionSenders.Dungeon`)改为 `context.Timers.Register(due, 入队 ConnectionEvent)`;已作废的旧定时器靠到期事件内的二次校验(如 DeathTimeout 的 Generation 比对)空转。改动本身有限,但**触发时刻由"`Task.Delay` 到期"变为"调度器到期 + 下一次 `WhenAny` 唤醒"**,极端交错下可能存在亚帧级差异,**按 §7.5 必须真机对拍(premium 到期/翻牌截止/选择与死亡倒计时,误差 < 1 读帧周期)后方可视为完成**;未复测前不实施,以免失去现行实现的已知时序基线。
+- **真机冒烟复测**:全部 71 协议的字节级等价性由 golden 样本与内联检查守护,但真机全流程回归(登录→选角→进城→聊天→买卖/修理→接交任务→学技能→副本全程→结算翻牌→回城→邮件,§7.4 清单)未做——这是当前最大的未验证面,建议合入 `main` 前补做;未复测的结论一律按"待真机确认"登记。

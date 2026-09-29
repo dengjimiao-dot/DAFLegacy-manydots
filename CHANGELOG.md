@@ -49,7 +49,8 @@
 - **已挂载新链路的协议**（共 9 个，均为字节级等价迁移）：CHECK_CONNECTION 0、EXIT 3、ANTIBOT 161（组 1）；LOGIN 1、SET_UDP_IP_PORT 2（组 2）；GET_USERINFO 8、CREATE_CHARACTER 5、DELETE_CHARACTER 6、RETURN_SELECT_CHARACTER 7（组 3）。未挂载协议仍走旧分支链，行为不变。
 - **Parser 外置**：`TryReadLoginCredentials` 等请求解析逐字迁至 `Network/Handlers/<组>/` 与 `Network/Parsers/`（07 §4.7）；USERINFO 名册/初始背包构建收口 `CharacterPacketBuilders`。
 - **验证**：SelfTests 全量通过（含新增 `ProtocolGoldenSmokeTests`：EXIT 全字节、CHECK_CONNECTION 同 seed 全载荷对比、门槛拒绝路径、批量 FIFO、计账单点）；样本库 `tools/packet_bytes.json`（66 CMD + 49 NOTI）由 SelfTests 直接消费。**遗留项：真机冒烟复测未做**（登录→选角→建/删角→返回选角需真机确认）。
-- **续报（R1 收尾 + R2）**：SELECT_CHARACTER（CMD 4）已随 R1 收尾迁入 `SelectCharacterHandler`（初始化包家族迁入 `CharacterPacketBuilders`，循 §6·R1 InitPacketBuilderRegistry 方向）；R2 组 5-8 共 14 协议挂载新链路（CHAT 3／MAILBOX 4／QUEST 4／SKILL 3），注册组 `social.chat`／`social.mailbox`／`progression.quest`／`progression.skill`；跨会话推送（邮件／会员／点券／喇叭／弹窗／虚弱／副本权限）统一经目标会话出站泵入队，fire-and-forget 直写他连流的 P2 裂缝在已迁移协议面上机制化封口。新增 `ConnectionContext.ReadAdjacentFrame` 泵层能力承载 CHANGE_SKILLSLOT 的紧邻帧预读（解密与计账留在传输层）。EntranceService.cs 14,832 → 10,791 行；组 9-15 与 R6 清退仍待推进。
+- **续报（R1 收尾 + R2）**：SELECT_CHARACTER（CMD 4）已随 R1 收尾迁入 `SelectCharacterHandler`（初始化包家族迁入 `CharacterPacketBuilders`，循 §6·R1 InitPacketBuilderRegistry 方向）；R2 组 5-8 共 14 协议挂载新链路（CHAT 3／MAILBOX 4／QUEST 4／SKILL 3），注册组 `social.chat`／`social.mailbox`／`progression.quest`／`progression.skill`；跨会话推送（邮件／会员／点券／喇叭／弹窗／虚弱／副本权限）统一经目标会话出站泵入队，fire-and-forget 直写他连流的 P2 裂缝在已迁移协议面上机制化封口。新增 `ConnectionContext.ReadAdjacentFrame` 泵层能力承载 CHANGE_SKILLSLOT 的紧邻帧预读（解密与计账留在传输层）。EntranceService.cs 14,832 → 10,791 行。
+- **续报（R3）**：组 9-11 共 19 协议挂载新链路（INVENTORY 5／SHOP 6／CRAFT 8），注册组 `economy.inventory`／`economy.shop`／`economy.craft`；新增 InventoryParsers 与 ShopParsers（含 ConsumeItemsRequestItem／CeraShopPurchaseRequestItem 请求记录），库存移动发送器、精灵移动规划簇与库存空间校验族归口 `ChannelSessionSenders`。EntranceService.cs 缩至 5,128 行；累计挂载 43/71 协议；组 12-15（精灵／副本／城镇／组队）与 R6 清退仍待推进。
 
 ---
 

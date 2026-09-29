@@ -552,8 +552,16 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **规模**:EntranceService.cs 14,832 → 10,791 行;新增 8 个 handler 组目录(PascalCase 对齐 4.8.3 表)。
 - 阶段基线:SelfTests 全量(20 套件)通过;真机冒烟仍为遗留项。
 
+### 11.3b R3 实施记录(组 9-11,同日续)
+
+- **已挂载**:组 9 Inventory(SORT 20/MOVE 19/DELETE 18/USE_STACKABLE 47/DECREASE_DUR 51,`economy.inventory`)、组 10 Shop(BUY 21/SELL 24/REPAIR 25/CERA 67/GEN_CERATICKET 68/ITEMTRADE_STATE 26,`economy.shop`)、组 11 Craft(COMPOUND 27/DISJOINT 28/LOTTERY 29/UPGRADE 83/RESET 84/COMPOUND_AVATAR 102/DROP 50/GET 46,`economy.craft`),共 19 协议。
+- **Parser 外置续**:InventoryParsers(5 解析器 + ConsumeItemsRequestEntry)、ShopParsers(5 解析器 + CeraShopPurchaseRequestItem);SelfTests 反射目标同步更新为解析器新家。
+- **共享助手归口**:ChannelSessionSenders 承接库存移动发送器/精灵移动规划簇/库存空间校验族(FindFreeInventorySlot/TryGetInventorySpace/IsInventorySlotValid/兼容槽与部分堆叠搜索)、SendPremiumServiceInfo/SendTownFatigueState;CreatureInventoryMovePlan 迁至 Game/Inventory/。
+- **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;按 4.7 单文件上限的子流程拆分作为遗留项(见 11.4)。
+- **规模**:EntranceService.cs 14,832 → 5,128 行;累计挂载协议 43/71;SelfTests 20 套件全量通过(真机冒烟仍为遗留项)。
+
 ### 11.4 遗留项
 
 - **SELECT_CHARACTER(CMD 4,组 3 最复杂段)**:已于 R1 收尾完成(SelectCharacterHandler + CharacterPacketBuilders 初始化包家族)。
-- 组 9-15(物品三组/精灵/副本/城镇/组队)未迁移;R6 清退(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
+- 组 12-15(精灵/副本/城镇/组队)未迁移;MoveItemSpaceHandler 约 1,100 行超出 4.7 单文件上限,子流程拆分待办;R6 清退(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
 - 真机冒烟复测未做:已挂载的 9 协议需按 §7.4 清单在真机回归(登录→选角→建/删角→返回选角)。

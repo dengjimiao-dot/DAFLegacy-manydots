@@ -163,7 +163,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     plannedWarehouseCapacity,
                     targetCapacity);
                 warehouseUpgraded = true;
-                return;
+                continue;
             }
 
             if (product.PremiumContract is { } contract)
@@ -180,7 +180,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 premiumServiceGrants.Add(new(
                     contract.ServiceType,
                     (int)grantedDays));
-                return;
+                continue;
             }
 
             if (product.DirectCurrencyGrant is { } currencyGrant)
@@ -198,7 +198,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     break;
                 }
 
-                return;
+                continue;
             }
 
             if (itemDefinition.CeraBooster is not null
@@ -303,7 +303,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     .ToArray();
                 openedContainerCount = checked(
                     openedContainerCount + product.Quantity);
-                return;
+                continue;
             }
 
             var purchasedItem = CharacterItemIdentity.Ensure(
@@ -330,7 +330,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     out placementFailure))
             {
                 plannedAvatarInventory = avatarPurchasePlan.Inventory;
-                return;
+                continue;
             }
 
             if (itemDefinition.InventoryCategory
@@ -352,7 +352,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
             {
                 plannedCreatureInventory =
                     creaturePurchasePlan.Inventory;
-                return;
+                continue;
             }
 
             if (itemDefinition.InventoryCategory
@@ -367,7 +367,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     out placementFailure))
             {
                 plannedInventory = purchasePlan.Inventory;
-                return;
+                continue;
             }
 
             if (placementFailure == InventoryPlacementFailure.InvalidItem)

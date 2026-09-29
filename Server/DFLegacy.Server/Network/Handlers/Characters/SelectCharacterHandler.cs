@@ -248,14 +248,14 @@ public sealed partial class SelectCharacterHandler(
                         });
                     }
 
-                    return;
+                    continue;
                 }
 
                 displacedAvatarItems.Add(item with
                 {
                     Slot = ushort.MaxValue
                 });
-                return;
+                continue;
             }
 
             if (definition?.InventoryCategory
@@ -265,7 +265,7 @@ public sealed partial class SelectCharacterHandler(
                 {
                     Slot = ushort.MaxValue
                 });
-                return;
+                continue;
             }
 
             var normalizedEquipmentItem =
@@ -284,7 +284,7 @@ public sealed partial class SelectCharacterHandler(
             {
                 repairedEquipmentState |=
                     !normalizedEquipmentItem.Equals(item);
-                return;
+                continue;
             }
 
             displacedMainItems.Add(item with { Slot = ushort.MaxValue });

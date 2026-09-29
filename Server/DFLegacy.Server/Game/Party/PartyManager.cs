@@ -20,6 +20,13 @@ public sealed record PartyOpResult
     public bool LeaderChanged { get; init; }
     public ushort NewLeaderUserId { get; init; }
 
+    /// <summary>Capacity the server applied in place of the request's
+    /// out-of-range userMax byte (create repairs to
+    /// <see cref="PartyConstants.DefaultCapacity"/>, an edit keeps the
+    /// party's current capacity). Null means the request carried a usable
+    /// capacity and nothing was repaired.</summary>
+    public byte? RepairedUserMax { get; init; }
+
     /// <summary>The affected member (join target, leaver, or kicked member).</summary>
     public ushort TargetUserId { get; init; }
 
@@ -85,9 +92,17 @@ public sealed class PartyManager
     /// <summary>
     /// Applies SET_PARTY_INFO. A requester without a party creates one and
     /// becomes leader; an existing party updates its title and capacity.
-    /// Fails when the identity is stale, the title exceeds the client's
-    /// 0x40-byte reader cap, or the capacity byte is not one the ACT1 client
-    /// can send.
+    /// Fails when the identity is stale or the title exceeds the client's
+    /// 0x40-byte reader cap.
+    ///
+    /// The capacity byte is repaired rather than rejected when it is outside
+    /// the 2..4 the radios can produce: the client's rename path echoes the
+    /// capacity it read from its own party record (0x7D6327), which the live
+    /// capture showed as 0x30 while the leader edited an existing party. A
+    /// rejection there costs the whole rename and the client only reports the
+    /// unrelated "您不是房主" popup bound to error code 8, so an edit keeps the
+    /// party's current capacity and a create falls back to the create
+    /// window's own default of 4 (0x7D635E) — the player is never locked out.
     /// </summary>
     public PartyOpResult SetPartyInfo(
         PartyMemberIdentity member,
@@ -99,10 +114,6 @@ public sealed class PartyManager
         if (userId == 0 || sessionId == Guid.Empty)
         {
             return PartyOpResult.Fail("invalid_member_identity");
-        }
-        if (!PartyConstants.IsSupportedCapacity(userMax))
-        {
-            return PartyOpResult.Fail("unsupported_user_max");
         }
         if (titleBytes.Length > PartyConstants.MaximumTitleBytes)
         {
@@ -118,12 +129,15 @@ public sealed class PartyManager
             var existing = LookupPartyByUserLocked(userId);
             if (existing is null)
             {
+                var appliedUserMax = PartyConstants.IsSupportedCapacity(userMax)
+                    ? userMax
+                    : PartyConstants.DefaultCapacity;
                 var fresh = new Party(_nextPartyId++)
                 {
                     LeaderUserId = userId,
                     TitleKind = titleKind,
                     TitleBytes = (byte[])titleBytes.Clone(),
-                    UserMax = userMax,
+                    UserMax = appliedUserMax,
                 };
                 fresh.TryAddMember(member.ToMember());
                 _parties[fresh.PartyId] = fresh;
@@ -137,6 +151,7 @@ public sealed class PartyManager
                     TargetUserId = userId,
                     TargetSessionId = sessionId,
                     RemainingMembers = fresh.MembersBySlot(),
+                    RepairedUserMax = appliedUserMax == userMax ? null : appliedUserMax,
                 };
             }
 
@@ -145,14 +160,18 @@ public sealed class PartyManager
             {
                 return PartyOpResult.Fail("not_leader");
             }
-            if (party.Count > userMax)
+
+            var repairedUserMax = PartyConstants.IsSupportedCapacity(userMax)
+                ? userMax
+                : party.UserMax;
+            if (party.Count > repairedUserMax)
             {
                 return PartyOpResult.Fail("member_count_exceeds_user_max");
             }
 
             party.TitleKind = titleKind;
             party.TitleBytes = (byte[])titleBytes.Clone();
-            party.UserMax = userMax;
+            party.UserMax = repairedUserMax;
 
             return new PartyOpResult
             {
@@ -162,6 +181,7 @@ public sealed class PartyManager
                 TargetUserId = userId,
                 TargetSessionId = sessionId,
                 RemainingMembers = party.MembersBySlot(),
+                RepairedUserMax = repairedUserMax == userMax ? null : repairedUserMax,
             };
         }
     }

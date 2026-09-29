@@ -252,6 +252,16 @@ Check(ChatParsers.TryReadSendMessage(capturedWhisperBody, out var capturedWhispe
     && Encoding.GetEncoding(936).GetString(capturedWhisper.MessageBytes) == "1111"
     && Encoding.GetEncoding(936).GetString(capturedWhisper.TargetNameBytes) == "Fight",
     "captured 2008 CMD 17 whisper request parses type 1, partner uid, text and name");
+// Captured on channel:7001 (packet_watch seq 86): the party-chat send
+// "1111" — type 2 with the target field carrying the sender's own uid.
+var capturedPartyChatBody = Convert.FromHexString(
+    "1300020100000000000400000031313131");
+Check(ChatParsers.TryReadSendMessage(capturedPartyChatBody, out var capturedPartyChat)
+    && capturedPartyChat.MessageType == (byte)GameMessageType.Type02LightCyan
+    && capturedPartyChat.TargetOrItemSpace == 1
+    && capturedPartyChat.SlotOrReserved == 0
+    && Encoding.GetEncoding(936).GetString(capturedPartyChat.MessageBytes) == "1111",
+    "captured 2008 CMD 17 party-chat request parses type 2 with no trailing name");
 var emptyMapChatBody = Convert.FromHexString("0A000301000000000000000000");
 Check(!ChatParsers.TryReadSendMessage(emptyMapChatBody, out _),
     "CMD 17 parser rejects an empty chat message");

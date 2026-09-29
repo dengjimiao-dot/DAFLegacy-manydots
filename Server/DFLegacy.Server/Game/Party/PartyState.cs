@@ -40,7 +40,22 @@ public static class PartyConstants
 
     public const ushort EmptySlotUserId = 0xFFFF;
 
-    /// <summary>Capacity bytes the ACT1 client can send in SET_PARTY_INFO.</summary>
+    /// <summary>
+    /// Capacity the create window falls back to when the opener holds no
+    /// party (0x7D635E writes 4 and 0x7D6346 fills a random preset title).
+    /// Also the repair target for a create request whose capacity byte is out
+    /// of range.
+    /// </summary>
+    public const byte DefaultCapacity = 4;
+
+    /// <summary>
+    /// Capacity bytes the SET_PARTY_INFO radios can produce. An out-of-range
+    /// byte is not a rejection reason: the client reads the byte it sends
+    /// from its own party record when the create window is reopened on an
+    /// existing party (0x7D6327 loads <c>*(member + 0xFC) + 0x3C</c>, observed
+    /// as 0x30 = 48 on 2026-09-29), so PartyManager repairs the value to the
+    /// party's current capacity instead of failing the whole rename.
+    /// </summary>
     public static bool IsSupportedCapacity(byte userMax) => userMax is >= 2 and <= 4;
 
     /// <summary>
@@ -100,7 +115,12 @@ public sealed class Party
 
     public ushort LeaderUserId { get; set; }
 
-    /// <summary>SET_PARTY_INFO title kind: 0 = custom name follows, 1..5 = preset.</summary>
+    /// <summary>SET_PARTY_INFO title kind: 1..6 = one of the client's six
+    /// preset titles (dword_B75A64[0..5], string ids 0x1AA..0x1AF of
+    /// dnf.str). Kind 0 means the request carried a custom title, which the
+    /// server stores but no client can display: the PARTY_INFO settings block
+    /// has no title text and the client renders kind 0 as its local string
+    /// 0x272 ("无队伍名").</summary>
     public byte TitleKind { get; set; }
 
     public byte[] TitleBytes { get; set; } = [];

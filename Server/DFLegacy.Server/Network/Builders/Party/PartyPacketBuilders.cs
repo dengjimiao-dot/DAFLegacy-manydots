@@ -41,12 +41,15 @@ internal static class PartyPacketBuilders
     /// <summary>
     /// PARTY_INFO (NOTI 9) uses a block list in this build: u16 block count,
     /// then per block u16 party id and u8 type. Type 0/1 carry the settings
-    /// pair the client reads at 0x41B8F9 (u8 title kind, u8 user max — kind-0
-    /// titles render from the client's local string 0x272, never from the
-    /// wire); type 0/2 carry four roster slots of u16 uid + u8 state plus
-    /// the leader slot tail byte (reader at 0x41B9CD, leader store at
-    /// 0x41BAD7); type 3 is the five-byte clear header only. There is no
-    /// trailing has-extra byte in this build.
+    /// section the client reads at 0x41B8F9: u8 title kind, then — only when
+    /// the kind is 0 — the uplink dstr shape (u32 length + CP936 text, read
+    /// by sub_8B3250 with cap 0x40 and the local string 0x272 as the fallback
+    /// for zero/over-cap lengths), then u8 user max. Kind 1..6 skips the dstr
+    /// and goes straight to the user-max byte. Type 0/2 additionally carry
+    /// four roster slots of u16 uid + u8 state plus the leader slot tail byte
+    /// (reader at 0x41B9CD, leader store at 0x41BAD7); type 3 is the
+    /// five-byte clear header only. There is no trailing has-extra byte in
+    /// this build.
     /// </summary>
     public static GameServerPacket CreatePartyInfo(
         IReadOnlyList<PartyInfoWireBlock> blocks)
@@ -66,7 +69,7 @@ internal static class PartyPacketBuilders
             writer.Write(block.BlockType);
             if (block.BlockType is 0 or 1)
             {
-                PartyPacketBuilders.WritePartySettings(writer, block.TitleKind, block.UserMax);
+                PartyPacketBuilders.WritePartySettings(writer, block);
             }
 
             if (block.BlockType is 0 or 2)
@@ -101,16 +104,51 @@ internal static class PartyPacketBuilders
             (byte)NotiPacketType.PARTY_INFO,
             payload.ToArray());
     }
-    private static void WritePartySettings(BinaryWriter writer, byte titleKind, byte userMax)
+
+    /// <summary>
+    /// Exclusive cap of the kind-0 title length: the client's dstr reader
+    /// (sub_8B3250, called with cap 0x40 at 0x41B955) displays lengths below
+    /// the cap, falls back to its local string 0x272 at or beyond it (without
+    /// consuming the payload), and the uplink parser rejects them equally.
+    /// </summary>
+    public const int CustomTitleLengthCap = 0x40;
+
+    private static void WritePartySettings(
+        BinaryWriter writer,
+        PartyInfoWireBlock block)
     {
-        // Downstream settings are the bare two-byte pair (reader 0x41B8F9):
-        // the client loads its local default-title string 0x272 for kind 0
-        // and leaves the title empty otherwise — the u32-prefixed dstr only
-        // exists on the uplink SET_PARTY_INFO writer (0x7D5F86). Emitting it
-        // here desynchronises the reader: userMax and every roster slot
-        // shift by the four length bytes.
-        writer.Write(titleKind);
-        writer.Write(userMax);
+        // Downstream settings section (reader 0x41B8F9): the kind byte always
+        // comes first. Kind 0 continues with the uplink dstr shape — the
+        // reader unconditionally consumes a u32 length there (sub_8B3250) and
+        // the text bytes when 0 < length < cap, so emitting the bare two-byte
+        // pair desynchronises it: the name renders as the local fallback
+        // string 0x272 and every later block of the packet misaligns. A zero
+        // length is the honest "no custom title" form and renders the same
+        // fallback. Kind 1..6 skips the dstr entirely.
+        writer.Write(block.TitleKind);
+        if (block.TitleKind == 0)
+        {
+            var titleBytes = block.TitleBytes;
+            if (titleBytes is { Count: > 0 })
+            {
+                if (titleBytes.Count >= CustomTitleLengthCap)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(block));
+                }
+
+                writer.Write((uint)titleBytes.Count);
+                foreach (var value in titleBytes)
+                {
+                    writer.Write(value);
+                }
+            }
+            else
+            {
+                writer.Write(0u);
+            }
+        }
+
+        writer.Write(block.UserMax);
     }
     /// <summary>
     /// NOTI 7 invite popup. The reader at 0x41B4C8 consumes u16 uid, u8 type,

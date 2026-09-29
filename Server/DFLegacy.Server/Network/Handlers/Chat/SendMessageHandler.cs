@@ -200,6 +200,47 @@ public sealed class SendMessageHandler(JsonGameStore store,
             return;
         }
 
+        // Party chat is CMD 17 type 2 in town and type 11 inside a
+        // dungeon channel: the chat window's channel selector feeds
+        // sub_849E80 (selector index 1 = party) and sub_8495B0 writes
+        // the resulting type, guarding it with string 282 ("party
+        // chat is only available inside a party"). The display side
+        // groups both types into one colour and one chat tab
+        // (sub_8431E0 / sub_845580), so the type passes through
+        // unchanged. Routing follows the party roster instead of the
+        // town area so members who moved apart keep hearing each
+        // other; the sender needs its own copy because the client
+        // renders an outgoing line locally for whispers only, and the
+        // uid is the speaker's area-user id, which case 12 resolves
+        // against the town-user table for the line name and bubble.
+        if (messageRequest.MessageType
+            is (byte)GameMessageType.Type02LightCyan
+                or (byte)GameMessageType.Type11LightCyan)
+        {
+            var partyChatRecipients = partyCoordinator.SendToParty(
+                context.Runtime.Id,
+                ChatPacketBuilders.CreateMessageNotification(
+                    (GameMessageType)messageRequest.MessageType,
+                    session.Character.LocalUserId,
+                    messageRequest.MessageBytes));
+            if (partyChatRecipients == 0)
+            {
+                logger.LogWarning(
+                    "Party chat type {MessageType} from character {CharacterId} reached nobody: the sender holds no party.",
+                    messageRequest.MessageType,
+                    session.Character.Active.Id);
+                return;
+            }
+
+            logger.LogInformation(
+                "Party chat type {MessageType} from {CharacterName} delivered to {Recipients} party sessions: {Message}",
+                messageRequest.MessageType,
+                session.Character.Active.Name,
+                partyChatRecipients,
+                ClientEncoding.GetString(messageRequest.MessageBytes));
+            return;
+        }
+
         // DNF 1.0.1.9 uses message type 3 for map chat. The
         // original server routes it to the sender's village
         // and area, and success is represented by NOTI 12;

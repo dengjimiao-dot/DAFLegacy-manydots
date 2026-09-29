@@ -68,6 +68,19 @@ public sealed class PartyCoordinator(
             return result;
         }
 
+        if (result.RepairedUserMax is { } repairedUserMax)
+        {
+            // Explains a rename whose capacity byte arrived out of range: the
+            // client echoes the capacity stored in its own party record
+            // (0x7D6327) when the create window is reopened on an existing
+            // party, which the radios can never produce.
+            logger.LogInformation(
+                "SET_PARTY_INFO from character {CharacterId} carried capacity {RequestedUserMax} outside 2..4; applied {AppliedUserMax}.",
+                member.CharacterId,
+                settings.UserMax,
+                repairedUserMax);
+        }
+
         if (result.PriorPartyLeave is { } prior)
         {
             PublishDeparture(prior, reason: WalkoutReasonLeft, notifyLeaver: true);
@@ -512,6 +525,32 @@ public sealed class PartyCoordinator(
     }
 
     /// <summary>
+    /// Delivers a packet to every online member of the sender's party,
+    /// including the sender, and returns the recipient count (0 when the
+    /// sender holds no party). Party chat uses this instead of the town-area
+    /// fan-out so members split across areas still reach each other; the
+    /// sender's own copy is required because the ACT1 client renders an
+    /// outgoing chat line locally only for whispers (sub_8495B0's local echo
+    /// sits inside its type 1/7 branch).
+    /// </summary>
+    public int SendToParty(Guid sessionId, GameServerPacket packet)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+        if (FindPresenceBySession(sessionId) is not { } entry
+            || _parties.GetPartySnapshotByUser(entry.UserId) is not { } party)
+        {
+            return 0;
+        }
+
+        foreach (var member in party.Members)
+        {
+            SendToSession(member.SessionId, packet);
+        }
+
+        return party.Members.Count;
+    }
+
+    /// <summary>
     /// NOTI 11 with one record per member, built per recipient: the
     /// recipient's own record keeps its real reported endpoint while every
     /// peer record advertises the server's gameplay UDP listener (the relay
@@ -604,7 +643,8 @@ public sealed class PartyCoordinator(
             party.MembersBySlot()
                 .Select(member => new PartyWireSlot(member.UserId, 0))
                 .ToArray(),
-            party.LeaderSlot);
+            party.LeaderSlot,
+            party.TitleBytes);
 
     // ------------------------------------------------------------------
     // Presence storage and delivery helpers.

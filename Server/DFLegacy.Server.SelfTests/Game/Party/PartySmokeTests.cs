@@ -149,20 +149,77 @@ internal static class PartySmokeTests
         check(party.Payload.AsSpan().SequenceEqual(expectedFormation),
             "PARTY_INFO formation block matches the 60CN read order");
 
-        // Kind-0 titles render from the client's local string 0x272; the
-        // settings pair never carries title bytes on the wire.
+        // Kind-0 settings continue with the uplink dstr shape (u32 length +
+        // text) because the client's reader consumes the u32 unconditionally
+        // (sub_8B3250); an empty custom title is the zero-length form, which
+        // renders the client's local string 0x272 without desynchronising
+        // the cursor.
         var settingsOnly = PartyPacketBuilders.CreatePartyInfo(
         [
             new PartyInfoWireBlock(5, 1, 0, 3, [], 0),
         ]);
-        byte[] expectedSettings = [0x01, 0x00, 0x05, 0x00, 0x01, 0x00, 0x03];
+        byte[] expectedSettings =
+        [
+            0x01, 0x00, // block count
+            0x05, 0x00, // party id
+            0x01, // block type: settings only
+            0x00, // title kind
+            0x00, 0x00, 0x00, 0x00, // zero-length title (client renders 0x272)
+            0x03, // user max
+        ];
         check(settingsOnly.Payload.AsSpan().SequenceEqual(expectedSettings),
-            "PARTY_INFO type 1 carries only the settings pair");
+            "PARTY_INFO kind-0 settings carry the zero-length dstr form");
 
         var clear = DungeonPacketBuilders.CreatePartyClear(5);
         byte[] expectedClear = [0x01, 0x00, 0x05, 0x00, 0x03];
         check(clear.Payload.AsSpan().SequenceEqual(expectedClear),
             "PARTY_INFO type 3 is the five-byte clear block");
+
+        // A kind-0 title travels inside the settings dstr itself — the stock
+        // reader assigns it to the party name directly, so one block suffices
+        // and no client patch is involved.
+        var titleBytes = System.Text.Encoding.ASCII.GetBytes("abc");
+        var customTitle = PartyPacketBuilders.CreatePartyInfo(
+        [
+            new PartyInfoWireBlock(6, 1, 0, 3, [], 0, titleBytes),
+        ]);
+        byte[] expectedCustomTitle =
+        [
+            0x01, 0x00, // block count
+            0x06, 0x00, // party id
+            0x01, // settings-only block
+            0x00, // title kind
+            0x03, 0x00, 0x00, 0x00, // dstr length
+            0x61, 0x62, 0x63, // "abc"
+            0x03, // user max
+        ];
+        check(customTitle.Payload.AsSpan().SequenceEqual(expectedCustomTitle),
+            "PARTY_INFO carries the kind-0 title inside the settings dstr");
+
+        // Preset titles keep the bare settings pair even when bytes are
+        // attached: the reader only consumes a dstr when the kind is zero.
+        var presetWithBytes = PartyPacketBuilders.CreatePartyInfo(
+        [
+            new PartyInfoWireBlock(6, 1, 2, 4, [], 0, titleBytes),
+        ]);
+        byte[] expectedPreset = [0x01, 0x00, 0x06, 0x00, 0x01, 0x02, 0x04];
+        check(presetWithBytes.Payload.AsSpan().SequenceEqual(expectedPreset),
+            "PARTY_INFO keeps preset titles on the bare settings pair");
+
+        var oversizedTitle =
+            new byte[PartyPacketBuilders.CustomTitleLengthCap];
+        try
+        {
+            PartyPacketBuilders.CreatePartyInfo(
+            [
+                new PartyInfoWireBlock(6, 1, 0, 3, [], 0, oversizedTitle),
+            ]);
+            check(false, "PARTY_INFO rejects an over-cap custom title");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            check(true, "PARTY_INFO rejects an over-cap custom title");
+        }
     }
 
     private static void BuildPeerNotifications(Action<bool, string> check)
@@ -239,11 +296,34 @@ internal static class PartySmokeTests
             && edited.Party.TitleKind == 0,
             "SET_PARTY_INFO edits the leader's party in place under the same id");
 
+        // The rename path echoes the capacity the client read from its own
+        // party record (0x7D6327: *(member + 0xFC) + 0x3C), which the live
+        // capture showed as 0x30 = 48 while the leader edited an existing
+        // party. That edit must keep the party's capacity: rejecting it with
+        // error code 8 costs the whole rename and the client only reports the
+        // unrelated "您不是房主" popup.
+        var repairedEdit = manager.SetPartyInfo(memberA, 0, [0x41], 0x30);
+        check(repairedEdit.Ok
+            && !repairedEdit.Created
+            && repairedEdit.Party!.UserMax == 2
+            && repairedEdit.RepairedUserMax == 2,
+            "an out-of-range rename capacity keeps the party's capacity");
+
         check(!manager.SetPartyInfo(
                 memberA with { SessionId = Guid.NewGuid() }, 1, [], 4).Ok,
             "SET_PARTY_INFO rejects stale sessions");
-        check(!manager.SetPartyInfo(Identity(sessionC, 5, "C"), 1, [], 5).Ok,
-            "SET_PARTY_INFO rejects capacities the client cannot send");
+
+        // A create cannot inherit a capacity, so its out-of-range byte falls
+        // back to the create window's own default (0x7D635E writes 4).
+        var capacityProbe = Identity(Guid.NewGuid(), 5, "probe");
+        var repairedCreate = manager.SetPartyInfo(capacityProbe, 1, [], 5);
+        check(repairedCreate.Ok
+            && repairedCreate.Created
+            && repairedCreate.Party!.UserMax == PartyConstants.DefaultCapacity
+            && repairedCreate.RepairedUserMax == PartyConstants.DefaultCapacity,
+            "an out-of-range create capacity falls back to the default");
+        check(manager.Leave(capacityProbe.UserId, capacityProbe.SessionId).Ok,
+            "the capacity probe leaves no party behind");
         check(manager.SetPartyInfo(memberA, 1, [], 4).Ok,
             "the leader restores the capacity to 4 before inviting");
 
@@ -453,6 +533,27 @@ internal static class PartySmokeTests
             && Typed(inbox, sessionA, 26)[^1].Payload[0] == 0,
             "the formation designates the leader as UDP host (NOTI 26)");
 
+        // Party chat (CMD 17 type 2 in town, type 11 inside a dungeon
+        // channel): one NOTI 12 per member including the speaker, carrying
+        // the speaker's area-user id for the town-user name lookup at
+        // 0x846A27 that renders the chat line and the speech bubble.
+        var partyChat = ChatPacketBuilders.CreateMessageNotification(
+            GameMessageType.Type02LightCyan,
+            identityA.UserId,
+            System.Text.Encoding.GetEncoding(936).GetBytes("组队聊天"));
+        var partyChatA = Typed(inbox, sessionA, 12).Count;
+        var partyChatB = Typed(inbox, sessionB, 12).Count;
+        check(coordinator.SendToParty(sessionA, partyChat) == 2
+            && Typed(inbox, sessionA, 12).Count == partyChatA + 1
+            && Typed(inbox, sessionB, 12).Count == partyChatB + 1
+            && Typed(inbox, sessionA, 12)[^1].Payload[0]
+                == (byte)GameMessageType.Type02LightCyan
+            && Typed(inbox, sessionA, 12)[^1].Payload[1] == 0x01
+            && Typed(inbox, sessionA, 12)[^1].Payload[2] == 0x00
+            && Typed(inbox, sessionB, 12)[^1].Payload.AsSpan()
+                .SequenceEqual(Typed(inbox, sessionA, 12)[^1].Payload.AsSpan()),
+            "party chat reaches every member including the speaker with the speaker uid");
+
         var slotB = joined.Party!.MembersBySlot()
             .First(member => member.UserId == identityB.UserId)
             .SlotIndex;
@@ -474,10 +575,40 @@ internal static class PartySmokeTests
         check(!registry.NotifyGamePacket(Guid.NewGuid(), TownPacketBuilders.CreateUserLeave(1)),
             "delivery to an unknown session reports failure");
 
+        // End-to-end shape of the repaired rename: the leader alone in the
+        // party sends the capacity byte the create window echoed from its own
+        // party record (0x30 in the 2026-09-29 capture); the server keeps the
+        // party's capacity and publishes the settings block (block type 1,
+        // kind 0) whose dstr carries the custom title directly — the stock
+        // client assigns and displays it without any patch.
+        var renamed = coordinator.SetPartyInfo(
+            identityA,
+            new PartySettingsRequest(
+                0,
+                System.Text.Encoding.GetEncoding(936).GetBytes("111"),
+                0x30));
+        var settingsBlock = Typed(inbox, sessionA, 9)[^1].Payload;
+        check(renamed.Ok
+            && renamed.RepairedUserMax == 4
+            && renamed.Party!.UserMax == 4
+            && settingsBlock.Length == 14
+            && settingsBlock[0] == 1
+            && settingsBlock[4] == 1
+            && settingsBlock[5] == 0
+            && settingsBlock[6] == 3
+            && settingsBlock[10] == (byte)'1'
+            && settingsBlock[13] == 4
+            && System.Text.Encoding.GetEncoding(936).GetString(settingsBlock.AsSpan(10, 3))
+                == "111",
+            "a repaired rename keeps the capacity and publishes the title dstr");
+
         var leaveResult = coordinator.LeaveParty(identityA);
         check(leaveResult.Ok
-            && Typed(inbox, sessionA, 9).Count == 4,
+            && Typed(inbox, sessionA, 9).Count == 5,
             "the last member leaving receives the party clear");
+
+        check(coordinator.SendToParty(sessionA, partyChat) == 0,
+            "party chat outside a party reaches nobody");
     }
 
     private static GameServerPacket Appearance(string name, ushort userId) =>

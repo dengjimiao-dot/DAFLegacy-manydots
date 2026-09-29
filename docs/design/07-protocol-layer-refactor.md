@@ -1,6 +1,6 @@
 # 07 · 协议层重构:收发包管线与分发架构
 
-- 状态:**待实施**(2026-09-29 复审刷新两侧实测、勘误 N5;同日增补 4.8 通用处理管线、4.8.3 命名规范、4.8.4 未实现功能预留组,并按第三轮合理性复审修正三处机制缺陷——Events 通道化、族接管形态、跨会话推送硬规则;架构决议见 §10)
+- 状态:**实施中**(2026-09-29 复审刷新两侧实测、勘误 N5;同日增补 4.8 通用处理管线、4.8.3 命名规范、4.8.4 未实现功能预留组,并按第三轮合理性复审修正三处机制缺陷——Events 通道化、族接管形态、跨会话推送硬规则;架构决议见 §10。同日 R0 与 R1 组 2-3(除 CMD 4)已落地,实施记录与登记偏差见 §11)
 - 上级文档:[00 开档总纲](00-kickoff.md) · [01 目标架构](01-target-architecture.md) · [04 迁移路线](04-migration-plan.md)
 - 关联文档:[协议枚举全表](../protocol/client-packet-enums-60cn.md) · [× ServerS4A21 对比](../servers4a21/comparison-vs-servers4a21.md)
 
@@ -518,3 +518,33 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | Events 通道化(无界 Channel,SingleReader)+ 跨会话推送禁直调 SendAsync | **修正**(4.3/4.4/4.5) | 第三轮复审:ConcurrentQueue 与 WhenAny 等待语义矛盾;跨会话直调目标 Outbound 会把满 channel 背压传导给发送方会话(P2 的机制化封口) |
 | 族接管形态(共享核心 + 每号薄注册壳) | **修正**(4.6/5·组 15) | 第三轮复审:单 ProtocolId 接口与 CMD 10–14 区间接管字面冲突;壳保住注册表一号一键与重复检测,核心保复用 |
 | 协议号常量/枚举方向标识(Command / Notification 后缀;枚举按 Cmd / Noti 分表) | **新增**(4.8.3) | 双向共用 0–255 号段且同号不同义,名称不带方向必致误读;现行后缀体系已成立,成文防回潮 |
+
+## 11. 实施记录(2026-09-29,R0 与 R1 组 2-3)
+
+分支 `refactor/protocol-layer`。三条提交:R0 基建与试点、SelfTest 注册表运行器、R1 前置状态域对象化与组 2-3 六协议挂载。
+
+### 11.1 已落地
+
+- **R0 基建**:`Network/Dispatch/`(GameCommandRegistry、IGameCommandHandler、CommandPhase、GameCommandDispatcher)· `Network/Sessions/`(ChannelSessionState 十二域骨架 + ConnectionEvent)· `Network/Outbound/OutboundQueue`(有界 256 + 单写者泵 + IAsyncDisposable)· `Network/Timers/ConnectionTimerScheduler` · `Network/ConnectionContext`。
+- **试点与组 2-3 挂载**(9 协议,注册组 `session.connection` / `session.login` / `progression.character`):CHECK_CONNECTION 0、EXIT 3、ANTIBOT 161、LOGIN 1、SET_UDP_IP_PORT 2、GET_USERINFO 8、CREATE_CHARACTER 5、DELETE_CHARACTER 6、RETURN_SELECT_CHARACTER 7。EXIT 的"body 短于 2 字节回落 No-channel-handler 警告"与 LOGIN 的"兜底 canned ACK([1,0,0,0,0])"均按现状逐字节保留。
+- **状态域对象化先行**:HandleClientAsync 约 78 个闭包变量一次性迁入 11 个域类的公共字段(用字段而非属性:Interlocked/Volatile 排空需 ref 语义);旧链路经 `session` 别名访问,新 handler 经 `ctx.State` 访问同一存储,无双份状态。SELFTESTS 653 项内联检查全绿,行为零变化。
+- **测试基建**:golden 框架 `SelfTests/Protocol/` 直接消费 `tools/packet_bytes.json`(csproj 复制到输出目录);SelfTest 入口注册表化(`--selftest-<name>` 单跑、`--selftest-list`、`--selftest-all` 汇总表;既有内联检查整体保留为 `program-inline` 套件,拆分随后续阶段抽取)。
+- **Parser 外置**:`Network/Handlers/Login/LoginParsers`、`Network/Handlers/Characters/CharacterParsers`、共享 `Network/Parsers/ClientBodyParsers`(长度前缀字段读取逐字搬迁);`Network/Builders/CharacterPacketBuilders` 承接 USERINFO 名册/初始背包构建;`Network/Sessions/SessionLocationPersistence` 收口位置持久化。
+
+### 11.2 登记偏差(相对 §4 原文)
+
+| 偏差 | 理由 |
+| --- | --- |
+| `IOutboundQueue` 继承 `IAsyncDisposable` | 关闭语义(排空后关流)落在接口上,连接 finally 与测试统一经接口收口 |
+| `ConnectionContext` 暂无 `Services` 成员(§4.2) | handler 依赖走构造注入,无 DI 容器可挂;出现真实消费者(泵层/装配期)再加 |
+| U3 阶段门槛:迁移期由分发器执行,门槛不合格**回落旧分支**(按原拒绝路径应答);handler 内同时保留登记的门槛语义 | 迁移期字节保真最稳妥;清退旧分支(R6)后 handler 自含成为唯一权威 |
+| 注册表在 `ExecuteAsync` 监听器启动前装配,而非类型构造期 | 装配依赖实例字段(构建器等);失败仍在启动期抛出(§3 I5 不变) |
+| 基建目录 `Network/Dispatch|Sessions|Outbound|Timers|Parsers|Builders` | §4.1 分层图的落地名;4.8.3 映射表只覆盖 handler 组目录,此处登记防歧义 |
+| `CompoundItemReplayEntry` 从 EntranceService 私有嵌套记录迁至 `Game/Compound/`(public) | 状态域类需引用;属组织层搬迁,字节语义不变 |
+| 状态域以**公共字段**而非属性承载 | §4.3"字段一一对应"的字面落地;ref 排空语义所需 |
+
+### 11.3 遗留项
+
+- **SELECT_CHARACTER(CMD 4,组 3 最复杂段)**:约 670 行编排(租约认领、五库存修复、合同兑换、技能/任务/副本解锁迁移、初始化包突发),依赖跨组发送助手与初始化包分组注册,留待 R1 收尾;其初始化包构建器(`CreateTownInitializationPackets` 等已存在的枚举器方法)届时按 §6·R1 InitPacketBuilderRegistry 形态分组注册。
+- 组 4-15 未迁移;R6 清退(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
+- 真机冒烟复测未做:已挂载的 9 协议需按 §7.4 清单在真机回归(登录→选角→建/删角→返回选角)。

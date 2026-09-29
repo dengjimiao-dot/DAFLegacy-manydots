@@ -37,6 +37,21 @@
 - **安全**：默认仅回环监听；改为非回环等同主动暴露协议流与游戏数据。
 - **关联**：`docs/design/09-mcp-packet-tap.md`（设计全档）；README「常用配置 → 服务端 → MCP」。
 
+### ADD-06 协议层重构管线落地：分发注册表 + 出站单写者泵（R0，组 1-2-3 部分协议走新链路）
+
+- **内容**：按 `docs/design/07-protocol-layer-refactor.md` 落地 R0 基础设施并接入部分协议（分支 `refactor/protocol-layer`）：
+  - `GameCommandRegistry` 字典注册表：协议号 → handler 一对一挂载，重复注册启动期失败并带来源组名；启动时按组打印清单；
+  - `GameCommandDispatcher` 通用管线：端口/阶段门槛统一校验（U3），迁移期门槛不合格回落旧分支按原拒绝路径处理；
+  - `ChannelSessionState` 十二域会话状态对象（07 §4.3 字段一一对应），`HandleClientAsync` 约 78 个闭包变量整体迁入，旧链路经别名、新 handler 经 `ctx.State` 访问同一存储；
+  - `OutboundQueue` 有界 Channel（容量 256）+ 每连接单写者泵：背压阻塞发送方、不丢包不乱序，发送计数与 `LogPacket` 收进单点（U4）；`SendAsync` 等待帧真正写完，保持旧直写的时序语义；
+  - `ConnectionTimerScheduler` 单调一次性定时器（回调仅允许入队 `ConnectionEvent`，R4/R5 收编时启用）；
+  - 会话状态分域对象化后，`HandleClientAsync` 全链路字节行为经 SelfTests 653 项内联检查与 golden 套件回归为零变化。
+- **已挂载新链路的协议**（共 9 个，均为字节级等价迁移）：CHECK_CONNECTION 0、EXIT 3、ANTIBOT 161（组 1）；LOGIN 1、SET_UDP_IP_PORT 2（组 2）；GET_USERINFO 8、CREATE_CHARACTER 5、DELETE_CHARACTER 6、RETURN_SELECT_CHARACTER 7（组 3）。未挂载协议仍走旧分支链，行为不变。
+- **Parser 外置**：`TryReadLoginCredentials` 等请求解析逐字迁至 `Network/Handlers/<组>/` 与 `Network/Parsers/`（07 §4.7）；USERINFO 名册/初始背包构建收口 `CharacterPacketBuilders`。
+- **验证**：SelfTests 全量通过（含新增 `ProtocolGoldenSmokeTests`：EXIT 全字节、CHECK_CONNECTION 同 seed 全载荷对比、门槛拒绝路径、批量 FIFO、计账单点）；样本库 `tools/packet_bytes.json`（66 CMD + 49 NOTI）由 SelfTests 直接消费。**遗留项：真机冒烟复测未做**（登录→选角→建/删角→返回选角需真机确认）；SELECT_CHARACTER（CMD 4，组 3 最复杂段，约 670 行编排）与其余组 4-15 仍走旧链，按 R1 剩余项与 R2-R6 计划推进。
+
+---
+
 ## 2026-09-28
 
 ### FIX-01 返回选角后公告弹窗需要确认两次

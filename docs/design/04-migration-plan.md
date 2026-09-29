@@ -41,6 +41,7 @@
     - **`GameWorld/`**（25 个）：全部 `*Catalog` / `*Definition`，**平铺**，即从 PVF 解析出的只读定义与目录。
     - **`Game/<业务域>/`**（39 个，9 个域）：运行时业务规则，按业务域分目录——`Dungeon/`(11)、`Inventory/`(9)、`Quest/`(8)、`Compound/`(3)、`Shop/`(3)、`ItemUpgrade/`(2)、`Account/`(1)、`Creature/`(1)、`Drop/`(1)。域内平铺。
     - 技术职责模块：`Protocol/`(11，来自原独立项目)、`PvfScript/`(1)、`Random/`(1)、`Network/`(4)、`Persistence/`(3)、`Hosting/`(3)、`Services/`(2，两个 `IHostedService` 周期服务)。
+      > 2026-09-29 修订：目录已重组（`Protocol/`→`Network/{Core,Protocol}`、`Hosting/`→`Infrastructure/`、`Random/`→`Infrastructure/`、`Persistence/` 瘦身至 `JsonGameStore`）；现行形态以 07 §11 实施记录为准。
     - 79 个文件**全部有确定归属**，归类规则见该节，实施时不再逐个讨论。
   - `src/DFLegacy.Protocol/` 的 11 个 `.cs` → `Server/DFLegacy.Server/Protocol/`，**`DFLegacy.Protocol.csproj` 删除**（项目并入主项目）。
   - `src/DFLegacy.Launcher/`、`src/DFLegacy.Ijl15/` → `Client/` 下同名目录。

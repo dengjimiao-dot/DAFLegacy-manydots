@@ -217,6 +217,8 @@ DFLegacy/
 
 | 层 | 定义 | 成员 | 平台 |
 | --- | --- | --- | --- |
+> 2026-09-29 修订：技术模块目录已重组（`Protocol/`→`Network/{Core,Protocol}`、`Hosting/`→`Infrastructure/`、`Random/`→`Infrastructure/`、`RuntimeState`→`Infrastructure/`、`SerializedWriteStream`→`Network/Core/`）；本档下文七模块表述为开档时点形态，现行目录以 07 §11 实施记录为准。
+
 | **Server 层** | 服务端侧交付物来源，全部是纯可移植的托管代码 | `Server/DFLegacy.Server/`（含 `Protocol/`、`PvfScript/`、`Random/`、`Network/`、`Persistence/`、`Hosting/`、`Services/` 七个技术模块，以及 `GameWorld/` + `Game/<业务域>/` 两类游戏模块）、`Server/DFLegacy.Server.SelfTests/` | win / linux / osx |
 | **Client 层** | 全部 Windows 客户端交付物 | `Client/DFLegacy.Launcher/`、`Client/DFLegacy.Ijl15/`、`Client/Patch/` | win（`Ijl15` 为 x86） |
 

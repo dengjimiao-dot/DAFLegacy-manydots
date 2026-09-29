@@ -71,7 +71,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 | 写模型 | write-through：约 70 个 async 公有方法，每个方法末尾 `SaveLockedAsync()` 全量重写；并发 = 单把 `SemaphoreSlim` + record `with` 不可变替换 |
 | 原子性 | tmp 文件 + `File.Move(overwrite)`；无事务日志、无部分提交 |
 | 启动 | `InitializeAsync()`：读取（兼容数组/对象两种根格式）→ 9 个 `Migrate*Locked` 规范化 → 有变更即保存；文件不存在则播种 `test/test` 账号 + 预置角色 |
-| 消费方 | `Program.cs`（24 条 `/api/` Admin 路由，另有充值/GM 页面、`/health` 等 7 条页面路由）、`Network/EntranceService`（30+ 调用点，主消费者）、`Services/FatigueResetService`、`Services/WeaknessRecoveryService`、SelfTests 4 个文件 |
+| 消费方 | `Program.cs`（24 条 `/api/` Admin 路由，另有充值/GM 页面、`/health` 等 7 条页面路由）、`Network/EntranceService`（30+ 调用点，主消费者）、`Infrastructure/FatigueResetService`、`Infrastructure/WeaknessRecoveryService`、SelfTests 4 个文件 |
 | 不碰盘的层 | `Game/`（纯规则）、`GameWorld/`（PVF 静态目录）、`RuntimeState`（进程内观测）、`SerializedWriteStream`（socket 写串行化） |
 
 **结论：替换面极小。** 磁盘持久化唯一入口是 `JsonGameStore` 一个类，理论上做一个同签名的

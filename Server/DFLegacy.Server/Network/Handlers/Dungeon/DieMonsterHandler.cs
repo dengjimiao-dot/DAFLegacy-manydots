@@ -10,7 +10,6 @@ public sealed class DieMonsterHandler(
     DungeonExperienceCatalog dungeonExperienceCatalog,
     HellDropCatalog hellDropCatalog,
     MonsterChampionDropCatalog monsterChampionDrops,
-    RuntimeState runtime,
     ServerOptions options,
     ItemCatalog itemCatalog,    JsonGameStore store,
     DungeonCatalog dungeonCatalog,
@@ -30,7 +29,7 @@ public sealed class DieMonsterHandler(
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
         var session = context.State;
-        if (GameProtocolEngine.TryParseDieMonsterCommand(
+        if (DungeonPacketBuilders.TryParseDieMonsterCommand(
                 request.Body,
                 out var dieCommand))
         {
@@ -207,7 +206,7 @@ public sealed class DieMonsterHandler(
             }
 
             var monsterDie =
-                GameProtocolEngine.CreateMonsterDie(
+                DungeonPacketBuilders.CreateMonsterDie(
                     monsterUniqueId,
                     protocolDrops,
                     championRewardOrdinal);
@@ -268,7 +267,7 @@ public sealed class DieMonsterHandler(
                     session.Dungeon.LeveledUp |= progression.LeveledUp;
 
                     var experienceGained =
-                        GameProtocolEngine.CreateExperienceGained(
+                        DungeonPacketBuilders.CreateExperienceGained(
                             checked((byte)Math.Clamp(
                                 session.Character.Active.Level,
                                 1,
@@ -341,7 +340,7 @@ public sealed class DieMonsterHandler(
                     await senders.GrantClearQuestItemsAsync(context, cancellationToken);
                 }
                 var enableClear =
-                    GameProtocolEngine.CreateEnableClearDungeon();
+                    DungeonPacketBuilders.CreateEnableClearDungeon();
                 await context.Outbound.SendAsync(enableClear, Name, cancellationToken);
                 logger.LogInformation(
                     "Dungeon {DungeonId} boss map room ({RoomX},{RoomY}) cleared by {ClearReason}; settlement enabled",

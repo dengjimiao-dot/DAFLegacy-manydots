@@ -31,11 +31,11 @@ public sealed class CompoundItemHandler(JsonGameStore store,
         var session = context.State;
         if (session.Character.Active is null
             || session.Dungeon.CurrentDungeonId != 0
-            || !GameProtocolEngine.TryParseCompoundItemCommand(
+            || !CraftPacketBuilders.TryParseCompoundItemCommand(
                 request.Body,
                 out var compoundItemCommand))
         {
-            var error = GameProtocolEngine.CreateCompoundItemFailure(
+            var error = CraftPacketBuilders.CreateCompoundItemFailure(
                 (byte)CompoundItemFailure.InvalidRecipe);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
@@ -48,7 +48,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
             if (!request.Body.AsSpan().SequenceEqual(replay.RequestBody))
             {
                 var conflict =
-                    GameProtocolEngine.CreateCompoundItemFailure(
+                    CraftPacketBuilders.CreateCompoundItemFailure(
                         (byte)CompoundItemFailure.SequenceConflict);
                 await context.Outbound.SendAsync(conflict, Name, cancellationToken);
                 logger.LogWarning(
@@ -91,7 +91,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
                 out var compoundItemPlan,
                 out var compoundItemFailure))
         {
-            var error = GameProtocolEngine.CreateCompoundItemFailure(
+            var error = CraftPacketBuilders.CreateCompoundItemFailure(
                 (byte)compoundItemFailure);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
@@ -113,7 +113,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
             cancellationToken);
         if (savedCompoundItem is null)
         {
-            var error = GameProtocolEngine.CreateCompoundItemFailure(
+            var error = CraftPacketBuilders.CreateCompoundItemFailure(
                 (byte)CompoundItemFailure.InvalidRecipe);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
@@ -133,7 +133,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
         var refreshWarehouse = warehouseCapacityChanged
             || hasWarehouseUpgradeResult;
         var compoundItemReply =
-            GameProtocolEngine.CreateCompoundItemReply(
+            CraftPacketBuilders.CreateCompoundItemReply(
                 compoundItemPlan.ConsumedItems.Select(item =>
                     new GameCompoundItemConsumption(
                         item.ListType,

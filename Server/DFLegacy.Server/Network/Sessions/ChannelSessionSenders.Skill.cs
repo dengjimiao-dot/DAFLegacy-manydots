@@ -10,7 +10,7 @@ public sealed partial class ChannelSessionSenders
 {
     public async Task SendCurrentSkillInfoAsync(ConnectionContext context, CancellationToken cancellationToken)
     {
-        var skillInfo = GameProtocolEngine.CreateSkillInfo(
+        var skillInfo = SkillPacketBuilders.CreateSkillInfo(
             checked((ushort)Math.Min(context.State.Skill.CurrentSp, ushort.MaxValue)),
             GetCurrentGameSkills(context));
         await context.Outbound.SendAsync(skillInfo, "SKILL_INFO", cancellationToken);

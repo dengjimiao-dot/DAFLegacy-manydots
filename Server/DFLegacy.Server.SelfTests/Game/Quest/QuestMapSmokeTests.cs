@@ -102,13 +102,13 @@ internal static class QuestMapSmokeTests
             run.Stop();
             check(!run.HasClearedMap(2224), "clear-map evidence does not leak into the next dungeon run");
 
-            var accept = GameProtocolEngine.CreateAcceptQuestReply(10, quest.InitialTrigger);
-            var complete = GameProtocolEngine.CreateSetQuestTriggerReply(10, 0);
+            var accept = QuestPacketBuilders.CreateAcceptQuestReply(10, quest.InitialTrigger);
+            var complete = QuestPacketBuilders.CreateSetQuestTriggerReply(10, 0);
             check(accept.ProtocolId == 33 && accept.Payload.SequenceEqual(new byte[] { 1, 10, 0, 1, 0, 0, 0, 0 })
                     && complete.ProtocolId == 35
                     && complete.Payload.SequenceEqual(new byte[] { 1, 10, 0, 0, 0, 0, 0 }),
                 "native quest replies hide the NPC with pending trigger and restore it with zero");
-            var start = GameProtocolEngine.CreateStartMap(1, 0, 2224, []);
+            var start = DungeonPacketBuilders.CreateStartMap(1, 0, 2224, []);
             check(start.ProtocolId == 29
                     && BinaryPrimitives.ReadUInt16LittleEndian(start.Payload.AsSpan(7, 2)) == 2224,
                 "START_MAP transmits the rescue map ID in the existing DF2008 field");

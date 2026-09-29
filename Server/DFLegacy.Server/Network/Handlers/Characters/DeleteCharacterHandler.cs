@@ -37,8 +37,8 @@ public sealed class DeleteCharacterHandler(
         }
 
         var deleteReply = deleted
-            ? GameProtocolEngine.CreateDeleteCharacterReply(slot)
-            : GameProtocolEngine.CreateCommandError(frame, errorCode: 2);
+            ? CharactersPacketBuilders.CreateDeleteCharacterReply(slot)
+            : ConnectionPacketBuilders.CreateCommandError(frame, errorCode: 2);
         await context.Outbound.SendAsync(deleteReply, Name, cancellationToken);
 
         if (deleted)

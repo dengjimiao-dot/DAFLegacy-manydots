@@ -29,7 +29,7 @@ public sealed class CardSelectRightStateHandler(    ILogger<CardSelectRightState
                 DateTimeOffset.UtcNow
                 + ClearRewardCardSelectionTimeout;
             var cardRights =
-                GameProtocolEngine.CreateCardSelectRightState();
+                DungeonPacketBuilders.CreateCardSelectRightState();
             await context.Outbound.SendAsync(cardRights, Name, cancellationToken);
             logger.LogInformation(
                 "Dungeon {DungeonId} card selection rights sent for user {UserId}; automatic free-card selection in {TimeoutSeconds}s",

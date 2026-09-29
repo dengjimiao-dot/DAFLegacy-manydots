@@ -83,7 +83,7 @@ public sealed class PartyCoordinator(
         {
             // Settings-only refresh: the roster block is omitted so member
             // slots and the leader tail byte survive unchanged.
-            var update = GameProtocolEngine.CreatePartyInfo(
+            var update = PartyPacketBuilders.CreatePartyInfo(
                 [BuildBlock(result.Party!, PartySettingsBlockType)]);
             foreach (var remaining in result.Party!.Members)
             {
@@ -121,7 +121,7 @@ public sealed class PartyCoordinator(
             return result;
         }
 
-        SendToSession(target.SessionId, GameProtocolEngine.CreatePartyClear(party!.PartyId));
+        SendToSession(target.SessionId, DungeonPacketBuilders.CreatePartyClear(party!.PartyId));
         PublishSurvivorRefresh(result, reason: WalkoutReasonKicked);
         return result;
     }
@@ -160,7 +160,7 @@ public sealed class PartyCoordinator(
 
         SendToSession(
             target.SessionId,
-            GameProtocolEngine.CreatePeerRequest(from.UserId, requestType: 0, request.PeerId));
+            PartyPacketBuilders.CreatePeerRequest(from.UserId, requestType: 0, request.PeerId));
         return new PartyOpResult
         {
             Ok = true,
@@ -174,7 +174,7 @@ public sealed class PartyCoordinator(
     {
         var inviterPresence = FindPresence(response.PeerUserId);
         var inviterSessionId = inviterPresence?.SessionId ?? Guid.Empty;
-        if (!GameProtocolEngine.IsAcceptedPeerResponse(response))
+        if (!PartyPacketBuilders.IsAcceptedPeerResponse(response))
         {
             if (inviterSessionId != Guid.Empty)
             {
@@ -222,7 +222,7 @@ public sealed class PartyCoordinator(
         BroadcastPartyEndpoints(result.Party!);
         SendToSession(
             inviter.SessionId,
-            GameProtocolEngine.CreatePeerResponse(responder.UserId, responseType: 0, (uint)inviter.UserId));
+            PartyPacketBuilders.CreatePeerResponse(responder.UserId, responseType: 0, (uint)inviter.UserId));
         SendFormation(result.Party!);
         BroadcastPartyEndpoints(result.Party!);
         SendUdpHost(result.Party!);
@@ -278,13 +278,13 @@ public sealed class PartyCoordinator(
             sameArea = SameAreaSnapshotLocked(update.TownId, update.AreaId, update.SessionId);
         }
 
-        var userArea = GameProtocolEngine.CreateUserArea(
+        var userArea = TownPacketBuilders.CreateUserArea(
             update.TownId,
             update.AreaId,
             new GameTownUser(update.UserId, update.X, update.Y, update.Direction));
         foreach (var other in leftArea)
         {
-            SendToSession(other.SessionId, GameProtocolEngine.CreateUserLeave(update.UserId));
+            SendToSession(other.SessionId, TownPacketBuilders.CreateUserLeave(update.UserId));
         }
         foreach (var other in sameArea)
         {
@@ -293,7 +293,7 @@ public sealed class PartyCoordinator(
             SendToSession(other.SessionId, userArea);
             // ...and the arrival learns the resident.
             SendToSession(update.SessionId, other.Appearance);
-            SendToSession(update.SessionId, GameProtocolEngine.CreateUserArea(
+            SendToSession(update.SessionId, TownPacketBuilders.CreateUserArea(
                 other.TownId,
                 other.AreaId,
                 new GameTownUser(other.UserId, other.X, other.Y, other.Direction)));
@@ -318,7 +318,7 @@ public sealed class PartyCoordinator(
             sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, sessionId);
         }
 
-        var position = GameProtocolEngine.CreateUserPosition(
+        var position = TownPacketBuilders.CreateUserPosition(
             new GameTownUser(entry.UserId, x, y, direction));
         foreach (var other in sameArea)
         {
@@ -404,7 +404,7 @@ public sealed class PartyCoordinator(
             sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, sessionId);
         }
 
-        var leave = GameProtocolEngine.CreateUserLeave(userId);
+        var leave = TownPacketBuilders.CreateUserLeave(userId);
         foreach (var other in sameArea)
         {
             SendToSession(other.SessionId, leave);
@@ -449,7 +449,7 @@ public sealed class PartyCoordinator(
     /// ordered slot diff, so a stale id would corrupt the roster.</summary>
     private void PublishSurvivorRefresh(PartyOpResult result, byte reason)
     {
-        var walkout = GameProtocolEngine.CreateWalkout(result.TargetUserId, reason);
+        var walkout = PartyPacketBuilders.CreateWalkout(result.TargetUserId, reason);
         if (result.Disbanded || result.Party is not { } party)
         {
             return;
@@ -462,7 +462,7 @@ public sealed class PartyCoordinator(
 
         if (result.RetiredParty is { } retired)
         {
-            var clear = GameProtocolEngine.CreatePartyClear(retired.PartyId);
+            var clear = DungeonPacketBuilders.CreatePartyClear(retired.PartyId);
             foreach (var remaining in party.Members)
             {
                 SendToSession(remaining.SessionId, clear);
@@ -554,7 +554,7 @@ public sealed class PartyCoordinator(
 
             SendToSession(
                 recipient.SessionId,
-                GameProtocolEngine.CreateUdpPeerInfo(records));
+                PartyPacketBuilders.CreateUdpPeerInfo(records));
         }
     }
 
@@ -566,7 +566,7 @@ public sealed class PartyCoordinator(
     /// </summary>
     private void SendUdpHost(Party party)
     {
-        var host = GameProtocolEngine.CreateUdpHost(party.LeaderSlot);
+        var host = PartyPacketBuilders.CreateUdpHost(party.LeaderSlot);
         foreach (var member in party.Members)
         {
             SendToSession(member.SessionId, host);
@@ -580,7 +580,7 @@ public sealed class PartyCoordinator(
             var leaverClearId = result.RetiredParty?.PartyId ?? result.Party.PartyId;
             SendToSession(
                 result.TargetSessionId,
-                GameProtocolEngine.CreatePartyClear(leaverClearId));
+                DungeonPacketBuilders.CreatePartyClear(leaverClearId));
         }
 
         PublishSurvivorRefresh(result, reason);
@@ -588,7 +588,7 @@ public sealed class PartyCoordinator(
 
     private void SendFormation(Party party)
     {
-        var formation = GameProtocolEngine.CreatePartyInfo([BuildBlock(party, PartyFormationBlockType)]);
+        var formation = PartyPacketBuilders.CreatePartyInfo([BuildBlock(party, PartyFormationBlockType)]);
         foreach (var member in party.Members)
         {
             SendToSession(member.SessionId, formation);

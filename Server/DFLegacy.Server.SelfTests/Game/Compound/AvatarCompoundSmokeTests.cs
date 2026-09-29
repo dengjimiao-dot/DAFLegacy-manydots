@@ -140,7 +140,7 @@ internal static class AvatarCompoundSmokeTests
 
     private static void CheckProtocolVectors(Action<bool, string> check)
     {
-        check(GameProtocolEngine.TryParseCompoundAvatarCommand(
+        check(CraftPacketBuilders.TryParseCompoundAvatarCommand(
                     Convert.FromHexString("1500090000003412000078560000250506"),
                     out var synthetic)
                 && synthetic == new GameCompoundAvatarCommand(
@@ -150,7 +150,7 @@ internal static class AvatarCompoundSmokeTests
                     0x25,
                     5,
                     6)
-                && GameProtocolEngine.TryParseCompoundAvatarCommand(
+                && CraftPacketBuilders.TryParseCompoundAvatarCommand(
                     Convert.FromHexString("11000300010024DD000024DD0100040001"),
                     out var fighter)
                 && fighter == new GameCompoundAvatarCommand(
@@ -160,12 +160,12 @@ internal static class AvatarCompoundSmokeTests
                     4,
                     0,
                     1)
-                && !GameProtocolEngine.TryParseCompoundAvatarCommand(
+                && !CraftPacketBuilders.TryParseCompoundAvatarCommand(
                     Convert.FromHexString("9300030001004CAE00004CAE010018000100"),
                     out _),
             "CMD102 parses the target-client fixed 17-byte request and rejects trailing bytes");
 
-        var reply = GameProtocolEngine.CreateCompoundAvatarReply(
+        var reply = CraftPacketBuilders.CreateCompoundAvatarReply(
         [
             new GameAvatarCompoundConsumption(0, 3, 0),
             new GameAvatarCompoundConsumption(1, 0, 0),
@@ -175,7 +175,7 @@ internal static class AvatarCompoundSmokeTests
         resultItemId: 44_739,
         remainingSeconds: 0,
         selectedOption: 24);
-        var failure = GameProtocolEngine.CreateCompoundAvatarFailure();
+        var failure = CraftPacketBuilders.CreateCompoundAvatarFailure();
         check(reply.Type == GameProtocolEngine.CommandPacketType
                 && reply.ProtocolId == GameProtocolEngine.CompoundAvatarCommand
                 && reply.Payload.SequenceEqual(Convert.FromHexString(

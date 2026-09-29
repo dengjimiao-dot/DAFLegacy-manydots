@@ -10,7 +10,6 @@ namespace DFLegacy.Server;
 public sealed class GetItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     CharacterStatCatalog characterStatCatalog,
-    EquipmentReinforcementCatalog reinforcementCatalog,
     ILogger<GetItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
@@ -85,7 +84,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             session.Character.Active = saved;
             session.Currency.Gold = updatedGold;
             session.Dungeon.GroundItems.Remove(groundId);
-            var pickup = GameProtocolEngine.CreateGoldItemPickup(
+            var pickup = DungeonPacketBuilders.CreateGoldItemPickup(
                 groundId,
                 session.Character.LocalUserId,
                 groundItem.CountOrValue);
@@ -126,7 +125,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             _ = senders.AdoptSavedWarehouseUpgradeState(context, savedUpgrade);
             session.Dungeon.GroundItems.Remove(groundId);
             var upgradePickup =
-                GameProtocolEngine.CreateInventoryItemPickup(
+                DungeonPacketBuilders.CreateInventoryItemPickup(
                     groundId,
                     session.Character.LocalUserId,
                     ushort.MaxValue);
@@ -159,7 +158,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             // NOTI 39 would falsely confirm pickup, while NOTI 40 would create
             // a second ground object instead of releasing the existing one.
             var overweightReply =
-                GameProtocolEngine.CreateGetItemSilentRejection(request);
+                CraftPacketBuilders.CreateGetItemSilentRejection(request);
             await context.Outbound.SendAsync(overweightReply, Name, cancellationToken);
 
             var combinedWeight = carriedWeight > ulong.MaxValue - pickupWeight
@@ -168,7 +167,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             var excessWeight = combinedWeight - carriedWeightLimit;
             var overweightMessage = FormattableString.Invariant(
                 $"将超出物品栏负重上限 {excessWeight / 1000d:F3}kg.");
-            var notice = GameProtocolEngine.CreateMessageNotification(
+            var notice = ChatPacketBuilders.CreateMessageNotification(
                 GameMessageType.Type16Brown,
                 // A zero target suppresses the local-character prefix.
                 0,
@@ -245,7 +244,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             session.Inventory.Creature = creaturePickupPlan.Inventory;
             session.Dungeon.GroundItems.Remove(groundId);
             var creaturePickup =
-                GameProtocolEngine.CreateInventoryItemPickup(
+                DungeonPacketBuilders.CreateInventoryItemPickup(
                     groundId,
                     session.Character.LocalUserId,
                     creaturePickupPlan.DestinationSlot);
@@ -316,7 +315,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             session.Inventory.Avatar = avatarPickupPlan.Inventory;
             session.Dungeon.GroundItems.Remove(groundId);
             var avatarPickup =
-                GameProtocolEngine.CreateInventoryItemPickup(
+                DungeonPacketBuilders.CreateInventoryItemPickup(
                     groundId,
                     session.Character.LocalUserId,
                     avatarPickupPlan.DestinationSlot);
@@ -361,7 +360,7 @@ public sealed class GetItemHandler(JsonGameStore store,
         session.Character.Active = savedInventory;
         session.Inventory.Main = pickupPlan.Inventory;
         session.Dungeon.GroundItems.Remove(groundId);
-        var itemPickup = GameProtocolEngine.CreateInventoryItemPickup(
+        var itemPickup = DungeonPacketBuilders.CreateInventoryItemPickup(
             groundId,
             session.Character.LocalUserId,
             pickupPlan.DestinationSlot);

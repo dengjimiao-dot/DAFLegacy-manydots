@@ -77,7 +77,7 @@ public sealed class UseStackableItemHandler(
             || listType == 7
                 && consumedItem.ItemId != CreatureHungerPlanner.FoodItemId)
         {
-            var error = GameProtocolEngine.CreateUseStackableItemError(
+            var error = InventoryPacketBuilders.CreateUseStackableItemError(
                 errorCode: 17,
                 listType);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -105,7 +105,7 @@ public sealed class UseStackableItemHandler(
                     cancellationToken))
             {
                 var settlementError =
-                    GameProtocolEngine.CreateUseStackableItemError(
+                    InventoryPacketBuilders.CreateUseStackableItemError(
                         errorCode: 17,
                         listType);
                 await context.Outbound.SendAsync(settlementError, Name, cancellationToken);
@@ -122,7 +122,7 @@ public sealed class UseStackableItemHandler(
                 || equippedCreature.CountOrValue == 0)
             {
                 var creatureFoodError =
-                    GameProtocolEngine.CreateUseStackableItemError(
+                    InventoryPacketBuilders.CreateUseStackableItemError(
                         errorCode: 17,
                         listType);
                 await context.Outbound.SendAsync(creatureFoodError, Name, cancellationToken);
@@ -181,7 +181,7 @@ public sealed class UseStackableItemHandler(
             if (savedCreatureFood is null)
             {
                 var creatureFoodSaveError =
-                    GameProtocolEngine.CreateUseStackableItemError(
+                    InventoryPacketBuilders.CreateUseStackableItemError(
                         errorCode: 17,
                         listType);
                 await context.Outbound.SendAsync(creatureFoodSaveError, Name, cancellationToken);
@@ -209,18 +209,18 @@ public sealed class UseStackableItemHandler(
                 session.Weakness.CreatureDeathNotificationsSent.Remove(
                     equippedCreature.CountOrValue);
                 var revival =
-                    GameProtocolEngine.CreateRevivalCreature(
+                    PetsPacketBuilders.CreateRevivalCreature(
                         session.Character.LocalUserId);
                 await context.Outbound.SendAsync(revival, Name, cancellationToken);
             }
 
-            var creatureState = GameProtocolEngine.CreateCreatureState(
+            var creatureState = PetsPacketBuilders.CreateCreatureState(
                 equippedCreature.CountOrValue,
                 restoredStomach);
             await context.Outbound.SendAsync(creatureState, Name, cancellationToken);
 
             var creatureFoodReply =
-                GameProtocolEngine.CreateUseStackableItemReply(
+                InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
             await context.Outbound.SendAsync(creatureFoodReply, Name, cancellationToken);
@@ -260,14 +260,14 @@ public sealed class UseStackableItemHandler(
                 cancellationToken);
             if (!useResult.Success || useResult.Character is null)
             {
-                var error = GameProtocolEngine.CreateUseStackableItemError(
+                var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
                 if (useResult.Failure
                     == FatigueRecoveryItemUseFailure.FatigueNotLowEnough)
                 {
-                    var popup = GameProtocolEngine.CreatePopupNotification(
+                    var popup = ChatPacketBuilders.CreatePopupNotification(
                         ClientEncoding.GetBytes(FatigueRecoveryRejectedMessage));
                     await context.Outbound.SendAsync(popup, Name, cancellationToken);
                 }
@@ -286,14 +286,14 @@ public sealed class UseStackableItemHandler(
             session.Inventory.Main = (session.Character.Active.Inventory ?? [])
                 .ToDictionary(item => item.Slot);
 
-            var fatigue = GameProtocolEngine.CreateFatigue(
+            var fatigue = StaminaPacketBuilders.CreateFatigue(
                 usedFatigue: useResult.UsedFatigue,
                 maximumFatigue: maximumFatigue,
                 premiumFatigue: premiumFatigue);
             await context.Outbound.SendAsync(fatigue, Name, cancellationToken);
 
             var fatigueItemReply =
-                GameProtocolEngine.CreateUseStackableItemReply(
+                InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
             await context.Outbound.SendAsync(fatigueItemReply, Name, cancellationToken);
@@ -323,7 +323,7 @@ public sealed class UseStackableItemHandler(
                 || useResult.Character is null
                 || useResult.Progression is null)
             {
-                var error = GameProtocolEngine.CreateUseStackableItemError(
+                var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -356,7 +356,7 @@ public sealed class UseStackableItemHandler(
                 .ToDictionary(item => item.Slot);
 
             var levelUpItemReply =
-                GameProtocolEngine.CreateUseStackableItemReply(
+                InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
             await context.Outbound.SendAsync(levelUpItemReply, Name, cancellationToken);
@@ -399,7 +399,7 @@ public sealed class UseStackableItemHandler(
             if (!pvpUseResult.Success
                 || pvpUseResult.Character is null)
             {
-                var error = GameProtocolEngine.CreateUseStackableItemError(
+                var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -417,7 +417,7 @@ public sealed class UseStackableItemHandler(
                 .ToDictionary(item => item.Slot);
 
             var pvpItemReply =
-                GameProtocolEngine.CreateUseStackableItemReply(
+                InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
             await context.Outbound.SendAsync(pvpItemReply, Name, cancellationToken);
@@ -468,7 +468,7 @@ public sealed class UseStackableItemHandler(
                     out boosterFailure);
             if (!canOpenBooster)
             {
-                var error = GameProtocolEngine.CreateUseStackableItemError(
+                var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -511,7 +511,7 @@ public sealed class UseStackableItemHandler(
                 expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
             if (savedCharacter is null)
             {
-                var error = GameProtocolEngine.CreateUseStackableItemError(
+                var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -530,7 +530,7 @@ public sealed class UseStackableItemHandler(
                 .ToDictionary(item => item.Slot);
 
             var boosterReply =
-                GameProtocolEngine.CreateUseStackableItemReply(
+                InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
             await context.Outbound.SendAsync(boosterReply, Name, cancellationToken);
@@ -611,7 +611,7 @@ public sealed class UseStackableItemHandler(
 
         if (session.Dungeon.CurrentDungeonId == 0)
         {
-            var error = GameProtocolEngine.CreateUseStackableItemError(
+            var error = InventoryPacketBuilders.CreateUseStackableItemError(
                 errorCode: 17,
                 listType);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -647,7 +647,7 @@ public sealed class UseStackableItemHandler(
         // list-type:u8. The client uses it to release its
         // pending state and apply the local stack update.
         var dungeonItemReply =
-            GameProtocolEngine.CreateUseStackableItemReply(
+            InventoryPacketBuilders.CreateUseStackableItemReply(
                 slot,
                 listType);
         await context.Outbound.SendAsync(dungeonItemReply, Name, cancellationToken);

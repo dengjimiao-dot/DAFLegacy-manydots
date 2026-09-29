@@ -8,8 +8,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class DecreaseDurabilityHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<DecreaseDurabilityHandler> logger,
-    CharacterPacketBuilders builders) : IGameCommandHandler
+    ILogger<DecreaseDurabilityHandler> logger) : IGameCommandHandler
 {
 
     public ushort ProtocolId => GameProtocolEngine.DecreaseDurabilityCommand;
@@ -36,7 +35,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
                 usedEquipment.ItemId,
                 out _))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -45,7 +44,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
 
         if (usedEquipment.Durability == 0)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -73,7 +72,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
                 creatureInventory: session.Inventory.Creature.Values);
         if (savedDurability is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -83,7 +82,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
         session.Character.Active = savedDurability;
         session.Inventory.Equipped = plannedEquipment;
         var durabilityReply =
-            GameProtocolEngine.CreateDecreaseDurabilityReply(
+            InventoryPacketBuilders.CreateDecreaseDurabilityReply(
                 equipmentSlot);
         await context.Outbound.SendAsync(durabilityReply, Name, cancellationToken);
         logger.LogDebug(

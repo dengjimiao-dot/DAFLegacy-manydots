@@ -109,7 +109,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     cancellationToken) ?? session.Character.Active;
 
                 var reverseMoveReply =
-                    GameProtocolEngine.CreateMoveItemSpaceReply(
+                    InventoryPacketBuilders.CreateMoveItemSpaceReply(
                         sourceListType,
                         sourceSlot,
                         itemToMoveIntoEmptySlot.CountOrValue,
@@ -182,7 +182,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     ?? session.Character.Active;
 
                 var reverseAvatarReply =
-                    GameProtocolEngine.CreateMoveItemSpaceReply(
+                    InventoryPacketBuilders.CreateMoveItemSpaceReply(
                         sourceListType,
                         sourceSlot,
                         avatarToMove.CountOrValue,
@@ -240,7 +240,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     ?? session.Character.Active;
 
                 var avatarUnequipReply =
-                    GameProtocolEngine.CreateMoveItemSpaceReply(
+                    InventoryPacketBuilders.CreateMoveItemSpaceReply(
                         sourceListType,
                         sourceSlot,
                         avatarToUnequip.CountOrValue,
@@ -358,7 +358,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 session.Inventory.Main = withdrawalPlan.Inventory;
 
                 var withdrawReply =
-                    GameProtocolEngine.CreateMoveItemSpaceReply(
+                    InventoryPacketBuilders.CreateMoveItemSpaceReply(
                         sourceListType,
                         sourceSlot,
                         withdrawnCount,
@@ -423,7 +423,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     cancellationToken) ?? session.Character.Active;
 
                 var unequipReply =
-                    GameProtocolEngine.CreateMoveItemSpaceReply(
+                    InventoryPacketBuilders.CreateMoveItemSpaceReply(
                         sourceListType,
                         sourceSlot,
                         itemToUnequip.CountOrValue,
@@ -486,7 +486,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
             }
             else
             {
-                var error = GameProtocolEngine.CreateCommandError(request, 4);
+                var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
             }
 
@@ -603,7 +603,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
         if (sourceListType == destinationListType
             && sourceSlot == destinationSlot)
         {
-            var noOpReply = GameProtocolEngine.CreateMoveItemSpaceReply(
+            var noOpReply = InventoryPacketBuilders.CreateMoveItemSpaceReply(
                 sourceListType,
                 sourceSlot,
                 sourceItem.CountOrValue,

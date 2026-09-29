@@ -31,7 +31,7 @@ public sealed partial class CharacterPacketBuilders
                 EncodeCreatureName(item.CreatureName, item.ItemId),
                 item.CreatureNoCharge ?? false))
             .ToArray();
-        yield return GameProtocolEngine.CreateCreatureInfo(creatures);
+        yield return PetsPacketBuilders.CreateCreatureInfo(creatures);
         yield return CreateCreatureInventoryItemListPacket(items);
     }
 
@@ -44,7 +44,7 @@ public sealed partial class CharacterPacketBuilders
             .OrderBy(item => item.Slot)
             .Select(ToGameInventoryEntry)
             .ToArray();
-        return GameProtocolEngine.CreateItemList(7, entries);
+        return InventoryPacketBuilders.CreateItemList(7, entries);
     }
 
     internal byte[] EncodeCreatureName(string? name, ushort itemId)

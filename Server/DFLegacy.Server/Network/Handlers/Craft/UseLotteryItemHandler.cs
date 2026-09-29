@@ -28,7 +28,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
         var session = context.State;
         if (session.Character.Active is null || request.Body.Length < 4)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -60,7 +60,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
                 LotteryUseFailure.GoldLimit => (byte)19,
                 _ => (byte)17
             };
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -97,7 +97,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
         if (savedLottery is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -111,7 +111,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             .ToDictionary(item => item.Slot);
         session.Inventory.Creature = (savedLottery.CreatureInventory ?? [])
             .ToDictionary(item => item.Slot);
-        var lotteryReply = GameProtocolEngine.CreateUseLotteryItemReply(
+        var lotteryReply = CraftPacketBuilders.CreateUseLotteryItemReply(
             lotteryPlan.SourceSlot,
             lotteryPlan.DestinationSlot,
             lotteryPlan.Reward.ItemId,

@@ -49,7 +49,7 @@ public sealed class SetPlayResultHandler(
                 ? BinaryPrimitives.ReadUInt32LittleEndian(
                     request.Body.AsSpan(2, sizeof(uint)))
                 : 0u;
-            var playResult = GameProtocolEngine.CreatePlayResult(
+            var playResult = DungeonPacketBuilders.CreatePlayResult(
                 session.Character.LocalUserId,
                 clientResultValue);
             await context.Outbound.SendAsync(playResult, Name, cancellationToken);
@@ -166,7 +166,7 @@ public sealed class SetPlayResultHandler(
                 championMonsterKills: session.Dungeon.ChampionMonsterKills,
                 bossMonsterKills: session.Dungeon.BossMonsterKills);
             var clearReward =
-                GameProtocolEngine.CreateClearDungeonReward(
+                DungeonPacketBuilders.CreateClearDungeonReward(
                     session.Character.LocalUserId,
                     session.Dungeon.ClearReward.GoldCardCost,
                     session.Dungeon.ClearReward.FreeGoldAmount,
@@ -233,7 +233,7 @@ public sealed class SetPlayResultHandler(
                         // record with its cached permission, opens the difficulty
                         // unlock window, and then updates the cache.
                         var difficultyUnlocked =
-                            GameProtocolEngine.CreateDungeonPermissions(
+                            DungeonPacketBuilders.CreateDungeonPermissions(
                                 [new GameDungeonPermissionEntry(
                                     session.Dungeon.CurrentDungeonId,
                                     nextDifficulty)]);

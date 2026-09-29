@@ -26,7 +26,7 @@ internal static class PartySmokeTests
         // Empty character: mode + u16 count + u16 uid + u32 exp + u32 stat
         // length + 81 stats + u8 equipment count + u8 skill count + u8
         // creature level.
-        var plain = GameProtocolEngine.CreateCurrentCharacterDetails(1, mode: 1);
+        var plain = CharactersPacketBuilders.CreateCurrentCharacterDetails(1, mode: 1);
         check(plain.ProtocolId == 2 && plain.Payload.Length == 97,
             "USERINFO mode 1 carries the bare 97-byte detail body");
 
@@ -34,7 +34,7 @@ internal static class PartySmokeTests
         // (u32×3 + u8×4 guild context, u32×3 title ids) the reader at
         // 0x41AEE0 consumes to drive the member connection UI. A tail-less
         // mode-3 body made the client read past the packet and time out.
-        var fanout = GameProtocolEngine.CreateCurrentCharacterDetails(1, mode: 3);
+        var fanout = CharactersPacketBuilders.CreateCurrentCharacterDetails(1, mode: 3);
         byte[] expectedTail = new byte[28];
         check(fanout.Payload.Length == 125
             && fanout.Payload.AsSpan(97).SequenceEqual(expectedTail)
@@ -45,7 +45,7 @@ internal static class PartySmokeTests
     private static void ParseSetPartyInfo(Action<bool, string> check)
     {
         // Preset title (kind 1) with the capacity radio on "4".
-        check(GameProtocolEngine.TryParseSetPartyInfo(
+        check(PartyPacketBuilders.TryParseSetPartyInfo(
                 Convert.FromHexString("03000104"),
                 out var preset)
             && preset.TitleKind == 1
@@ -59,7 +59,7 @@ internal static class PartySmokeTests
         custom.AddRange(BitConverter.GetBytes((uint)title.Length));
         custom.AddRange(title);
         custom.Add(3);
-        check(GameProtocolEngine.TryParseSetPartyInfo(custom.ToArray(), out var customRequest)
+        check(PartyPacketBuilders.TryParseSetPartyInfo(custom.ToArray(), out var customRequest)
             && customRequest.TitleKind == 0
             && customRequest.TitleBytes.AsSpan().SequenceEqual(title)
             && customRequest.UserMax == 3,
@@ -70,22 +70,22 @@ internal static class PartySmokeTests
         oversized.AddRange(BitConverter.GetBytes(0x40u));
         oversized.AddRange(new byte[0x40]);
         oversized.Add(2);
-        check(!GameProtocolEngine.TryParseSetPartyInfo(oversized.ToArray(), out _)
-            && !GameProtocolEngine.TryParseSetPartyInfo([0x03, 0x00], out _),
+        check(!PartyPacketBuilders.TryParseSetPartyInfo(oversized.ToArray(), out _)
+            && !PartyPacketBuilders.TryParseSetPartyInfo([0x03, 0x00], out _),
             "SET_PARTY_INFO rejects over-cap titles and truncated bodies");
 
         // Regression: the party block parses every 10-14 body with every
         // parser. A WALKOUT-shaped 3-byte body (seq + slot=1) must be
         // rejected, never throw — an IndexOutOfRange here killed the whole
         // connection on live servers (2026-09-28 log).
-        check(!GameProtocolEngine.TryParseSetPartyInfo([0x15, 0x00, 0x01], out _),
+        check(!PartyPacketBuilders.TryParseSetPartyInfo([0x15, 0x00, 0x01], out _),
             "SET_PARTY_INFO parser tolerates WALKOUT-shaped bodies");
     }
 
     private static void ParsePeerFrames(Action<bool, string> check)
     {
         // REQUEST_PEER (invite): u16 target 5, type 0, u32 peer id 0x0A.
-        check(GameProtocolEngine.TryParseRequestPeer(
+        check(PartyPacketBuilders.TryParseRequestPeer(
                 Convert.FromHexString("03000500000A000000"),
                 out var invite)
             && invite.TargetUserId == 5
@@ -95,29 +95,29 @@ internal static class PartySmokeTests
 
         // RESPONSE_PEER accept: exactly the seven payload bytes the client
         // accept path writes (0x4FEBC0).
-        check(GameProtocolEngine.TryParseResponsePeer(
+        check(PartyPacketBuilders.TryParseResponsePeer(
                 Convert.FromHexString("030005000000000000"),
                 out var accept)
-            && GameProtocolEngine.IsAcceptedPeerResponse(accept)
+            && PartyPacketBuilders.IsAcceptedPeerResponse(accept)
             && accept.PeerUserId == 5,
             "RESPONSE_PEER accept frame matches the client's 7-byte shape");
 
-        check(GameProtocolEngine.TryParseResponsePeer(
+        check(PartyPacketBuilders.TryParseResponsePeer(
                 Convert.FromHexString("030005000100020000"),
                 out var refuse)
-            && !GameProtocolEngine.IsAcceptedPeerResponse(refuse),
+            && !PartyPacketBuilders.IsAcceptedPeerResponse(refuse),
             "RESPONSE_PEER with a non-zero type is a refusal");
 
-        check(GameProtocolEngine.TryParseWalkoutPartyMember(
+        check(PartyPacketBuilders.TryParseWalkoutPartyMember(
                 [0x01, 0x00, 0x02], out var slot)
             && slot == 2
-            && !GameProtocolEngine.TryParseWalkoutPartyMember([0x01, 0x00, 0x04], out _),
+            && !PartyPacketBuilders.TryParseWalkoutPartyMember([0x01, 0x00, 0x04], out _),
             "WALKOUT parses the roster slot and rejects out-of-range slots");
     }
 
     private static void BuildPartyInfo(Action<bool, string> check)
     {
-        var party = GameProtocolEngine.CreatePartyInfo(
+        var party = PartyPacketBuilders.CreatePartyInfo(
         [
             new PartyInfoWireBlock(
                 PartyId: 5,
@@ -151,7 +151,7 @@ internal static class PartySmokeTests
 
         // Kind-0 titles render from the client's local string 0x272; the
         // settings pair never carries title bytes on the wire.
-        var settingsOnly = GameProtocolEngine.CreatePartyInfo(
+        var settingsOnly = PartyPacketBuilders.CreatePartyInfo(
         [
             new PartyInfoWireBlock(5, 1, 0, 3, [], 0),
         ]);
@@ -159,7 +159,7 @@ internal static class PartySmokeTests
         check(settingsOnly.Payload.AsSpan().SequenceEqual(expectedSettings),
             "PARTY_INFO type 1 carries only the settings pair");
 
-        var clear = GameProtocolEngine.CreatePartyClear(5);
+        var clear = DungeonPacketBuilders.CreatePartyClear(5);
         byte[] expectedClear = [0x01, 0x00, 0x05, 0x00, 0x03];
         check(clear.Payload.AsSpan().SequenceEqual(expectedClear),
             "PARTY_INFO type 3 is the five-byte clear block");
@@ -167,7 +167,7 @@ internal static class PartySmokeTests
 
     private static void BuildPeerNotifications(Action<bool, string> check)
     {
-        var invite = GameProtocolEngine.CreatePeerRequest(0x1042, 0, 0x0A);
+        var invite = PartyPacketBuilders.CreatePeerRequest(0x1042, 0, 0x0A);
         byte[] expectedInvite =
         [
             0x42, 0x10, // inviter uid
@@ -181,17 +181,17 @@ internal static class PartySmokeTests
         check(invite.Payload.AsSpan().SequenceEqual(expectedInvite),
             "NOTI 7 invite payload matches the client read order");
 
-        var ack = GameProtocolEngine.CreatePeerResponse(7, 0, 5);
+        var ack = PartyPacketBuilders.CreatePeerResponse(7, 0, 5);
         byte[] expectedAck = [0x07, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00];
         check(ack.ProtocolId == 8 && ack.Payload.AsSpan().SequenceEqual(expectedAck),
             "NOTI 8 accept ack matches the 7-byte client shape");
 
-        var walkout = GameProtocolEngine.CreateWalkout(9, 1);
+        var walkout = PartyPacketBuilders.CreateWalkout(9, 1);
         check(walkout.ProtocolId == 10
             && walkout.Payload.AsSpan().SequenceEqual(new byte[] { 0x09, 0x01 }),
             "NOTI 10 walkout is u8 uid plus u8 reason");
 
-        var leave = GameProtocolEngine.CreateUserLeave(0x0102);
+        var leave = TownPacketBuilders.CreateUserLeave(0x0102);
         check(leave.ProtocolId == 6
             && leave.Payload.AsSpan().SequenceEqual(new byte[] { 0x02, 0x01 }),
             "NOTI 6 user leave is the u16 uid");
@@ -199,12 +199,12 @@ internal static class PartySmokeTests
         // Failure replies put the error byte where each reply-dispatcher case
         // expects it: payload[1] for the settings family (12/13/14) and
         // payload[2] for the peer pair (10/11), with one trailing byte.
-        var settingsError = GameProtocolEngine.CreatePartyCommandError(
+        var settingsError = PartyPacketBuilders.CreatePartyCommandError(
             new PacketFrame(1, 13, 0, [0x01, 0x00]),
             0x12);
         check(settingsError.Payload.AsSpan().SequenceEqual(new byte[] { 0x00, 0x12, 0x00, 0x00 }),
             "LEAVE_PARTY failure carries code 0x12 at payload[1]");
-        var peerError = GameProtocolEngine.CreatePeerCommandError(
+        var peerError = PartyPacketBuilders.CreatePeerCommandError(
             new PacketFrame(1, 10, 0, [0x01, 0x00]),
             5);
         check(peerError.Payload.AsSpan().SequenceEqual(new byte[] { 0x00, 0x00, 0x05, 0x00 }),
@@ -402,7 +402,7 @@ internal static class PartySmokeTests
         check(invite.Ok
             && Typed(inbox, sessionB, 7).Count == 1
             && Typed(inbox, sessionB, 7)[0].Payload.AsSpan()
-                .SequenceEqual(GameProtocolEngine.CreatePeerRequest(1, 0, 0x0A).Payload),
+                .SequenceEqual(PartyPacketBuilders.CreatePeerRequest(1, 0, 0x0A).Payload),
             "REQUEST_PEER delivers the invite popup to the target session");
 
         var joined = coordinator.RespondPeer(
@@ -413,7 +413,7 @@ internal static class PartySmokeTests
         check(joined.Ok
             && Typed(inbox, sessionA, 8).Count == 1
             && Typed(inbox, sessionA, 8)[0].Payload.AsSpan()
-                .SequenceEqual(GameProtocolEngine.CreatePeerResponse(2, 0, 1).Payload)
+                .SequenceEqual(PartyPacketBuilders.CreatePeerResponse(2, 0, 1).Payload)
             && Typed(inbox, sessionA, 9).Count == 2
             && Typed(inbox, sessionB, 9).Count == 1
             && joined.Party!.Members.Count == 2,
@@ -471,7 +471,7 @@ internal static class PartySmokeTests
             && Typed(inbox, sessionB, 9).Count == 2,
             "a refusal never changes rosters");
 
-        check(!registry.NotifyGamePacket(Guid.NewGuid(), GameProtocolEngine.CreateUserLeave(1)),
+        check(!registry.NotifyGamePacket(Guid.NewGuid(), TownPacketBuilders.CreateUserLeave(1)),
             "delivery to an unknown session reports failure");
 
         var leaveResult = coordinator.LeaveParty(identityA);
@@ -481,7 +481,7 @@ internal static class PartySmokeTests
     }
 
     private static GameServerPacket Appearance(string name, ushort userId) =>
-        GameProtocolEngine.CreateCurrentCharacterInfo(
+        CharactersPacketBuilders.CreateCurrentCharacterInfo(
             new GameCharacterSummary(0, System.Text.Encoding.ASCII.GetBytes(name), 0, 0, 10),
             userId,
             [],

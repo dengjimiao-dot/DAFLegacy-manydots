@@ -22,7 +22,7 @@ public sealed partial class ChannelSessionSenders
             cancellationToken);
         context.State.Mailbox.KnownIds.Clear();
         context.State.Mailbox.KnownIds.UnionWith(mails.Select(mail => mail.Id));
-        var mailboxPackets = GameProtocolEngine.CreateMailboxSnapshot(
+        var mailboxPackets = MailboxPacketBuilders.CreateMailboxSnapshot(
             mails.Select(builders.ToGameMailEntry).ToArray());
         foreach (var packet in mailboxPackets)
         {
@@ -55,7 +55,7 @@ public sealed partial class ChannelSessionSenders
             return;
         }
 
-        var alarm = GameProtocolEngine.CreateMailboxAlarm(
+        var alarm = MailboxPacketBuilders.CreateMailboxAlarm(
             checked((short)Math.Min(newMailCount, short.MaxValue)));
         await context.Outbound.SendAsync(alarm, "MAILBOX_ALARM", cancellationToken);
         await store.AcknowledgeCharacterMailNotificationsAsync(

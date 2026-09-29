@@ -39,7 +39,7 @@ public sealed class ScoreScrollStateHandler(
         {
             session.Dungeon.CardLayoutSent = true;
             var scoreScrollReply =
-                GameProtocolEngine.CreateScoreScrollStateReply();
+                DungeonPacketBuilders.CreateScoreScrollStateReply();
             await context.Outbound.SendAsync(scoreScrollReply, Name, cancellationToken);
             logger.LogInformation(
                 "Dungeon {DungeonId} score scroll acknowledged for user {UserId}",

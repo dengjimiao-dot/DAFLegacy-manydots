@@ -42,7 +42,7 @@ public sealed partial class ChannelSessionSenders
         return;
     }
 
-    var died = GameProtocolEngine.CreateDiedCreature(context.State.Character.LocalUserId);
+    var died = PetsPacketBuilders.CreateDiedCreature(context.State.Character.LocalUserId);
     await context.Outbound.SendAsync(died, "CREATURE_DIED", cancellationToken);
     context.State.Weakness.CreatureDeathNotificationsSent.Add(creatureUid);
     logger.LogInformation(
@@ -65,7 +65,7 @@ public sealed partial class ChannelSessionSenders
         return;
     }
 
-    var creatureState = GameProtocolEngine.CreateCreatureState(
+    var creatureState = PetsPacketBuilders.CreateCreatureState(
         equippedCreature.CountOrValue,
         (uint)Math.Clamp(
             (int)(equippedCreature.CreatureStomach ?? 100),
@@ -87,7 +87,7 @@ public sealed partial class ChannelSessionSenders
     }
 
     var creatureResponse =
-        GameProtocolEngine.CreateCreatureResponse(context.State.Character.LocalUserId);
+        PetsPacketBuilders.CreateCreatureResponse(context.State.Character.LocalUserId);
     await context.Outbound.SendAsync(creatureResponse, "CREATURE_RESPONSE", cancellationToken);
     }
 
@@ -100,7 +100,7 @@ public sealed partial class ChannelSessionSenders
     string reason,
     CancellationToken cancellationToken = default)
     {
-    var noOpReply = GameProtocolEngine.CreateMoveItemSpaceReply(
+    var noOpReply = InventoryPacketBuilders.CreateMoveItemSpaceReply(
         sourceListType,
         sourceSlot,
         movedCount: 0,
@@ -169,7 +169,7 @@ public sealed partial class ChannelSessionSenders
         var entry = context.State.Inventory.Main.TryGetValue(slot, out var item)
             ? builders.ToGameInventoryEntry(item)
             : new GameInventoryEntry(slot, ushort.MaxValue, 0);
-        var update = GameProtocolEngine.CreateUpdateItemList(0, [entry]);
+        var update = InventoryPacketBuilders.CreateUpdateItemList(0, [entry]);
         await context.Outbound.SendAsync(update, "INVENTORY_DELTA", cancellationToken);
     }
     }

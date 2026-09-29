@@ -68,7 +68,6 @@ public sealed class EntranceService(
     private readonly CharacterPacketBuilders _characterPacketBuilders =
         new(store, itemCatalog, pvpExperienceCatalog, ceraShopCatalog);
     private ChannelSessionSenders _sessionSenders = null!;
-    private EntranceContent? _content;
     private static readonly Encoding ClientEncoding = CreateClientEncoding();
     private static readonly GameSkillEntry[] DebugSwordmanSkills =
     [
@@ -157,26 +156,22 @@ public sealed class EntranceService(
             _characterPacketBuilders,
             _sessionSenders));
         registry.Register("economy.craft", new CompoundAvatarHandler(
-            store,
-            itemCatalog,
-            avatarCompoundCatalog,
-            loggerFactory.CreateLogger<CompoundAvatarHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            avatarCompoundCatalog: avatarCompoundCatalog,
+            logger: loggerFactory.CreateLogger<CompoundAvatarHandler>(),
+            builders: _characterPacketBuilders,
+            senders: _sessionSenders));
         registry.Register("economy.craft", new DropItemHandler(
-            store,
-            itemCatalog,
-            loggerFactory.CreateLogger<DropItemHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            itemCatalog: itemCatalog,
+            logger: loggerFactory.CreateLogger<DropItemHandler>()));
         registry.Register("economy.craft", new GetItemHandler(
-            store,
-            itemCatalog,
-            characterStatCatalog,
-            reinforcementCatalog,
-            loggerFactory.CreateLogger<GetItemHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            itemCatalog: itemCatalog,
+            characterStatCatalog: characterStatCatalog,
+            logger: loggerFactory.CreateLogger<GetItemHandler>(),
+            builders: _characterPacketBuilders,
+            senders: _sessionSenders));
         registry.Register("economy.shop", new CeraShopBuyHandler(
             store,
             itemCatalog,
@@ -195,23 +190,17 @@ public sealed class EntranceService(
             _characterPacketBuilders,
             _sessionSenders));
         registry.Register("economy.shop", new SellItemHandler(
-            store,
-            itemCatalog,
-            loggerFactory.CreateLogger<SellItemHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            itemCatalog: itemCatalog,
+            logger: loggerFactory.CreateLogger<SellItemHandler>()));
         registry.Register("economy.shop", new RepairEquipmentHandler(
-            store,
-            itemCatalog,
-            loggerFactory.CreateLogger<RepairEquipmentHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            itemCatalog: itemCatalog,
+            logger: loggerFactory.CreateLogger<RepairEquipmentHandler>()));
         registry.Register("economy.shop", new ItemTradeStateHandler(
-            store,
-            itemCatalog,
-            loggerFactory.CreateLogger<ItemTradeStateHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            itemCatalog: itemCatalog,
+            logger: loggerFactory.CreateLogger<ItemTradeStateHandler>()));
         registry.Register("economy.shop", new GenerateCeraTicketHandler(
             loggerFactory.CreateLogger<GenerateCeraTicketHandler>()));
         registry.Register("progression.stamina", new RecoverStaminaHandler(
@@ -255,7 +244,6 @@ public sealed class EntranceService(
             dungeonExperienceCatalog: dungeonExperienceCatalog,
             hellDropCatalog: hellDropCatalog,
             monsterChampionDrops: monsterChampionDrops,
-            runtime: runtime,
             options: options,
             itemCatalog: itemCatalog,
             store: store,
@@ -305,14 +293,11 @@ public sealed class EntranceService(
             _characterPacketBuilders));
         registry.Register("world.pets", new ResponseCreatureHandler(_sessionSenders));
         registry.Register("world.town", new SetUserPositionHandler(
-            partyCoordinator,
-            _characterPacketBuilders,
-            _sessionSenders));
+            partyCoordinator: partyCoordinator,
+            senders: _sessionSenders));
         registry.Register("world.town", new SetUserAreaHandler(
-            store,
-            partyCoordinator,
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            senders: _sessionSenders));
         registry.Register("world.town", new PrivateStorePollHandler());
         registry.Register("world.town", new ExchangeServerCharacterInfoHandler());
         {
@@ -339,13 +324,11 @@ public sealed class EntranceService(
             _sessionSenders,
             premiumBenefitCatalog));
         registry.Register("economy.inventory", new DeleteItemHandler(
-            options,
-            runtime,
-            store,
-            itemCatalog,
-            loggerFactory.CreateLogger<DeleteItemHandler>(),
-            _characterPacketBuilders,
-            _sessionSenders));
+            options: options,
+            runtime: runtime,
+            store: store,
+            itemCatalog: itemCatalog,
+            logger: loggerFactory.CreateLogger<DeleteItemHandler>()));
         registry.Register("economy.inventory", new UseStackableItemHandler(
             options,
             runtime,
@@ -359,10 +342,9 @@ public sealed class EntranceService(
             _characterPacketBuilders,
             _sessionSenders));
         registry.Register("economy.inventory", new DecreaseDurabilityHandler(
-            store,
-            itemCatalog,
-            loggerFactory.CreateLogger<DecreaseDurabilityHandler>(),
-            _characterPacketBuilders));
+            store: store,
+            itemCatalog: itemCatalog,
+            logger: loggerFactory.CreateLogger<DecreaseDurabilityHandler>()));
         registry.Register("progression.skill", new IncreaseStatusHandler(
             loggerFactory.CreateLogger<IncreaseStatusHandler>(),
             store,
@@ -382,13 +364,12 @@ public sealed class EntranceService(
             skillCatalog,
             loggerFactory.CreateLogger<ChangeSkillSlotHandler>()));
         registry.Register("progression.quest", new AcceptQuestHandler(
-            loggerFactory.CreateLogger<AcceptQuestHandler>(),
-            store,
-            itemCatalog,
-            questCatalog,
-            dungeonCatalog,
-            _characterPacketBuilders,
-            _sessionSenders));
+            logger: loggerFactory.CreateLogger<AcceptQuestHandler>(),
+            store: store,
+            itemCatalog: itemCatalog,
+            questCatalog: questCatalog,
+            dungeonCatalog: dungeonCatalog,
+            senders: _sessionSenders));
         registry.Register("progression.quest", new GiveupQuestHandler(
             loggerFactory.CreateLogger<GiveupQuestHandler>(),
             store,
@@ -417,13 +398,13 @@ public sealed class EntranceService(
             itemCatalog,
             _characterPacketBuilders,
             _sessionSenders));
-        registry.Register("social.mailbox", new MailboxStateHandler(store, _sessionSenders));
+        registry.Register("social.mailbox", new MailboxStateHandler(
+            store: store));
         registry.Register("social.mailbox", new MailboxSendHandler(
-            store,
-            itemCatalog,
-            characterSessions,
-            _characterPacketBuilders,
-            _sessionSenders));
+            store: store,
+            itemCatalog: itemCatalog,
+            characterSessions: characterSessions,
+            builders: _characterPacketBuilders));
         registry.Register("social.chat", new SendMessageHandler(
             store,
             characterSessions,
@@ -433,11 +414,9 @@ public sealed class EntranceService(
             _characterPacketBuilders,
             _sessionSenders));
         registry.Register("social.chat", new CreatureSendMessageHandler(
-            loggerFactory.CreateLogger<CreatureSendMessageHandler>(),
-            _sessionSenders));
+            logger: loggerFactory.CreateLogger<CreatureSendMessageHandler>()));
         registry.Register("social.chat", new CreatureScriptMessageHandler(
-            loggerFactory.CreateLogger<CreatureScriptMessageHandler>(),
-            _sessionSenders));
+            logger: loggerFactory.CreateLogger<CreatureScriptMessageHandler>()));
         registry.Register("session.login", new LoginHandler(store, loggerFactory.CreateLogger<LoginHandler>()));
         registry.Register("session.login", new SetUdpEndpointHandler(gameplayDatagram, partyCoordinator));
         registry.Register("progression.character", new GetUserInfoHandler(_characterPacketBuilders));
@@ -581,28 +560,6 @@ public sealed class EntranceService(
             session.Dungeon.ReturnY = session.Character.Y;
             session.Dungeon.ReturnDirection = session.Character.Direction;
 
-            CharacterWarehouseUpgradeItemSettlement PlanWarehouseUpgradeSettlement(
-                IEnumerable<CharacterItemRecord> inventory,
-                IEnumerable<CharacterItemRecord> warehouse,
-                IEnumerable<ushort>? acquiredItemIds = null)
-            {
-                var settlement = CharacterWarehouseProgression.SettleUpgradeItems(
-                    inventory,
-                    warehouse,
-                    session.Inventory.WarehouseCapacity);
-                var targetCapacity = settlement.Capacity;
-                foreach (var itemId in acquiredItemIds ?? [])
-                {
-                    targetCapacity = CharacterWarehouseProgression.ApplyItemTarget(
-                        targetCapacity,
-                        itemId);
-                }
-
-                return targetCapacity == settlement.Capacity
-                    ? settlement
-                    : settlement with { Capacity = targetCapacity };
-            }
-
             logger.LogInformation(
                 "Entrance client {SessionId} connected from {Remote} on local port {Port}",
                 runtimeSession.Id, remote, localPort);
@@ -715,158 +672,10 @@ public sealed class EntranceService(
                     }
                 }
 
-            bool AdoptSavedWarehouseUpgradeState(CharacterRecord savedCharacter) =>
-                _sessionSenders.AdoptSavedWarehouseUpgradeState(connectionContext, savedCharacter);
-
-            uint GetInventoryWeightLimit(CharacterRecord character) =>
-                _sessionSenders.GetInventoryWeightLimit(connectionContext, character);
-
-                Task SendWarehouseStateAsync() =>
-                    _sessionSenders.SendWarehouseStateAsync(connectionContext, serverToken);
-
-                async Task SendTypedMessageNotificationAsync(
-                    GameMessageType messageType,
-                    ushort targetAreaUserId,
-                    byte[] messageBytes)
-                {
-                    try
-                    {
-                        if (session.Character.Active is null)
-                        {
-                            return;
-                        }
-
-                        var messageNotification =
-                            GameProtocolEngine.CreateMessageNotification(
-                                messageType,
-                                targetAreaUserId,
-                                messageBytes);
-                        await messageNotification.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, messageNotification);
-                    }
-                    catch (OperationCanceledException) when (serverToken.IsCancellationRequested)
-                    {
-                    }
-                    catch (Exception exception)
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "Could not send message notification to character {CharacterId}.",
-                            session.Character.Active?.Id);
-                    }
-                }
-
-                async Task SendPopupNotificationAsync(byte[] messageBytes)
-                {
-                    try
-                    {
-                        if (session.Character.Active is null)
-                        {
-                            return;
-                        }
-
-                        var popupNotification =
-                            GameProtocolEngine.CreatePopupNotification(messageBytes);
-                        await popupNotification.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, popupNotification);
-                    }
-                    catch (OperationCanceledException) when (serverToken.IsCancellationRequested)
-                    {
-                    }
-                    catch (Exception exception)
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "Could not send popup notification to character {CharacterId}.",
-                            session.Character.Active?.Id);
-                    }
-                }
-
-                async Task SendMegaphoneNotificationAsync(
-                    GameMessageType messageType,
-                    byte ownerFlag,
-                    ushort targetAreaUserId,
-                    byte[] senderName,
-                    byte[] messageBytes)
-                {
-                    try
-                    {
-                        if (session.Character.Active is null)
-                        {
-                            return;
-                        }
-
-                        var megaphoneNotification =
-                            GameProtocolEngine.CreateMegaphoneNotification(
-                                messageType,
-                                ownerFlag,
-                                targetAreaUserId,
-                                senderName,
-                                messageBytes);
-                        await megaphoneNotification.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, megaphoneNotification);
-                    }
-                    catch (OperationCanceledException) when (serverToken.IsCancellationRequested)
-                    {
-                    }
-                    catch (Exception exception)
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "Could not send megaphone notification to character {CharacterId}.",
-                            session.Character.Active?.Id);
-                    }
-                }
-
                 // Registers this session's town entity with the party
                 // coordinator so same-area residents can see and invite this
                 // character. The appearance packet is built here because only
                 // this connection owns the equipped-item dictionaries.
-                void PublishTownPresence() =>
-                    _sessionSenders.PublishTownPresence(connectionContext);
-
-                GameSkillEntry[] GetCurrentGameSkills() => _sessionSenders.GetCurrentGameSkills(connectionContext);
-
-                int ApplyLevelUpSkillPoints(CharacterExperienceGrant progression) =>
-                    _sessionSenders.ApplyLevelUpSkillPoints(connectionContext, progression);
-
-                Task SendCurrentSkillInfoAsync() =>
-                    _sessionSenders.SendCurrentSkillInfoAsync(connectionContext, serverToken);
-                Task SendPvpRecordAsync() =>
-                    _sessionSenders.SendPvpRecordAsync(connectionContext, serverToken);
-
-                async Task<CharacterMailRecord[]> SendMailboxStateAsync(bool notifyNewMail)
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return [];
-                    }
-
-                    var mails = await store.GetCharacterMailsAsync(
-                        session.Character.Active.Id,
-                        serverToken);
-                    session.Mailbox.KnownIds.Clear();
-                    session.Mailbox.KnownIds.UnionWith(mails.Select(mail => mail.Id));
-                    var mailboxPackets = GameProtocolEngine.CreateMailboxSnapshot(
-                        mails.Select(ToGameMailEntry).ToArray());
-                    foreach (var packet in mailboxPackets)
-                    {
-                        await packet.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, packet);
-                    }
-
-                    if (notifyNewMail)
-                    {
-                        await SendNewMailAlarmAsync(mails);
-                    }
-
-                    return mails;
-                }
-
                 async Task SendNewMailAlarmAsync(
                     IReadOnlyCollection<CharacterMailRecord>? knownMails = null)
                 {
@@ -883,7 +692,7 @@ public sealed class EntranceService(
                         return;
                     }
 
-                    var alarm = GameProtocolEngine.CreateMailboxAlarm(
+                    var alarm = MailboxPacketBuilders.CreateMailboxAlarm(
                         checked((short)Math.Min(newMailCount, short.MaxValue)));
                     await alarm.WriteAsync(stream, serverToken);
                     Interlocked.Increment(ref runtimeSession.SentPackets);
@@ -895,339 +704,13 @@ public sealed class EntranceService(
 
                 Task SendPremiumServiceInfoAsync(byte serviceType, uint remainSeconds) =>
                     _sessionSenders.SendPremiumServiceInfoAsync(connectionContext, serviceType, remainSeconds, serverToken);
-                Task SendMessageNotificationAsync(
-                    ushort targetAreaUserId,
-                    byte[] messageBytes) =>
-                    SendTypedMessageNotificationAsync(
-                        GameMessageType.Type16Brown,
-                        targetAreaUserId,
-                        messageBytes);
-
-                async Task SendWeaknessRecoveryNotificationAsync(byte recovery)
-                {
-                    try
-                    {
-                        if (session.Character.Active is null)
-                        {
-                            return;
-                        }
-
-                        var stamina = GameProtocolEngine.CreateStamina(recovery);
-                        await stamina.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, stamina);
-                    }
-                    catch (OperationCanceledException) when (serverToken.IsCancellationRequested)
-                    {
-                    }
-                    catch (Exception exception)
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "Could not send weakness recovery notification to character {CharacterId}.",
-                            session.Character.Active?.Id);
-                    }
-                }
-
-                bool HasActivePremiumService(byte serviceType) =>
-                    _sessionSenders.HasActivePremiumService(connectionContext, serviceType);
-
-                byte[] GetActivePremiumServiceTypes() =>
-                    _sessionSenders.GetActivePremiumServiceTypes(connectionContext);
-
-                byte GetProjectedStaminaRecovery() =>
-                    _sessionSenders.GetProjectedStaminaRecovery(connectionContext);
-
-                async Task SendCurrentEquipmentStateAsync(
-                    GameCharacterCombatStats? validatedStats = null)
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    var projectedStats = validatedStats
-                        ?? characterStatCatalog.Get(session.Character.Active);
-                    var equipment = GameProtocolEngine.CreateCurrentCharacterDetails(
-                        session.Character.LocalUserId,
-                        experience: session.Character.Active.Experience,
-                        learnedSkills: GetCurrentGameSkills(),
-                        combatStats: projectedStats,
-                        equippedItems: CreateWornEquipmentSnapshot(
-                            session.Inventory.Equipped.Values,
-                            session.Inventory.Creature),
-                        equippedCreatureLevel: GetEquippedCreatureLevel(
-                            session.Inventory.Creature),
-                        staminaRecoveryPercentage: GetProjectedStaminaRecovery());
-                    await equipment.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, equipment);
-                    session.Character.LastProjectedCombatStats = projectedStats;
-                }
-
-                async Task SendEquippedCreatureDeathAsync(bool force = false)
-                {
-                    if (session.Character.Active is null
-                        || !session.Inventory.Creature.TryGetValue(
-                            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
-                            out var equippedCreature)
-                        || equippedCreature.CountOrValue == 0)
-                    {
-                        return;
-                    }
-
-                    var creatureUid = equippedCreature.CountOrValue;
-                    var stomach = Math.Clamp(
-                        (int)(equippedCreature.CreatureStomach ?? 100),
-                        0,
-                        CreatureHungerPlanner.MaximumStomach);
-                    if (stomach != 0)
-                    {
-                        session.Weakness.CreatureDeathNotificationsSent.Remove(creatureUid);
-                        return;
-                    }
-
-                    if (!force
-                        && session.Weakness.CreatureDeathNotificationsSent.Contains(creatureUid))
-                    {
-                        return;
-                    }
-
-                    var died = GameProtocolEngine.CreateDiedCreature(session.Character.LocalUserId);
-                    await died.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, died);
-                    session.Weakness.CreatureDeathNotificationsSent.Add(creatureUid);
-                    logger.LogInformation(
-                        "Sent DIED_CREATURE for Creature uid {CreatureUid}, area user {UserId}.",
-                        creatureUid,
-                        session.Character.LocalUserId);
-                }
-
-                async Task SendEquippedCreatureHungerAsync(
-                    bool forceDeathNotification = false)
-                {
-                    if (session.Character.Active is null
-                        || !session.Inventory.Creature.TryGetValue(
-                            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
-                            out var equippedCreature)
-                        || equippedCreature.CountOrValue == 0)
-                    {
-                        return;
-                    }
-
-                    var creatureState = GameProtocolEngine.CreateCreatureState(
-                        equippedCreature.CountOrValue,
-                        (uint)Math.Clamp(
-                            (int)(equippedCreature.CreatureStomach ?? 100),
-                            0,
-                            CreatureHungerPlanner.MaximumStomach));
-                    await creatureState.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, creatureState);
-                    await SendEquippedCreatureDeathAsync(forceDeathNotification);
-                }
-
-                Task SendEquippedCreatureResponseAsync() =>
-                    _sessionSenders.SendEquippedCreatureResponseAsync(connectionContext, serverToken);
-
-                Task SaveCurrentLocationAsync(CancellationToken cancellationToken) =>
-                    SessionLocationPersistence.SaveCurrentLocationAsync(
-                        store,
-                        session,
-                        cancellationToken);
-
-                Task EnableEmptyBossRoomSettlementAsync(DungeonRoomDefinition room) =>
-                    _sessionSenders.EnableEmptyBossRoomSettlementAsync(connectionContext, room, serverToken);
-
-                async Task SendTownAppearanceAsync(bool waitForTownActor = false)
-                {
-                    if (session.Character.Active is null || session.Dungeon.CurrentDungeonId != 0)
-                    {
-                        return;
-                    }
-
-                    if (waitForTownActor)
-                    {
-                        await Task.Delay(TimeSpan.FromMilliseconds(100), serverToken);
-                    }
-
-                    // The original server equips the Creature and establishes
-                    // its town state before broadcasting the mode-zero basic
-                    // user record containing item id, name and alive state.
-                    await SendEquippedCreatureHungerAsync(
-                        // Only AREA_USERS reconstruction needs to replay a
-                        // persisted death marker. Ordinary equipment updates
-                        // keep the transition de-duplicated.
-                        forceDeathNotification: waitForTownActor);
-
-                    var appearance = CreateTownAppearancePacket(
-                        session.Character.Active,
-                        session.Character.LocalUserId,
-                        session.Inventory.Equipped.Values,
-                        session.Inventory.Creature.Values,
-                        HasActivePremiumService(
-                            GameProtocolEngine.BlackDiamondServiceType));
-                    await appearance.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, appearance);
-
-                    // Mode zero is the compact town-actor appearance
-                    // projection: Avatar slots 0..8, weapon slot 9, plus the
-                    // dedicated title and Creature fields. It drops other worn
-                    // objects omitted from its compact list, so immediately
-                    // rebuild the authoritative equipment projection with
-                    // subtype one.
-                    await SendCurrentEquipmentStateAsync();
-                    await SendInitialStaminaStateAsync();
-                }
-
-                async Task ValidateAndCorrectCharacterStatsAsync(string reason)
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    var validation = characterStatCatalog.Validate(
-                        session.Character.Active,
-                        session.Character.LastProjectedCombatStats);
-                    if (session.Dungeon.CurrentDungeonId == 0)
-                    {
-                        // Mode zero first updates level/growtype on the town
-                        // actor. Mode one then overwrites the unequipped stat
-                        // block with the PVF-derived authoritative snapshot.
-                        await SendTownAppearanceAsync();
-                    }
-                    else
-                    {
-                        await SendCurrentEquipmentStateAsync(validation.Expected);
-                    }
-
-                    logger.LogInformation(
-                        "Validated PVF character attributes after {Reason} for {CharacterId}; level={Level}, job={Job}, growType={GrowType}, awakening={AwakeningType}, correctionRequired={CorrectionRequired}, mismatches={Mismatches}.",
-                        reason,
-                        session.Character.Active.Id,
-                        session.Character.Active.Level,
-                        session.Character.Active.Job,
-                        session.Character.Active.GrowType & 0x0F,
-                        Math.Max(session.Character.Active.AwakeningType, session.Character.Active.GrowType >> 4),
-                        !validation.IsCorrect,
-                        validation.MismatchedFields.Count == 0
-                            ? "none"
-                            : string.Join(',', validation.MismatchedFields));
-                }
-
-                async Task SendInitialStaminaStateAsync()
-                {
-                    if (session.Weakness.StaminaStateInitialized || session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    // DFLegacy NOTI 4 owns the weakness percentage. Persisted
-                    // weakness is restored after the authoritative combat-stat
-                    // projection; active black diamond always projects full stamina.
-                    var stamina = GameProtocolEngine.CreateStamina(
-                        GetProjectedStaminaRecovery());
-                    await stamina.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, stamina);
-                    session.Weakness.StaminaStateInitialized = true;
-                }
-
-                Task SendSilentTownStaminaStateAsync() =>
-                    _sessionSenders.SendSilentTownStaminaStateAsync(connectionContext, serverToken);
-
                 Task SendTownFatigueStateAsync() =>
                     _sessionSenders.SendTownFatigueStateAsync(connectionContext, serverToken);
-                Task ConsumeDungeonRoomFatigueAsync(byte roomX, byte roomY) =>
-                    _sessionSenders.ConsumeDungeonRoomFatigueAsync(connectionContext, roomX, roomY, serverToken);
-
-                decimal GetEquippedCreatureExperienceBonusRate(byte creatureLevel) =>
-                    _sessionSenders.GetEquippedCreatureExperienceBonusRate(connectionContext, creatureLevel);
-
-                Task<bool> SettleDungeonCreatureHungerAsync(bool notifyClient, CancellationToken cancellationToken) =>
-                    _sessionSenders.SettleDungeonCreatureHungerAsync(connectionContext, notifyClient, cancellationToken);
-
-                Task GrantDungeonCreatureExperienceAsync() =>
-                    _sessionSenders.GrantDungeonCreatureExperienceAsync(connectionContext, serverToken);
-
-                Task SendEnterGameWorldCompleteAsync() =>
-                    _sessionSenders.SendEnterGameWorldCompleteAsync(connectionContext, serverToken);
-
-                Task<(bool Saved, bool[] Granted)> SaveClearRewardEquipmentAsync(int targetGold, IReadOnlyList<ushort?> itemIds) =>
-                    _sessionSenders.SaveClearRewardEquipmentAsync(connectionContext, targetGold, itemIds, serverToken);
-
-                Task<(bool Saved, bool InventoryChanged, ushort? RewardItemId)> GrantFreeClearRewardAsync(byte selectedCardIndex) =>
-                    _sessionSenders.GrantFreeClearRewardAsync(connectionContext, selectedCardIndex, serverToken);
-
-                Task SendCardSelectionSnapshotAsync(bool inventoryChanged) =>
-                    _sessionSenders.SendCardSelectionSnapshotAsync(connectionContext, inventoryChanged, serverToken);
-
-
                 Task<bool> TryAutomaticallySelectFreeCardAsync(string source) =>
                     _sessionSenders.TryAutomaticallySelectFreeCardAsync(connectionContext, source, serverToken);
 
-                uint GetAuthoritativeQuestTrigger(
-                    QuestDefinition definition,
-                    IEnumerable<CharacterItemRecord>? inventory,
-                    int gold,
-                    uint victoryPoints) =>
-                    _sessionSenders.GetAuthoritativeQuestTrigger(
-                        connectionContext, definition, inventory, gold, victoryPoints);
-                List<CharacterQuestRecord> RefreshSeekingQuestTriggers(
-                    IEnumerable<CharacterQuestRecord> quests,
-                    IEnumerable<CharacterItemRecord> inventory,
-                    int gold,
-                    uint victoryPoints,
-                    out List<(ushort QuestId, uint OldTrigger, uint NewTrigger)> triggerChanges) =>
-                    _sessionSenders.RefreshSeekingQuestTriggers(
-                        connectionContext, quests, inventory, gold, victoryPoints, out triggerChanges);
-                Task GrantQuestItemDropsAsync(
-                    Func<QuestDefinition, IEnumerable<CharacterItemRecord>, IReadOnlyList<QuestItemDrop>> planDrops,
-                    string source) =>
-                    _sessionSenders.GrantQuestItemDropsAsync(connectionContext, planDrops, source, serverToken);
-                Task GrantMonsterQuestItemsAsync(int monsterIndex) =>
-                    _sessionSenders.GrantMonsterQuestItemsAsync(connectionContext, monsterIndex, serverToken);
-
-                Task GrantClearQuestItemsAsync() =>
-                    _sessionSenders.GrantClearQuestItemsAsync(connectionContext, serverToken);
-
-                Task CompleteClearQuestTriggersAsync(string source) =>
-                    _sessionSenders.CompleteClearQuestTriggersAsync(connectionContext, source, serverToken);
-
-                Task SendDungeonSelectionEligibilityAsync() =>
-                    _sessionSenders.SendDungeonSelectionEligibilityAsync(connectionContext, serverToken);
-
                 Task ReturnToTownFromDungeonAsync(string reason, bool forcedDungeonExit = false) =>
                     _sessionSenders.ReturnToTownFromDungeonAsync(connectionContext, reason, forcedDungeonExit, serverToken);
-
-                Task SendInventoryMoveNoOpAsync(
-                    byte sourceListType,
-                    ushort sourceSlot,
-                    byte destinationListType,
-                    ushort destinationSlot,
-                    string reason) =>
-                    _sessionSenders.SendInventoryMoveNoOpAsync(
-                        connectionContext, sourceListType, sourceSlot, destinationListType, destinationSlot, reason, serverToken);
-
-                Task SendMainInventoryMoveDeltaAsync(params ushort[] slots) =>
-                    _sessionSenders.SendMainInventoryMoveDeltaAsync(connectionContext, serverToken, slots);
-
-                IReadOnlyList<ushort> GetAcceptableQuestIds() =>
-                    _sessionSenders.GetAcceptableQuestIds(connectionContext);
-
-                IReadOnlyList<ushort> GetVisibleDungeonIds() =>
-                    _sessionSenders.GetVisibleDungeonIds(connectionContext);
-
-                Task SendDungeonPermissionsAsync() =>
-                    _sessionSenders.SendDungeonPermissionsAsync(connectionContext, serverToken);
-
-                Task SendAcceptableQuestListAsync() =>
-                    _sessionSenders.SendAcceptableQuestListAsync(connectionContext, serverToken);
-                Task CompleteTutorialAndReturnAsync(string reason) =>
-                    _sessionSenders.CompleteTutorialAndReturnAsync(connectionContext, reason, serverToken);
 
                 if (isChannelPort)
                 {
@@ -1238,7 +721,7 @@ public sealed class EntranceService(
                     // callback. Hold the first channel packet until that patch
                     // window has safely completed.
                     await Task.Delay(TimeSpan.FromMilliseconds(750), serverToken);
-                    var greeting = GameProtocolEngine.CreateCheckConnection(protocolSession.SessionToken);
+                    var greeting = ConnectionPacketBuilders.CreateCheckConnection(protocolSession.SessionToken);
                     await greeting.WriteAsync(stream, serverToken);
                     Interlocked.Increment(ref runtimeSession.SentPackets);
                     LogPacket("TX", runtimeSession, greeting);
@@ -1474,7 +957,7 @@ public sealed class EntranceService(
                                 if (session.Character.Active is not null)
                                 {
                                     session.Currency.Cash = connectionEvent.Value;
-                                    var ceraNotification = GameProtocolEngine.CreateCeraUpdate(
+                                    var ceraNotification = ShopPacketBuilders.CreateCeraUpdate(
                                         success: true,
                                         value: (uint)connectionEvent.Value);
                                     await ceraNotification.WriteAsync(stream, serverToken);

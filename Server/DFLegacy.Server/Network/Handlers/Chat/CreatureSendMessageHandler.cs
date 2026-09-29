@@ -7,8 +7,7 @@ namespace DFLegacy.Server;
 /// CREATURE_SEND_MESSAGE (CMD 124): the equipped Creature's automatic talk (07 §5 group 5).
 /// </summary>
 public sealed class CreatureSendMessageHandler(
-    ILogger<CreatureSendMessageHandler> logger,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ILogger<CreatureSendMessageHandler> logger) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -57,8 +56,7 @@ public sealed class CreatureSendMessageHandler(
         // and a CP936 string. NOTI 126 omits that u32 and
         // uses the same payload reader as NOTI 131 at
         // 0x41CA99, so rebuild it with the authoritative id.
-        var creatureMessage = GameProtocolEngine
-            .CreateCreatureMessageNotification(
+        var creatureMessage = ChatPacketBuilders.CreateCreatureMessageNotification(
                 (GameMessageType)messageRequest.MessageType,
                 session.Character.LocalUserId,
                 messageRequest.MessageBytes);

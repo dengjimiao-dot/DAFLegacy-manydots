@@ -26,7 +26,7 @@ public sealed class SetQuestTriggerHandler(
         // the resulting u32 trigger value back to the server.
         if (session.Character.Active is null || request.Body.Length < 5)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -36,7 +36,7 @@ public sealed class SetQuestTriggerHandler(
         var questIndex = session.Quest.Current.FindIndex(quest => quest.QuestId == questId);
         if (questIndex < 0)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -107,7 +107,7 @@ public sealed class SetQuestTriggerHandler(
 
         if (!validTrigger)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected quest {QuestId} trigger action 0x{Action:X2}.",
@@ -136,7 +136,7 @@ public sealed class SetQuestTriggerHandler(
             };
         }
 
-        var setQuestTriggerReply = GameProtocolEngine.CreateSetQuestTriggerReply(questId, trigger);
+        var setQuestTriggerReply = QuestPacketBuilders.CreateSetQuestTriggerReply(questId, trigger);
         await context.Outbound.SendAsync(setQuestTriggerReply, Name, cancellationToken);
         logger.LogInformation(
             "Updated quest {QuestId} trigger from {OldTrigger} to {Trigger} through action 0x{Action:X2}.",

@@ -170,7 +170,7 @@ public sealed partial class ChannelSessionSenders
     context.State.Quest.Current = plannedQuests;
     if (changedSlots.Count > 0)
     {
-        var itemUpdate = GameProtocolEngine.CreateUpdateItemList(
+        var itemUpdate = InventoryPacketBuilders.CreateUpdateItemList(
             0,
             changedSlots
                 .OrderBy(slot => slot)
@@ -186,7 +186,7 @@ public sealed partial class ChannelSessionSenders
 
     foreach (var change in triggerChanges)
     {
-        var triggerUpdate = GameProtocolEngine.CreateSetQuestTriggerReply(
+        var triggerUpdate = QuestPacketBuilders.CreateSetQuestTriggerReply(
             change.QuestId,
             change.NewTrigger);
         await context.Outbound.SendAsync(triggerUpdate, "QUEST_TRIGGER", cancellationToken);
@@ -206,7 +206,7 @@ public sealed partial class ChannelSessionSenders
 
     public async Task SendAcceptableQuestListAsync(ConnectionContext context, CancellationToken cancellationToken)
     {
-    var acceptable = GameProtocolEngine.CreateAcceptableQuestList(
+    var acceptable = QuestPacketBuilders.CreateAcceptableQuestList(
         GetAcceptableQuestIds(context));
     await context.Outbound.SendAsync(acceptable, "QUEST_LIST", cancellationToken);
     }
@@ -269,7 +269,7 @@ public sealed partial class ChannelSessionSenders
     foreach (var questId in completedSimpleClearQuestIds.Order())
     {
         var triggerUpdate =
-            GameProtocolEngine.CreateSetQuestTriggerReply(
+            QuestPacketBuilders.CreateSetQuestTriggerReply(
                 questId,
                 trigger: 0);
         await context.Outbound.SendAsync(triggerUpdate, "DUNGEON", cancellationToken);

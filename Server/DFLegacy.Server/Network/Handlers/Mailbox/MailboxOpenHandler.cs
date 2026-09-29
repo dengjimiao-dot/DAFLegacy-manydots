@@ -20,14 +20,14 @@ public sealed class MailboxOpenHandler(ChannelSessionSenders senders) : IGameCom
         var session = context.State;
         if (session.Character.Active is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
 
-        var openReply = GameProtocolEngine.CreateMailboxOpenReply();
+        var openReply = MailboxPacketBuilders.CreateMailboxOpenReply();
         await context.Outbound.SendAsync(openReply, Name, cancellationToken);
         await senders.SendMailboxStateAsync(context, notifyNewMail: true, cancellationToken);
     }

@@ -11,9 +11,7 @@ public sealed class DeleteItemHandler(
     RuntimeState runtime,
     JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<DeleteItemHandler> logger,
-    CharacterPacketBuilders builders,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ILogger<DeleteItemHandler> logger) : IGameCommandHandler
 {
 
     public ushort ProtocolId => GameProtocolEngine.DeleteItemCommand;
@@ -104,7 +102,7 @@ public sealed class DeleteItemHandler(
         if (!validTransaction)
         {
             var deleteItemError =
-                GameProtocolEngine.CreateDeleteItemError(
+                InventoryPacketBuilders.CreateDeleteItemError(
                     listType,
                     errorCode: 0x11);
             await context.Outbound.SendAsync(deleteItemError, Name, cancellationToken);
@@ -156,7 +154,7 @@ public sealed class DeleteItemHandler(
         }
 
         var deleteItemReply =
-            GameProtocolEngine.CreateDeleteItemReply(
+            InventoryPacketBuilders.CreateDeleteItemReply(
                 listType,
                 completionEntries);
         await context.Outbound.SendAsync(deleteItemReply, Name, cancellationToken);

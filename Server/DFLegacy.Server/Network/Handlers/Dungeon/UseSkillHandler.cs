@@ -64,7 +64,7 @@ public sealed class UseSkillHandler(
         }
 
         var useSkillReply =
-            GameProtocolEngine.CreateUseSkillReply();
+            DungeonPacketBuilders.CreateUseSkillReply();
         await context.Outbound.SendAsync(useSkillReply, Name, cancellationToken);
 
     }

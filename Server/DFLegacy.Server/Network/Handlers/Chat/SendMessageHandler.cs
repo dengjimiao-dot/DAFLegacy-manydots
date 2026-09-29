@@ -102,7 +102,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                 ? new GameInventoryEntry(megaphoneSlot, ushort.MaxValue, 0)
                 : builders.ToGameInventoryEntry(session.Inventory.Main[megaphoneSlot]);
             var megaphoneInventoryUpdate =
-                GameProtocolEngine.CreateUpdateItemList(
+                InventoryPacketBuilders.CreateUpdateItemList(
                     0,
                     [megaphoneEntry]);
             await context.Outbound.SendAsync(megaphoneInventoryUpdate, Name, cancellationToken);
@@ -169,7 +169,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                 messageRequest.TargetNameBytes);
             var delivered = partyCoordinator.TrySendToName(
                 partnerName,
-                GameProtocolEngine.CreateMessageNotification(
+                ChatPacketBuilders.CreateMessageNotification(
                     GameMessageType.Type01LightGreen,
                     session.Character.LocalUserId,
                     messageRequest.MessageBytes));
@@ -230,7 +230,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
         // out of range, matching the original routing.
         var mapChatRecipients = partyCoordinator.SendToSameArea(
             context.Runtime.Id,
-            GameProtocolEngine.CreateMessageNotification(
+            ChatPacketBuilders.CreateMessageNotification(
                 GameMessageType.Type03White,
                 session.Character.LocalUserId,
                 messageRequest.MessageBytes));

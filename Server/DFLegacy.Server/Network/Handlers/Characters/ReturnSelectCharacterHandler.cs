@@ -33,7 +33,7 @@ public sealed class ReturnSelectCharacterHandler(
         var session = context.State;
         if (session.Character.Active is { TutorialStarted: false })
         {
-            var tutorialError = GameProtocolEngine.CreateCommandError(
+            var tutorialError = ConnectionPacketBuilders.CreateCommandError(
                 frame,
                 errorCode: 4);
             await context.Outbound.SendAsync(tutorialError, Name, cancellationToken);
@@ -125,7 +125,7 @@ public sealed class ReturnSelectCharacterHandler(
         session.Character.AreaRosterInitialized = false;
         session.Weakness.StaminaStateInitialized = false;
 
-        var returnReply = GameProtocolEngine.CreateCommandReply(
+        var returnReply = ConnectionPacketBuilders.CreateCommandReply(
             frame,
             success: true);
         await context.Outbound.SendAsync(returnReply, Name, cancellationToken);

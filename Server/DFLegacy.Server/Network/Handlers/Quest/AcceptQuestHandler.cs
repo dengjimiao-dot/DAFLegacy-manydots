@@ -11,7 +11,6 @@ public sealed class AcceptQuestHandler(
     ItemCatalog itemCatalog,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
-    CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => GameProtocolEngine.AcceptQuestCommand;
@@ -27,7 +26,7 @@ public sealed class AcceptQuestHandler(
         var session = context.State;
         if (session.Character.Active is null || request.Body.Length < 4)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 23);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 23);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -36,7 +35,7 @@ public sealed class AcceptQuestHandler(
             request.Body.AsSpan(2, 2));
         if (session.Quest.Current.Count >= 3)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -45,7 +44,7 @@ public sealed class AcceptQuestHandler(
         if (!acceptableQuestIds.Contains(questId)
             || !questCatalog.TryGetDefinition(questId, out var definition))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 18);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 18);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -57,7 +56,7 @@ public sealed class AcceptQuestHandler(
             senders.GetInventoryWeightLimit(context, session.Character.Active));
         if (!acceptancePlan.Success)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 17);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected quest {QuestId} because dependency item grants failed: {Failure} ({Error})",
@@ -97,7 +96,7 @@ public sealed class AcceptQuestHandler(
             unlockedDungeonIds: questDungeonUnlocks);
         if (savedQuestProgress is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 18);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 18);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected quest {QuestId} because the quest and dependency-item transaction could not be persisted.",
@@ -114,7 +113,7 @@ public sealed class AcceptQuestHandler(
         session.Quest.CompletedIds.UnionWith(
             savedQuestProgress.CompletedQuestIds ?? []);
 
-        var acceptQuestReply = GameProtocolEngine.CreateAcceptQuestReply(
+        var acceptQuestReply = QuestPacketBuilders.CreateAcceptQuestReply(
             questId,
             acceptedQuest.Trigger,
             acceptancePlan.InsertedItems

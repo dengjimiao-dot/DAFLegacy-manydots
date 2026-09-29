@@ -7,8 +7,7 @@ namespace DFLegacy.Server;
 /// CREATURE_SCRIPT_MESSAGE (CMD 132): creature talk with an equipped Creature (07 §5 group 5).
 /// </summary>
 public sealed class CreatureScriptMessageHandler(
-    ILogger<CreatureScriptMessageHandler> logger,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ILogger<CreatureScriptMessageHandler> logger) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -59,8 +58,7 @@ public sealed class CreatureScriptMessageHandler(
             return;
         }
 
-        var creatureScriptMessage = GameProtocolEngine
-            .CreateCreatureScriptMessageNotification(
+        var creatureScriptMessage = ChatPacketBuilders.CreateCreatureScriptMessageNotification(
                 (GameMessageType)messageRequest.MessageType,
                 session.Character.LocalUserId,
                 messageRequest.MessageBytes);

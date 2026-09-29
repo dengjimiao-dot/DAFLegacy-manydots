@@ -20,7 +20,7 @@ public sealed partial class ChannelSessionSenders
 
     var projectedStats = validatedStats
         ?? characterStatCatalog.Get(context.State.Character.Active);
-    var equipment = GameProtocolEngine.CreateCurrentCharacterDetails(
+    var equipment = CharactersPacketBuilders.CreateCurrentCharacterDetails(
         context.State.Character.LocalUserId,
         experience: context.State.Character.Active.Experience,
         learnedSkills: GetCurrentGameSkills(context),
@@ -130,7 +130,7 @@ public sealed partial class ChannelSessionSenders
     // DFLegacy NOTI 4 owns the weakness percentage. Persisted
     // weakness is restored after the authoritative combat-stat
     // projection; active black diamond always projects full stamina.
-    var stamina = GameProtocolEngine.CreateStamina(
+    var stamina = StaminaPacketBuilders.CreateStamina(
         GetProjectedStaminaRecovery(context));
     await context.Outbound.SendAsync(stamina, "STAMINA_NOTI", cancellationToken);
     context.State.Weakness.StaminaStateInitialized = true;
@@ -158,7 +158,7 @@ public sealed partial class ChannelSessionSenders
     }
 
     var premiumNotification =
-        GameProtocolEngine.CreatePremiumServiceNotification(
+        StaminaPacketBuilders.CreatePremiumServiceNotification(
             action: GameProtocolEngine.PremiumServiceUpdateAction,
             serviceType,
             remainSeconds);
@@ -186,7 +186,7 @@ public sealed partial class ChannelSessionSenders
     {
     // AREA_USERS constructs the town HUD. EVENT_INFO then selects
     // and initializes its normal/premium fatigue-bar resources.
-    var eventInfo = GameProtocolEngine.CreateEventInfo();
+    var eventInfo = StaminaPacketBuilders.CreateEventInfo();
     await context.Outbound.SendAsync(eventInfo, "TOWN_STAMINA", cancellationToken);
 
     var premiumFatigue = HasActivePremiumService(
@@ -196,7 +196,7 @@ public sealed partial class ChannelSessionSenders
         : (ushort)0;
     var maximumFatigue = checked((ushort)(
         GameProtocolEngine.DefaultMaximumFatigue + premiumFatigue));
-    var fatigue = GameProtocolEngine.CreateFatigue(
+    var fatigue = StaminaPacketBuilders.CreateFatigue(
         usedFatigue: Math.Min(
             context.State.Character.Active?.UsedFatigue ?? 0,
             maximumFatigue),
@@ -246,7 +246,7 @@ public sealed partial class ChannelSessionSenders
     // two. DFLegacy notification 136 clears both locks after the
     // local actor has been constructed by AREA_USERS.
     var gameWorldComplete =
-        GameProtocolEngine.CreateEnterGameWorldComplete();
+        ConnectionPacketBuilders.CreateEnterGameWorldComplete();
     await context.Outbound.SendAsync(gameWorldComplete, "TOWN_NOTI", cancellationToken);
     }
 
@@ -267,9 +267,9 @@ public sealed partial class ChannelSessionSenders
         && !HasActivePremiumService(
             context,
             GameProtocolEngine.BlackDiamondServiceType)
-            ? GameProtocolEngine.CreateStamina(
+            ? StaminaPacketBuilders.CreateStamina(
                 context.State.Character.Active.WeaknessRecovery)
-            : GameProtocolEngine.CreateFailClearDungeon(
+            : DungeonPacketBuilders.CreateFailClearDungeon(
                 DungeonWeaknessPolicy.FullStamina);
     await context.Outbound.SendAsync(stamina, "TOWN_NOTI", cancellationToken);
     }
@@ -289,7 +289,7 @@ public sealed partial class ChannelSessionSenders
                 return;
             }
 
-            var stamina = GameProtocolEngine.CreateStamina(recovery);
+            var stamina = StaminaPacketBuilders.CreateStamina(recovery);
             await context.Outbound.SendAsync(stamina, "STAMINA_NOTI", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)

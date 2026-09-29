@@ -61,7 +61,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 || !session.Dungeon.SelectionWorldMap.HasHellItems(session.Inventory.Main.Values)
                 || !dungeonCatalog.IsHellDungeon(dungeonId)))
         {
-            var rejected = GameProtocolEngine.CreateCommandError(request, errorCode: 14);
+            var rejected = ConnectionPacketBuilders.CreateCommandError(request, errorCode: 14);
             await context.Outbound.SendAsync(rejected, Name, cancellationToken);
             await senders.SendDungeonSelectionEligibilityAsync(context, cancellationToken);
             return;
@@ -69,7 +69,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
         if (requiresTutorial
             && dungeonId != GameProtocolEngine.TutorialDungeonId)
         {
-            var tutorialRequiredError = GameProtocolEngine.CreateCommandError(
+            var tutorialRequiredError = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 4);
             await context.Outbound.SendAsync(tutorialRequiredError, Name, cancellationToken);
@@ -85,7 +85,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
         {
             if (!requiresTutorial)
             {
-                var closedTutorialError = GameProtocolEngine.CreateCommandError(
+                var closedTutorialError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 4);
                 await context.Outbound.SendAsync(closedTutorialError, Name, cancellationToken);
@@ -95,7 +95,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 return;
             }
 
-            var tutorialMonsters = GameProtocolEngine.CreateTutorialMonsters();
+            var tutorialMonsters = DungeonPacketBuilders.CreateTutorialMonsters();
             session.Dungeon.InSelection = false;
             session.Dungeon.CurrentDungeonId = GameProtocolEngine.TutorialDungeonId;
             session.Dungeon.Layout = null;
@@ -141,11 +141,11 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             session.Dungeon.ChampionRewardOrdinal = 0;
 
             var tutorialInfo =
-                GameProtocolEngine.CreateTutorialDungeonInfo(difficulty);
+                DungeonPacketBuilders.CreateTutorialDungeonInfo(difficulty);
             await context.Outbound.SendAsync(tutorialInfo, Name, cancellationToken);
 
             var tutorialStartMap =
-                GameProtocolEngine.CreateTutorialStartMap();
+                DungeonPacketBuilders.CreateTutorialStartMap();
             await context.Outbound.SendAsync(tutorialStartMap, Name, cancellationToken);
             logger.LogInformation(
                 "Started mandatory tutorial dungeon/scene {TutorialId} for character {CharacterId}; monsters={MonsterCount}, difficulty={Difficulty}, option={Option}; no PVF dungeon or map definition was queried.",
@@ -168,7 +168,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
 
         if (!senders.GetVisibleDungeonIds(context).Contains(dungeonId))
         {
-            var lockedDungeonError = GameProtocolEngine.CreateCommandError(
+            var lockedDungeonError = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 18);
             await context.Outbound.SendAsync(lockedDungeonError, Name, cancellationToken);
@@ -186,7 +186,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
         if (difficulty > maximumDifficulty)
         {
             var lockedDifficultyError =
-                GameProtocolEngine.CreateCommandError(
+                ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 18);
             await context.Outbound.SendAsync(lockedDifficultyError, Name, cancellationToken);
@@ -247,7 +247,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 || !session.Dungeon.SelectionWorldMap.TryConsumeHellItems(session.Inventory.Main, out plannedInventory))
             {
                 session.Dungeon.Run.Stop();
-                var ticketError = GameProtocolEngine.CreateCommandError(
+                var ticketError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 14);
                 await context.Outbound.SendAsync(ticketError, Name, cancellationToken);
@@ -276,7 +276,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             if (savedTicketConsumption is null)
             {
                 session.Dungeon.Run.Stop();
-                var ticketSaveError = GameProtocolEngine.CreateCommandError(
+                var ticketSaveError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 19);
                 await context.Outbound.SendAsync(ticketSaveError, Name, cancellationToken);
@@ -285,7 +285,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
 
             session.Character.Active = savedTicketConsumption;
             session.Inventory.Main = plannedInventory;
-            pendingHellTicketUpdate = GameProtocolEngine.CreateUpdateItemList(
+            pendingHellTicketUpdate = InventoryPacketBuilders.CreateUpdateItemList(
                 0,
                 changedTickets.Select(item => plannedInventory.TryGetValue(item.Slot, out var remaining)
                     ? builders.ToGameInventoryEntry(remaining)
@@ -339,7 +339,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 out hellRoomY);
         }
 
-        var dungeonInfo = GameProtocolEngine.CreateDungeonInfo(
+        var dungeonInfo = DungeonPacketBuilders.CreateDungeonInfo(
             dungeonId,
             difficulty,
             mazeIndex: dungeonLayout.MazeIndex,
@@ -359,7 +359,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             session.Character.LocalUserId,
             session.Dungeon.RoomX,
             session.Dungeon.RoomY);
-        var startMap = GameProtocolEngine.CreateStartMap(
+        var startMap = DungeonPacketBuilders.CreateStartMap(
             roomX: session.Dungeon.RoomX,
             roomY: session.Dungeon.RoomY,
             mapId: session.Dungeon.Room.MapId,

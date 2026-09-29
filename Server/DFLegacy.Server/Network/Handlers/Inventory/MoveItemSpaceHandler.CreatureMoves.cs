@@ -88,7 +88,7 @@ public sealed partial class MoveItemSpaceHandler
             session.Inventory.Warehouse = creatureMove.Warehouse;
             session.Inventory.Creature = creatureMove.CreatureInventory;
             var creatureMoveReply =
-                GameProtocolEngine.CreateMoveItemSpaceReply(
+                InventoryPacketBuilders.CreateMoveItemSpaceReply(
                     sourceListType,
                     sourceSlot,
                     creatureMove.MovedCount,
@@ -150,6 +150,5 @@ public sealed partial class MoveItemSpaceHandler
                 destinationSlot,
                 creatureMove.MovedCount);
             return true;
-        return true;
     }
 }

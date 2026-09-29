@@ -34,14 +34,14 @@ public sealed class BuyItemHandler(JsonGameStore store,
                 out var itemId,
                 out var countOrQualitySeed))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
 
         if (!itemCatalog.TryGetDefinition(itemId, out var itemDefinition))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -51,7 +51,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
             : (uint)Math.Clamp(countOrQualitySeed, 1, 999);
         if (!itemCatalog.TryGetPurchasePrice(itemId, out var unitPrice))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected NPC-shop purchase of item {ItemId}: its cached item definition disappeared during request processing.",
@@ -62,7 +62,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
         var totalPrice = checked(unitPrice * (int)count);
         if (session.Currency.Gold < totalPrice)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -166,7 +166,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
         else if (placementFailure is InventoryPlacementFailure.InvalidItem
                  or InventoryPlacementFailure.UnsupportedCategory)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -195,7 +195,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
             expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
         if (savedCharacter is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -215,7 +215,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
             characterSessions.NotifyMailReceived(session.Character.Active.CharacterNo);
         }
 
-        var buyReply = GameProtocolEngine.CreateBuyItemReply(
+        var buyReply = ShopPacketBuilders.CreateBuyItemReply(
             updatedGold: (uint)session.Currency.Gold,
             updatedVictoryPoints: session.Currency.VictoryPoints,
             auxiliaryItemSpaceValue: 0,

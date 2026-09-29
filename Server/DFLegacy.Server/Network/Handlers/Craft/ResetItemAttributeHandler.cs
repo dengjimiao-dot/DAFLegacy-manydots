@@ -29,12 +29,12 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
         var session = context.State;
         if (session.Character.Active is null
             || session.Dungeon.CurrentDungeonId != 0
-            || !GameProtocolEngine.TryParseResetItemAttributeCommand(
+            || !CraftPacketBuilders.TryParseResetItemAttributeCommand(
                 request.Body,
                 out var resetCommand))
         {
             var error =
-                GameProtocolEngine.CreateResetItemAttributeFailure(
+                CraftPacketBuilders.CreateResetItemAttributeFailure(
                     (byte)ItemAttributeModificationFailure.InvalidTarget);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
@@ -53,7 +53,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
                 out var modificationFailure))
         {
             var error =
-                GameProtocolEngine.CreateResetItemAttributeFailure(
+                CraftPacketBuilders.CreateResetItemAttributeFailure(
                     (byte)modificationFailure);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
@@ -77,7 +77,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
         if (savedModification is null)
         {
             var error =
-                GameProtocolEngine.CreateResetItemAttributeFailure(
+                CraftPacketBuilders.CreateResetItemAttributeFailure(
                     (byte)ItemAttributeModificationFailure.InvalidTarget);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
@@ -93,7 +93,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
         }
 
         var modificationReply =
-            GameProtocolEngine.CreateResetItemAttributeReply(
+            CraftPacketBuilders.CreateResetItemAttributeReply(
                 modificationPlan.MaterialSlot,
                 modificationPlan.MaterialRemaining,
                 (ushort)modificationPlan.Operation);
@@ -103,7 +103,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
             ? session.Inventory.Equipped[modificationPlan.TargetSlot]
             : session.Inventory.Main[modificationPlan.TargetSlot];
         var targetUpdate =
-            GameProtocolEngine.CreateUpdateItemList(
+            InventoryPacketBuilders.CreateUpdateItemList(
                 modificationPlan.TargetListType,
                 [builders.ToGameInventoryEntry(adjustedItem)]);
         await context.Outbound.SendAsync(targetUpdate, Name, cancellationToken);

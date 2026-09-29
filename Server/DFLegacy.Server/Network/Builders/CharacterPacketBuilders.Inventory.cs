@@ -31,7 +31,7 @@ public sealed partial class CharacterPacketBuilders
             .ThenBy(item => item.Slot)
             .Select(ToGameInventoryEntry)
             .ToArray();
-        return GameProtocolEngine.CreateMainItemList(
+        return InventoryPacketBuilders.CreateMainItemList(
             checked((uint)Math.Max(0, gold)),
             victoryPoints,
             entries);
@@ -50,7 +50,7 @@ public sealed partial class CharacterPacketBuilders
             .OrderBy(item => item.Slot)
             .Select(ToGameInventoryEntry)
             .ToArray();
-        return GameProtocolEngine.CreateItemList(
+        return InventoryPacketBuilders.CreateItemList(
             2,
             entries,
             warehouseCapacity);
@@ -65,7 +65,7 @@ public sealed partial class CharacterPacketBuilders
             .OrderBy(item => item.Slot)
             .Select(ToGameInventoryEntry)
             .ToArray();
-        return GameProtocolEngine.CreateItemList(1, entries);
+        return InventoryPacketBuilders.CreateItemList(1, entries);
     }
 
     internal IEnumerable<GameServerPacket> CreateInventoryRefreshPackets(

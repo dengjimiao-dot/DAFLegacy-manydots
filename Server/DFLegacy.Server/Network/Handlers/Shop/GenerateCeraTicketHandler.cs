@@ -24,7 +24,7 @@ public sealed class GenerateCeraTicketHandler(ILogger<GenerateCeraTicketHandler>
     {
         var session = context.State;
         var ticket = Guid.NewGuid().ToString("N");
-        var ticketReply = GameProtocolEngine.CreateCeraTicketReply(
+        var ticketReply = ShopPacketBuilders.CreateCeraTicketReply(
             ticket);
         await context.Outbound.SendAsync(ticketReply, Name, cancellationToken);
         logger.LogInformation(

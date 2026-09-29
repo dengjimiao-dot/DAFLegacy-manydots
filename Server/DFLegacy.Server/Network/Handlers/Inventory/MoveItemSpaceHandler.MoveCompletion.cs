@@ -22,6 +22,11 @@ public sealed partial class MoveItemSpaceHandler
         CancellationToken cancellationToken)
     {
         var session = context.State;
+        if (session.Character.Active is null)
+        {
+            return;
+        }
+
         session.Character.Active = await store.SaveCharacterItemSpacesAsync(
             session.Login.AccountName,
             session.Character.Active.Id,
@@ -32,7 +37,7 @@ public sealed partial class MoveItemSpaceHandler
             cancellationToken,
             avatarInventory: session.Inventory.Avatar.Values) ?? session.Character.Active;
 
-        var moveReply = GameProtocolEngine.CreateMoveItemSpaceReply(
+        var moveReply = InventoryPacketBuilders.CreateMoveItemSpaceReply(
             sourceListType,
             sourceSlot,
             requestedCount,
@@ -124,7 +129,7 @@ public sealed partial class MoveItemSpaceHandler
                             ushort.MaxValue,
                             0);
                 var updateSourceItem =
-                    GameProtocolEngine.CreateUpdateItemList(
+                    InventoryPacketBuilders.CreateUpdateItemList(
                         0,
                         [sourceUpdateEntry]);
                 await context.Outbound.SendAsync(updateSourceItem, Name, cancellationToken);
@@ -145,7 +150,7 @@ public sealed partial class MoveItemSpaceHandler
                 if (displacedItem is null)
                 {
                     var addWornItem =
-                        GameProtocolEngine.CreateUpdateItemList(
+                        InventoryPacketBuilders.CreateUpdateItemList(
                             3,
                             [builders.ToGameInventoryEntry(
                                 session.Inventory.Equipped[destinationSlot])]);

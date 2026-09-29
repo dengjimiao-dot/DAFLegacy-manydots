@@ -8,7 +8,6 @@ namespace DFLegacy.Server;
 /// COMPOUND_AVATAR (CMD 102): avatar compounding through the avatar table (07 §5 group 11).
 /// </summary>
 public sealed class CompoundAvatarHandler(JsonGameStore store,
-    ItemCatalog itemCatalog,
     AvatarCompoundCatalog avatarCompoundCatalog,
     ILogger<CompoundAvatarHandler> logger,
     CharacterPacketBuilders builders,
@@ -29,12 +28,12 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
         var session = context.State;
         if (session.Character.Active is null
             || session.Dungeon.CurrentDungeonId != 0
-            || !GameProtocolEngine.TryParseCompoundAvatarCommand(
+            || !CraftPacketBuilders.TryParseCompoundAvatarCommand(
                 request.Body,
                 out var compoundCommand))
         {
             var error =
-                GameProtocolEngine.CreateCompoundAvatarFailure();
+                CraftPacketBuilders.CreateCompoundAvatarFailure();
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -55,7 +54,7 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
                 out var compoundFailure))
         {
             var error =
-                GameProtocolEngine.CreateCompoundAvatarFailure();
+                CraftPacketBuilders.CreateCompoundAvatarFailure();
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected avatar compound for job {Job}, material slot {MaterialSlot}, items {FirstItemId}/{SecondItemId}, slots {FirstSlot}/{SecondSlot}, option {Option}: {Failure}.",
@@ -84,7 +83,7 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
         if (savedCompound is null)
         {
             var error =
-                GameProtocolEngine.CreateCompoundAvatarFailure();
+                CraftPacketBuilders.CreateCompoundAvatarFailure();
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -104,7 +103,7 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
         }
 
         var compoundReply =
-            GameProtocolEngine.CreateCompoundAvatarReply(
+            CraftPacketBuilders.CreateCompoundAvatarReply(
                 [
                     new GameAvatarCompoundConsumption(
                         0,

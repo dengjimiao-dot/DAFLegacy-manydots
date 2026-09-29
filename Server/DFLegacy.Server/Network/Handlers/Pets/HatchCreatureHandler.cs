@@ -40,7 +40,7 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
                 out hatchFailure);
         if (!validHatch)
         {
-            var hatchError = GameProtocolEngine.CreateHatchCreatureReply(
+            var hatchError = PetsPacketBuilders.CreateHatchCreatureReply(
                 success: false,
                 errorCode: 4);
             await context.Outbound.SendAsync(hatchError, Name, cancellationToken);
@@ -68,7 +68,7 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
             creatureInventory: hatchPlan.Inventory.Values);
         if (savedHatch is null)
         {
-            var hatchError = GameProtocolEngine.CreateHatchCreatureReply(
+            var hatchError = PetsPacketBuilders.CreateHatchCreatureReply(
                 success: false,
                 errorCode: 2);
             await context.Outbound.SendAsync(hatchError, Name, cancellationToken);
@@ -81,7 +81,7 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
 
         session.Character.Active = savedHatch;
         session.Inventory.Creature = hatchPlan.Inventory;
-        var hatchReply = GameProtocolEngine.CreateHatchCreatureReply(
+        var hatchReply = PetsPacketBuilders.CreateHatchCreatureReply(
             success: true);
         await context.Outbound.SendAsync(hatchReply, Name, cancellationToken);
         foreach (var creaturePacket in builders.CreateCreatureInventoryPackets(

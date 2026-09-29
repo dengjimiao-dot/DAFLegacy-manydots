@@ -32,7 +32,7 @@ internal static class MegaphoneSmokeTests
         var clientEncoding = PvfEncodings.Cp936Lossy();
         var name = clientEncoding.GetBytes("频道");
         check(name.Length == 4, "CP936 encodes the two-character speaker name as 4 bytes");
-        var packet = GameProtocolEngine.CreateMegaphoneNotification(
+        var packet = ChatPacketBuilders.CreateMegaphoneNotification(
             (GameMessageType)14,
             ownerFlag: 0x42,
             targetAreaUserId: 0x1042,
@@ -59,7 +59,7 @@ internal static class MegaphoneSmokeTests
         var threw = false;
         try
         {
-            GameProtocolEngine.CreateMegaphoneNotification(
+            ChatPacketBuilders.CreateMegaphoneNotification(
                 (GameMessageType)13,
                 0,
                 0,
@@ -76,7 +76,7 @@ internal static class MegaphoneSmokeTests
         threw = false;
         try
         {
-            GameProtocolEngine.CreateMegaphoneNotification(
+            ChatPacketBuilders.CreateMegaphoneNotification(
                 (GameMessageType)13,
                 0,
                 0,

@@ -25,7 +25,7 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
         if (session.Character.Active is null || request.Body.Length < 4)
         {
             var invalidQuickSlotReply =
-                GameProtocolEngine.CreateCommandError(request, errorCode: 1);
+                ConnectionPacketBuilders.CreateCommandError(request, errorCode: 1);
             await context.Outbound.SendAsync(invalidQuickSlotReply, Name, cancellationToken);
             return;
         }
@@ -102,10 +102,10 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
                 foreach (var (replyRequest, replySourceSlot, replyDestinationSlot) in replies)
                 {
                     var quickSlotBatchReply = rejected
-                        ? GameProtocolEngine.CreateCommandError(
+                        ? ConnectionPacketBuilders.CreateCommandError(
                             replyRequest,
                             errorCode: 1)
-                        : GameProtocolEngine.CreateChangeSkillSlotReply(
+                        : SkillPacketBuilders.CreateChangeSkillSlotReply(
                             replySourceSlot,
                             replyDestinationSlot);
                     await context.Outbound.SendAsync(quickSlotBatchReply, Name, cancellationToken);
@@ -155,10 +155,10 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
         }
 
         var quickSlotReply = skillSlotMoveAccepted
-            ? GameProtocolEngine.CreateChangeSkillSlotReply(
+            ? SkillPacketBuilders.CreateChangeSkillSlotReply(
                 sourceQuickSlot,
                 destinationQuickSlot)
-            : GameProtocolEngine.CreateCommandError(request, errorCode: 1);
+            : ConnectionPacketBuilders.CreateCommandError(request, errorCode: 1);
         await context.Outbound.SendAsync(quickSlotReply, Name, cancellationToken);
         if (skillSlotMoveAccepted)
         {

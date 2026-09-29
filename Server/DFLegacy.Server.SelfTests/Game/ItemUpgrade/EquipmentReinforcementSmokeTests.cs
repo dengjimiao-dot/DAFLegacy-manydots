@@ -108,26 +108,26 @@ internal static class EquipmentReinforcementSmokeTests
     private static void CheckProtocolVectors(Action<bool, string> check)
     {
         var request = Convert.FromHexString("15000900686B4900");
-        check(GameProtocolEngine.TryParseUpgradeItemCommand(request, out var command)
+        check(CraftPacketBuilders.TryParseUpgradeItemCommand(request, out var command)
                 && command == new GameUpgradeItemCommand(9, 27_496, 73)
-                && !GameProtocolEngine.TryParseUpgradeItemCommand(
+                && !CraftPacketBuilders.TryParseUpgradeItemCommand(
                     Convert.FromHexString("2101010003000FA4213D"),
                     out _),
             "CMD83 parses only the target-client reinforcement request layout");
 
-        var success = GameProtocolEngine.CreateUpgradeItemReply(
+        var success = CraftPacketBuilders.CreateUpgradeItemReply(
             73,
             913,
             0,
             4,
             17);
-        var downgrade = GameProtocolEngine.CreateUpgradeItemReply(
+        var downgrade = CraftPacketBuilders.CreateUpgradeItemReply(
             73,
             909,
             2,
             2,
             17);
-        var destroyed = GameProtocolEngine.CreateUpgradeItemReply(
+        var destroyed = CraftPacketBuilders.CreateUpgradeItemReply(
             73,
             896,
             3,

@@ -29,7 +29,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
         var session = context.State;
         if (session.Character.Active is null || request.Body.Length < 5)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -58,7 +58,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
                 == DisjointItemFailure.InventoryFull
                     ? (byte)4
                     : (byte)17;
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -95,7 +95,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
             expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
         if (savedDisjoint is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -104,7 +104,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
 
         var warehouseCapacityChanged =
             senders.AdoptSavedWarehouseUpgradeState(context, savedDisjoint);
-        var disjointReply = GameProtocolEngine.CreateDisjointItemReply(
+        var disjointReply = CraftPacketBuilders.CreateDisjointItemReply(
             disjointPlan.SourceSlot,
             disjointPlan.ItemSpace,
             disjointPlan.ResponseRewards);

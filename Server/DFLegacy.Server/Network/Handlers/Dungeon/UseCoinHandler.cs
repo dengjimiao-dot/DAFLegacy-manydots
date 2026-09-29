@@ -22,7 +22,7 @@ public sealed class UseCoinHandler(    JsonGameStore store,
         var session = context.State;
         byte? errorCode = null;
         GameUseCoinCommand useCoinCommand = default;
-        if (!GameProtocolEngine.TryParseUseCoinCommand(
+        if (!DungeonPacketBuilders.TryParseUseCoinCommand(
                 request.Body,
                 out useCoinCommand)
             || session.Dungeon.CurrentDungeonId == 0
@@ -69,13 +69,13 @@ public sealed class UseCoinHandler(    JsonGameStore store,
                 // before its USE_COIN reply closes the revive UI.
                 // The reply also decrements the client's local
                 // virtual-coin object, so no NOTI 14 is sent.
-                var reviveState = GameProtocolEngine.CreateDieState(
+                var reviveState = DungeonPacketBuilders.CreateDieState(
                     useCoinCommand.TargetUserId,
                     isAlive: true);
                 await context.Outbound.SendAsync(reviveState, Name, cancellationToken);
 
                 var useCoinReply =
-                    GameProtocolEngine.CreateUseCoinReply(
+                    DungeonPacketBuilders.CreateUseCoinReply(
                         useCoinCommand.TargetUserId);
                 await context.Outbound.SendAsync(useCoinReply, Name, cancellationToken);
                 logger.LogInformation(
@@ -89,7 +89,7 @@ public sealed class UseCoinHandler(    JsonGameStore store,
             }
         }
 
-        var error = GameProtocolEngine.CreateCommandError(
+        var error = ConnectionPacketBuilders.CreateCommandError(
             request,
             errorCode!.Value);
         await context.Outbound.SendAsync(error, Name, cancellationToken);

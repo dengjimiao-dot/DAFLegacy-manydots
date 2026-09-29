@@ -23,7 +23,7 @@ public sealed class DieCharacterHandler(    ILogger<DieCharacterHandler> logger)
             || session.Character.Active is null
             || !session.Dungeon.CharacterAlive)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 19);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -41,7 +41,7 @@ public sealed class DieCharacterHandler(    ILogger<DieCharacterHandler> logger)
         session.Dungeon.DeathTimeout = (
             session.Dungeon.DeathGeneration,
             DateTimeOffset.UtcNow.AddSeconds(10));
-        var dieState = GameProtocolEngine.CreateDieState(
+        var dieState = DungeonPacketBuilders.CreateDieState(
             session.Character.LocalUserId,
             isAlive: false);
         await context.Outbound.SendAsync(dieState, Name, cancellationToken);

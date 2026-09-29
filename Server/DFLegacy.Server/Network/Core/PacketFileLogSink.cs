@@ -20,7 +20,6 @@ public sealed class PacketFileLogSink : IPacketTapSink, IDisposable
     private readonly long _maximumFileBytes;
     private readonly int _hexDumpLimit;
     private readonly string _header;
-    private long _lastDropNotice;
     private int _disposed;
 
     public PacketFileLogSink(PacketCaptureOptions options, string homeDirectory)

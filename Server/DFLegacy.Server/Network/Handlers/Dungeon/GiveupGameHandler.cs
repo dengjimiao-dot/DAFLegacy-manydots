@@ -22,7 +22,7 @@ public sealed class GiveupGameHandler(    ILogger<GiveupGameHandler> logger,
         var session = context.State;
         if (session.Character.Active is { TutorialStarted: false })
         {
-            var tutorialError = GameProtocolEngine.CreateCommandError(
+            var tutorialError = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 4);
             await context.Outbound.SendAsync(tutorialError, Name, cancellationToken);

@@ -81,7 +81,7 @@ internal static class ProtocolGoldenSmokeTests
         check(await dispatcher.TryDispatchAsync(
                 exitContext, exitFrame, exitHandler, CancellationToken.None),
             "EXIT dispatches through the new pipeline");
-        var expectedExit = GameProtocolEngine.CreateCommandReply(exitFrame, success: true).Encode();
+        var expectedExit = ConnectionPacketBuilders.CreateCommandReply(exitFrame, success: true).Encode();
         check(exitStream.ToArray().SequenceEqual(expectedExit),
             "EXIT(CMD 3) reply bytes match the legacy chain output through the new pipeline");
 
@@ -99,7 +99,7 @@ internal static class ProtocolGoldenSmokeTests
             && channelInfo.ProtocolId == GameProtocolEngine.ChannelInfoNotification,
             "CHECK_CONNECTION replies with a CHANNELINFO notification");
         var actualSeed = ReadChannelInfoSeed(channelInfo.Payload);
-        var expectedChannelInfo = GameProtocolEngine.CreateChannelInfo(
+        var expectedChannelInfo = ConnectionPacketBuilders.CreateChannelInfo(
             Encoding.ASCII.GetBytes("Local Channel 1"),
             channelType: 1,
             result: 1,
@@ -118,9 +118,9 @@ internal static class ProtocolGoldenSmokeTests
         // 出站泵 FIFO(07 §3 I1):批量入队按序落流,单写者不乱序。
         var batch = new List<GameServerPacket>
         {
-            GameProtocolEngine.CreateCommandReply(exitFrame, success: true),
-            GameProtocolEngine.CreateCommandReply(checkConnectionFrame, success: true),
-            GameProtocolEngine.CreateCommandReply(exitFrame, success: false),
+            ConnectionPacketBuilders.CreateCommandReply(exitFrame, success: true),
+            ConnectionPacketBuilders.CreateCommandReply(checkConnectionFrame, success: true),
+            ConnectionPacketBuilders.CreateCommandReply(exitFrame, success: false),
         };
         var (batchContext, batchStream) = CreateTestContext(isChannelPort: true);
         await batchContext.Outbound.SendBatchAsync(batch);

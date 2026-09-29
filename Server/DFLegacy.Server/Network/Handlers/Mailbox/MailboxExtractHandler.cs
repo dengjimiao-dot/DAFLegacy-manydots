@@ -24,7 +24,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
         if (session.Character.Active is null
             || !MailboxParsers.TryReadMailboxExtract(request.Body, out var mailId))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -51,7 +51,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
                 out var mailDestinationListType,
                 out var destinationSlot))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: mail is null ? (byte)10 : (byte)4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -81,7 +81,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
             expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
         if (claim is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -95,7 +95,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
             .ToDictionary(item => item.Slot);
         session.Inventory.Creature = (claim.Character.CreatureInventory ?? [])
             .ToDictionary(item => item.Slot);
-        var extractReply = GameProtocolEngine.CreateMailboxExtractReply(mail.Id);
+        var extractReply = MailboxPacketBuilders.CreateMailboxExtractReply(mail.Id);
         await context.Outbound.SendAsync(extractReply, Name, cancellationToken);
 
         if (mail.Gold != 0 || mailDestinationListType == 0)

@@ -31,7 +31,7 @@ public sealed class PartyHandlerCore(
             // Padded so the client's error-code readers
             // stay inside the payload (see
             // CreatePeerCommandError).
-            var identityError = GameProtocolEngine.CreatePeerCommandError(
+            var identityError = PartyPacketBuilders.CreatePeerCommandError(
                 request,
                 errorCode: 0);
             await context.Outbound.SendAsync(identityError, "PARTY", cancellationToken);
@@ -44,16 +44,16 @@ public sealed class PartyHandlerCore(
         byte partyErrorCode;
         try
         {
-            var parsedSettings = GameProtocolEngine.TryParseSetPartyInfo(
+            var parsedSettings = PartyPacketBuilders.TryParseSetPartyInfo(
                 request.Body,
                 out var partySettings);
-            var parsedPeerRequest = GameProtocolEngine.TryParseRequestPeer(
+            var parsedPeerRequest = PartyPacketBuilders.TryParseRequestPeer(
                 request.Body,
                 out var peerRequest);
-            var parsedPeerResponse = GameProtocolEngine.TryParseResponsePeer(
+            var parsedPeerResponse = PartyPacketBuilders.TryParseResponsePeer(
                 request.Body,
                 out var peerResponse);
-            var parsedWalkoutSlot = GameProtocolEngine.TryParseWalkoutPartyMember(
+            var parsedWalkoutSlot = PartyPacketBuilders.TryParseWalkoutPartyMember(
                 request.Body,
                 out var walkoutSlot);
 
@@ -95,17 +95,17 @@ public sealed class PartyHandlerCore(
         GameServerPacket partyReply;
         if (partyResult.Ok)
         {
-            partyReply = GameProtocolEngine.CreateCommandReply(
+            partyReply = ConnectionPacketBuilders.CreateCommandReply(
                 request,
                 success: true);
         }
         else
         {
             partyReply = partyIsSettingsFamily
-                ? GameProtocolEngine.CreatePartyCommandError(
+                ? PartyPacketBuilders.CreatePartyCommandError(
                     request,
                     partyErrorCode)
-                : GameProtocolEngine.CreatePeerCommandError(
+                : PartyPacketBuilders.CreatePeerCommandError(
                     request,
                     partyErrorCode);
         }

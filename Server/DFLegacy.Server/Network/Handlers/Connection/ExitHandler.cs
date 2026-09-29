@@ -34,7 +34,7 @@ public sealed class ExitHandler(ILogger<ExitHandler> logger) : IGameCommandHandl
             return;
         }
 
-        var reply = GameProtocolEngine.CreateCommandReply(frame, success: true);
+        var reply = ConnectionPacketBuilders.CreateCommandReply(frame, success: true);
         await context.Outbound.SendAsync(reply, Name, cancellationToken);
     }
 }

@@ -38,7 +38,7 @@ public sealed partial class ChannelSessionSenders
 
     public async Task SendDungeonPermissionsAsync(ConnectionContext context, CancellationToken cancellationToken)
     {
-        var permissions = GameProtocolEngine.CreateDungeonPermissions(
+        var permissions = DungeonPacketBuilders.CreateDungeonPermissions(
             GetDungeonPermissions(context));
         await context.Outbound.SendAsync(permissions, "DUNGEON_PERMISSIONS", cancellationToken);
     }
@@ -52,7 +52,7 @@ public sealed partial class ChannelSessionSenders
     {
         try
         {
-            var permissions = GameProtocolEngine.CreateDungeonPermissions(
+            var permissions = DungeonPacketBuilders.CreateDungeonPermissions(
                 GetDungeonPermissions(context));
             await context.Outbound.SendAsync(permissions, "DUNGEON_PERMISSIONS", context.Disconnecting);
         }
@@ -143,7 +143,7 @@ public sealed partial class ChannelSessionSenders
 
     if (notifyClient && hungerPlan.StomachChanged)
     {
-        var stomachState = GameProtocolEngine.CreateCreatureState(
+        var stomachState = PetsPacketBuilders.CreateCreatureState(
             hungerPlan.CreatureUid,
             hungerPlan.Stomach);
         await context.Outbound.SendAsync(stomachState, "CREATURE_STATE", cancellationToken);
@@ -307,7 +307,7 @@ public sealed partial class ChannelSessionSenders
     context.State.Character.MovementValue = 100;
     await SessionLocationPersistence.SaveCurrentLocationAsync(store, context.State, cancellationToken);
 
-    var townState = GameProtocolEngine.CreateUserState(
+    var townState = CharactersPacketBuilders.CreateUserState(
         context.State.Character.LocalUserId,
         state: 0);
     await context.Outbound.SendAsync(townState, "DUNGEON", cancellationToken);
@@ -317,13 +317,13 @@ public sealed partial class ChannelSessionSenders
         context.State.Character.X,
         context.State.Character.Y,
         context.State.Character.Direction);
-    var userArea = GameProtocolEngine.CreateUserArea(
+    var userArea = TownPacketBuilders.CreateUserArea(
         context.State.Character.TownId,
         context.State.Character.AreaId,
         townUser);
     await context.Outbound.SendAsync(userArea, "DUNGEON", cancellationToken);
 
-    var areaUsers = GameProtocolEngine.CreateAreaUsers(
+    var areaUsers = TownPacketBuilders.CreateAreaUsers(
         context.State.Character.TownId,
         context.State.Character.AreaId,
         [townUser]);
@@ -370,7 +370,7 @@ public sealed partial class ChannelSessionSenders
     var questsMet = context.State.Dungeon.SelectionWorldMap?.MeetsHellQuests(context.State.Quest.CompletedIds) == true;
     var missingItems = context.State.Dungeon.SelectionWorldMap is { HasHellDungeon: true }
         && !context.State.Dungeon.SelectionWorldMap.HasHellItems(context.State.Inventory.Main.Values);
-    var packet = GameProtocolEngine.CreateEnterSelectDungeon(
+    var packet = DungeonPacketBuilders.CreateEnterSelectDungeon(
         questsMet, missingItems ? [(ushort)0] : []);
     await context.Outbound.SendAsync(packet, "DUNGEON", cancellationToken);
     logger.LogInformation(
@@ -423,7 +423,7 @@ public sealed partial class ChannelSessionSenders
 
     context.State.Dungeon.ConsumedFatigue++;
 
-    var fatigue = GameProtocolEngine.CreateFatigue(
+    var fatigue = StaminaPacketBuilders.CreateFatigue(
         consumption.UsedFatigue,
         maximumFatigue,
         premiumFatigue);
@@ -513,7 +513,7 @@ public sealed partial class ChannelSessionSenders
     };
     context.State.Dungeon.ConsumedFatigue = 0;
     var experienceNotification =
-        GameProtocolEngine.CreateCreatureGainExperience(
+        PetsPacketBuilders.CreateCreatureGainExperience(
             grant.Level,
             grant.Experience);
     await context.Outbound.SendAsync(experienceNotification, "DUNGEON", cancellationToken);

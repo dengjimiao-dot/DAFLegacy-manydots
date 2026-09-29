@@ -48,7 +48,7 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
         if (!validRename)
         {
             var renameError =
-                GameProtocolEngine.CreateRenameCreatureReply(
+                PetsPacketBuilders.CreateRenameCreatureReply(
                     success: false,
                     errorCode: 4);
             await context.Outbound.SendAsync(renameError, Name, cancellationToken);
@@ -77,7 +77,7 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
         if (savedRename is null)
         {
             var renameError =
-                GameProtocolEngine.CreateRenameCreatureReply(
+                PetsPacketBuilders.CreateRenameCreatureReply(
                     success: false,
                     errorCode: 2);
             await context.Outbound.SendAsync(renameError, Name, cancellationToken);
@@ -91,7 +91,7 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
         session.Character.Active = savedRename;
         session.Inventory.Creature = renamePlan.Inventory;
         var renameNotification =
-            GameProtocolEngine.CreateCreatureRename(
+            PetsPacketBuilders.CreateCreatureRename(
                 session.Character.LocalUserId,
                 builders.EncodeCreatureName(
                     renamePlan.CreatureName,
@@ -101,7 +101,7 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
         await context.Outbound.SendAsync(renameNotification, Name, cancellationToken);
 
         var renameReply =
-            GameProtocolEngine.CreateRenameCreatureReply(
+            PetsPacketBuilders.CreateRenameCreatureReply(
                 success: true,
                 renameCardSlot,
                 renameItemSpace);

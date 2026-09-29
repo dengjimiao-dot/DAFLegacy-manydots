@@ -39,8 +39,8 @@ public sealed class CreateCharacterHandler(
         }
 
         var createReply = created
-            ? GameProtocolEngine.CreateCommandReply(frame, success: true)
-            : GameProtocolEngine.CreateCommandError(frame, errorCode: 2);
+            ? ConnectionPacketBuilders.CreateCommandReply(frame, success: true)
+            : ConnectionPacketBuilders.CreateCommandError(frame, errorCode: 2);
         await context.Outbound.SendAsync(createReply, Name, cancellationToken);
 
         if (created)

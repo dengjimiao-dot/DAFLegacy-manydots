@@ -23,7 +23,8 @@ public sealed partial class MoveItemSpaceHandler
         CancellationToken cancellationToken)
     {
         var session = context.State;
-        if (sourceListType != 2
+        if (session.Character.Active is null
+            || sourceListType != 2
             || destinationListType != 0
             || session.Inventory.Main.ContainsKey(destinationSlot)
             || !senders.IsCompatibleMainInventorySlot(sourceItem, destinationSlot))
@@ -47,7 +48,7 @@ public sealed partial class MoveItemSpaceHandler
                     session.Inventory.Main,
                     withdrawal,
                     itemCatalog,
-                    senders.GetInventoryWeightLimit(context, session.Character.Active),
+                    senders.GetInventoryWeightLimit(context, session.Character.Active!),
                     destinationSlot,
                     out var withdrawalPlan,
                     out var withdrawalFailure))
@@ -100,7 +101,7 @@ public sealed partial class MoveItemSpaceHandler
             session.Inventory.Warehouse = plannedWarehouse;
 
             var withdrawReply =
-                GameProtocolEngine.CreateMoveItemSpaceReply(
+                InventoryPacketBuilders.CreateMoveItemSpaceReply(
                     sourceListType,
                     sourceSlot,
                     withdrawnCount,
@@ -129,6 +130,5 @@ public sealed partial class MoveItemSpaceHandler
                 sourceSlot,
                 withdrawalPlan.DestinationSlot);
                     return true;
-        return true;
     }
 }

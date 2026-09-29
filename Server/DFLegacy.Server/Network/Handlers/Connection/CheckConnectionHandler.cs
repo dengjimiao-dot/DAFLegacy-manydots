@@ -28,7 +28,7 @@ public sealed class CheckConnectionHandler(ServerOptions options) : IGameCommand
         PacketFrame frame,
         CancellationToken cancellationToken)
     {
-        var reply = GameProtocolEngine.CreateChannelInfo(
+        var reply = ConnectionPacketBuilders.CreateChannelInfo(
             ClientEncoding.GetBytes($"{options.Channel.Name} {options.Channel.ChannelNumber}"),
             channelType: 1,
             result: 1,

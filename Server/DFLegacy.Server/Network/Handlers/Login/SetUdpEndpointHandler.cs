@@ -37,8 +37,8 @@ public sealed class SetUdpEndpointHandler(
         }
 
         var endpointReply = parsed
-            ? GameProtocolEngine.CreateCommandReply(frame, success: true)
-            : GameProtocolEngine.CreateCommandError(frame, errorCode: 2);
+            ? ConnectionPacketBuilders.CreateCommandReply(frame, success: true)
+            : ConnectionPacketBuilders.CreateCommandError(frame, errorCode: 2);
         await context.Outbound.SendAsync(endpointReply, Name, cancellationToken);
     }
 }

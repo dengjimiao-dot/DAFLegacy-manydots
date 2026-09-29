@@ -46,7 +46,7 @@ public sealed partial class SelectCharacterHandler(
             candidate.Slot == slot);
         if (character is null)
         {
-            var selectError = GameProtocolEngine.CreateCommandError(request, errorCode: 2);
+            var selectError = ConnectionPacketBuilders.CreateCommandError(request, errorCode: 2);
             await context.Outbound.SendAsync(selectError, Name, cancellationToken);
             return;
         }
@@ -385,7 +385,7 @@ public sealed partial class SelectCharacterHandler(
                 session.Character.Active = null;
                 session.Character.LastProjectedCombatStats = null;
                 session.Premium.ExpiryUnix.Clear();
-                var repairError = GameProtocolEngine.CreateCommandError(
+                var repairError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 4);
                 await context.Outbound.SendAsync(repairError, Name, cancellationToken);
@@ -617,7 +617,7 @@ public sealed partial class SelectCharacterHandler(
         var blackDiamondService = premiumStates.FirstOrDefault(state =>
             state.ServiceType == GameProtocolEngine.BlackDiamondServiceType);
         var blackDiamondActive = blackDiamondService?.Active == true;
-        var selectReply = GameProtocolEngine.CreateSelectCharacterReply(
+        var selectReply = CharactersPacketBuilders.CreateSelectCharacterReply(
             request,
             characterId: (uint)slot + 1,
             serverId: session.Character.LocalUserId,
@@ -662,7 +662,7 @@ public sealed partial class SelectCharacterHandler(
         var projectedCombatStats =
             characterStatCatalog.Get(session.Character.Active);
         var currentCharacterDetails =
-            GameProtocolEngine.CreateCurrentCharacterDetails(
+            CharactersPacketBuilders.CreateCurrentCharacterDetails(
                 session.Character.LocalUserId,
                 experience: session.Character.Active.Experience,
                 learnedSkills: learnedSkills,

@@ -6,11 +6,11 @@ internal static class WorldMapSmokeTests
 {
     public static void Run(Action<bool, string> check)
     {
-        check(GameProtocolEngine.CreateEnterSelectDungeon(false, []).Payload
+        check(DungeonPacketBuilders.CreateEnterSelectDungeon(false, []).Payload
             .SequenceEqual(new byte[] { 0, 0 }), "NOTI 27 blocks hell quests with string 5431");
-        check(GameProtocolEngine.CreateEnterSelectDungeon(true, [0]).Payload
+        check(DungeonPacketBuilders.CreateEnterSelectDungeon(true, [0]).Payload
             .SequenceEqual(new byte[] { 1, 1, 0, 0 }), "NOTI 27 names missing-item party slot zero with string 5430");
-        check(GameProtocolEngine.CreateEnterSelectDungeon(false, [0, 3]).Payload
+        check(DungeonPacketBuilders.CreateEnterSelectDungeon(false, [0, 3]).Payload
             .SequenceEqual(new byte[] { 0, 2, 0, 0, 3, 0 }), "NOTI 27 carries independent quest and item restrictions");
 
         var root = Path.Combine(Path.GetTempPath(), $"dflegacy-worldmap-{Guid.NewGuid():N}");

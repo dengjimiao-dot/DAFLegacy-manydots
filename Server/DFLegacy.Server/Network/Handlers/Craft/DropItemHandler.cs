@@ -9,9 +9,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class DropItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<DropItemHandler> logger,
-    CharacterPacketBuilders builders,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ILogger<DropItemHandler> logger) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -29,12 +27,12 @@ public sealed class DropItemHandler(JsonGameStore store,
         var replyItemSpace = request.Body.Length > 6
             ? request.Body[6]
             : (byte)0;
-        if (!GameProtocolEngine.TryParseDropItemCommand(
+        if (!CraftPacketBuilders.TryParseDropItemCommand(
                 request.Body,
                 out var dropCommand))
         {
             var error =
-                GameProtocolEngine.CreateDropItemErrorReply(
+                CraftPacketBuilders.CreateDropItemErrorReply(
                     17,
                     replyItemSpace);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -45,7 +43,7 @@ public sealed class DropItemHandler(JsonGameStore store,
         if (session.Character.Active is null || session.Dungeon.CurrentDungeonId == 0)
         {
             var error =
-                GameProtocolEngine.CreateDropItemErrorReply(
+                CraftPacketBuilders.CreateDropItemErrorReply(
                     19,
                     replyItemSpace);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -77,7 +75,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 ? (byte)23
                 : (byte)17;
             var error =
-                GameProtocolEngine.CreateDropItemErrorReply(
+                CraftPacketBuilders.CreateDropItemErrorReply(
                     errorCode,
                     replyItemSpace);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -108,7 +106,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 "Could not allocate a ground id for item {ItemId}.",
                 dropPlan.DroppedItem.ItemId);
             var error =
-                GameProtocolEngine.CreateDropItemErrorReply(
+                CraftPacketBuilders.CreateDropItemErrorReply(
                     19,
                     replyItemSpace);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -135,7 +133,7 @@ public sealed class DropItemHandler(JsonGameStore store,
         {
             session.Dungeon.GroundItems.Remove(groundItem.GroundId);
             var error =
-                GameProtocolEngine.CreateDropItemErrorReply(
+                CraftPacketBuilders.CreateDropItemErrorReply(
                     19,
                     replyItemSpace);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -146,7 +144,7 @@ public sealed class DropItemHandler(JsonGameStore store,
         session.Inventory.Main = plannedMainInventory;
         session.Inventory.Creature = plannedCreatureInventory;
 
-        var dropNotification = GameProtocolEngine.CreateDropItem(
+        var dropNotification = CraftPacketBuilders.CreateDropItem(
             session.Character.LocalUserId,
             dropCommand.X,
             dropCommand.Y,
@@ -159,7 +157,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 groundItem.GetClientItemAttr(itemCatalog)));
         await context.Outbound.SendAsync(dropNotification, Name, cancellationToken);
 
-        var dropReply = GameProtocolEngine.CreateDropItemReply(
+        var dropReply = CraftPacketBuilders.CreateDropItemReply(
             dropCommand.ItemSpace,
             dropCommand.Slot,
             dropCommand.Count);

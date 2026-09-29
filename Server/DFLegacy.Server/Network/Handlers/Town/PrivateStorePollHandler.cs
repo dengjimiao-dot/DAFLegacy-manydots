@@ -19,7 +19,7 @@ public sealed class PrivateStorePollHandler : IGameCommandHandler
 
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
-        var reply = GameProtocolEngine.CreatePrivateStorePollReply();
+        var reply = TownPacketBuilders.CreatePrivateStorePollReply();
         await context.Outbound.SendAsync(reply, Name, cancellationToken);
     }
 }

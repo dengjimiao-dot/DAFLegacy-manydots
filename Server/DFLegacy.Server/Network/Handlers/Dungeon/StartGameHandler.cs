@@ -37,8 +37,7 @@ public sealed class StartGameHandler(
                     session.Character.Active.UsedFatigue,
                     maximumFatigue)))
         {
-            var fatigueError = GameProtocolEngine
-                .CreateEnterDungeonSelectionInsufficientFatigueReply();
+            var fatigueError = StaminaPacketBuilders.CreateEnterDungeonSelectionInsufficientFatigueReply();
             await context.Outbound.SendAsync(fatigueError, Name, cancellationToken);
             logger.LogInformation(
                 "Rejected dungeon-selection entry for user {UserId}: used fatigue {UsedFatigue}/{MaximumFatigue}.",
@@ -64,7 +63,7 @@ public sealed class StartGameHandler(
         session.Dungeon.SelectionDeadline = requiresTutorial
             ? null : DateTimeOffset.UtcNow.AddSeconds(30);
         await SessionLocationPersistence.SaveCurrentLocationAsync(store, session, cancellationToken);
-        var dungeonState = GameProtocolEngine.CreateUserState(
+        var dungeonState = CharactersPacketBuilders.CreateUserState(
             session.Character.LocalUserId,
             state: 1);
         await context.Outbound.SendAsync(dungeonState, Name, cancellationToken);
@@ -76,10 +75,10 @@ public sealed class StartGameHandler(
             out var localPeer)
                 ? new[] { localPeer }
                 : [];
-        var udpPeers = GameProtocolEngine.CreateUdpPeerInfo(peerInfo);
+        var udpPeers = PartyPacketBuilders.CreateUdpPeerInfo(peerInfo);
         await context.Outbound.SendAsync(udpPeers, Name, cancellationToken);
 
-        var udpHost = GameProtocolEngine.CreateUdpHost();
+        var udpHost = PartyPacketBuilders.CreateUdpHost();
         await context.Outbound.SendAsync(udpHost, Name, cancellationToken);
 
         await senders.SendDungeonPermissionsAsync(context, cancellationToken);

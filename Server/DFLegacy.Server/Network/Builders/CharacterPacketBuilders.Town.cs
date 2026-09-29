@@ -18,7 +18,7 @@ public sealed partial class CharacterPacketBuilders
     {
         var equipmentSnapshot = equipment.ToArray();
 
-        return GameProtocolEngine.CreateCurrentCharacterInfo(
+        return CharactersPacketBuilders.CreateCurrentCharacterInfo(
             new GameCharacterSummary(
                 0,
                 EncodeCharacterName(character.Name),

@@ -5,8 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// CHANGE_LETTER_STAT (CMD 144): deletes a mail or moves it between read/unread, synchronised with the session's known-id cache (07 §5 group 6).
 /// </summary>
-public sealed class MailboxStateHandler(JsonGameStore store,
-    ChannelSessionSenders senders) : IGameCommandHandler
+public sealed class MailboxStateHandler(JsonGameStore store) : IGameCommandHandler
 {
     public ushort ProtocolId => GameProtocolEngine.MailboxStateCommand;
 
@@ -25,7 +24,7 @@ public sealed class MailboxStateHandler(JsonGameStore store,
                 out var mailId,
                 out var mailState))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -41,7 +40,7 @@ public sealed class MailboxStateHandler(JsonGameStore store,
                 cancellationToken);
             if (!deleted && !isKnownMail)
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 10);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -57,14 +56,14 @@ public sealed class MailboxStateHandler(JsonGameStore store,
                 mailState,
                 cancellationToken))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
 
-        var stateReply = GameProtocolEngine.CreateMailboxStateReply(
+        var stateReply = MailboxPacketBuilders.CreateMailboxStateReply(
             mailId,
             mailState);
         await context.Outbound.SendAsync(stateReply, Name, cancellationToken);

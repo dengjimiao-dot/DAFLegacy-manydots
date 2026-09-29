@@ -30,11 +30,11 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
         var session = context.State;
         if (session.Character.Active is null
             || session.Dungeon.CurrentDungeonId != 0
-            || !GameProtocolEngine.TryParseUpgradeItemCommand(
+            || !CraftPacketBuilders.TryParseUpgradeItemCommand(
                 request.Body,
                 out var upgradeCommand))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 (byte)EquipmentReinforcementFailure.InvalidTarget);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -54,7 +54,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
                 out var reinforcementPlan,
                 out var reinforcementFailure))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 (byte)reinforcementFailure);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -77,7 +77,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
                 cancellationToken);
         if (savedReinforcement is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 (byte)EquipmentReinforcementFailure.InvalidTarget);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -108,7 +108,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
         }
 
         var reinforcementReply =
-            GameProtocolEngine.CreateUpgradeItemReply(
+            CraftPacketBuilders.CreateUpgradeItemReply(
                 reinforcementPlan.MaterialSlot,
                 reinforcementPlan.MaterialRemaining,
                 reinforcementPlan.ResultCode,

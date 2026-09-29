@@ -21,7 +21,7 @@ public sealed partial class ChannelSessionSenders
         // the cumulative PVF thresholds on every full sync.
         var grade = pvpExperienceCatalog.GetGradeForPoints(
             context.State.Character.Active.PvpPoints);
-        var pvpRecord = GameProtocolEngine.CreatePvpRecord(
+        var pvpRecord = CharactersPacketBuilders.CreatePvpRecord(
             context.State.Character.Active.PvpWins,
             context.State.Character.Active.PvpLosses,
             context.State.Character.Active.PvpPoints,
@@ -54,7 +54,7 @@ public sealed partial class ChannelSessionSenders
         context.State.Character.Active = context.State.Character.Active with { Quests = saved.Quests };
         foreach (var quest in changedQuests)
         {
-            var update = GameProtocolEngine.CreateSetQuestTriggerReply(quest.QuestId, quest.Trigger);
+            var update = QuestPacketBuilders.CreateSetQuestTriggerReply(quest.QuestId, quest.Trigger);
             await context.Outbound.SendAsync(update, "QUEST_TRIGGER", cancellationToken);
         }
     }
@@ -77,7 +77,7 @@ public sealed partial class ChannelSessionSenders
                 return;
             }
 
-            var messageNotification = GameProtocolEngine.CreateMessageNotification(
+            var messageNotification = ChatPacketBuilders.CreateMessageNotification(
                 messageType,
                 targetAreaUserId,
                 messageBytes);
@@ -110,7 +110,7 @@ public sealed partial class ChannelSessionSenders
                 return;
             }
 
-            var megaphoneNotification = GameProtocolEngine.CreateMegaphoneNotification(
+            var megaphoneNotification = ChatPacketBuilders.CreateMegaphoneNotification(
                 messageType,
                 ownerFlag,
                 targetAreaUserId,
@@ -141,7 +141,7 @@ public sealed partial class ChannelSessionSenders
                 return;
             }
 
-            var popupNotification = GameProtocolEngine.CreatePopupNotification(messageBytes);
+            var popupNotification = ChatPacketBuilders.CreatePopupNotification(messageBytes);
             await context.Outbound.SendAsync(popupNotification, "POPUP_NOTI", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)

@@ -51,7 +51,7 @@ public sealed class EplpHandler(    ILogger<EplpHandler> logger,
         }
 
         var eplpReply =
-            GameProtocolEngine.CreateEplpReply(state, option);
+            DungeonPacketBuilders.CreateEplpReply(state, option);
         await context.Outbound.SendAsync(eplpReply, Name, cancellationToken);
 
         if (state == 1)

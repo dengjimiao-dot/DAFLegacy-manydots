@@ -26,7 +26,7 @@ public sealed class BuySkillHandler(
         var session = context.State;
         if (session.Character.Active is null || request.Body.Length < 3)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -39,7 +39,7 @@ public sealed class BuySkillHandler(
                 wireSkillIndex,
                 out var definition))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 4);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -82,7 +82,7 @@ public sealed class BuySkillHandler(
             || cost > session.Skill.CurrentSp)
         {
             var errorCode = cost > session.Skill.CurrentSp ? (byte)2 : (byte)18;
-            var error = GameProtocolEngine.CreateCommandError(request, errorCode);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, errorCode);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogInformation(
                 "Rejected skill {SkillId} level {TargetLevel}: character level {CharacterLevel}, Premium-effective level {EffectiveLevel}, required level {RequiredLevel}, SP {CurrentSp}/{Cost}.",
@@ -113,7 +113,7 @@ public sealed class BuySkillHandler(
             var slot = skillCatalog.AllocateSlot(definition, occupied);
             if (!slot.HasValue)
             {
-                var error = GameProtocolEngine.CreateCommandError(request, 1);
+                var error = ConnectionPacketBuilders.CreateCommandError(request, 1);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
                 return;
             }
@@ -134,7 +134,7 @@ public sealed class BuySkillHandler(
             session.Skill.Current,
             cancellationToken) ?? session.Character.Active;
 
-        var buySkillReply = GameProtocolEngine.CreateBuySkillReply(
+        var buySkillReply = SkillPacketBuilders.CreateBuySkillReply(
             checked((ushort)Math.Min(session.Skill.CurrentSp, ushort.MaxValue)),
             learnedSkillSlot,
             definition.SkillId,

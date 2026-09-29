@@ -20,7 +20,7 @@ public sealed class FinishLoadingHandler(
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
         var session = context.State;
-        var loadingReply = GameProtocolEngine.CreateCommandReply(request, success: true);
+        var loadingReply = ConnectionPacketBuilders.CreateCommandReply(request, success: true);
         await context.Outbound.SendAsync(loadingReply, Name, cancellationToken);
 
         // Command 40 tells the server that the local town
@@ -28,7 +28,7 @@ public sealed class FinishLoadingHandler(
         // expects notification 30 to release its remaining
         // town-side managers. This build's handler consumes
         // no notification payload.
-        var loadingNotification = GameProtocolEngine.CreateFinishLoading();
+        var loadingNotification = DungeonPacketBuilders.CreateFinishLoading();
         await context.Outbound.SendAsync(loadingNotification, Name, cancellationToken);
         // FinishLoading reconstructs the local map actor.
         // Replay a persisted zero-stomach death marker for

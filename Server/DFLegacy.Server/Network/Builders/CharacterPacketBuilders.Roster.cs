@@ -50,7 +50,7 @@ public sealed partial class CharacterPacketBuilders
                 (byte)Math.Clamp(character.AwakeningType, byte.MinValue, byte.MaxValue),
                 pvpExperienceCatalog.GetGradeForPoints(character.PvpPoints)))
             .ToArray();
-        return GameProtocolEngine.CreateUserInfo(summaries);
+        return CharactersPacketBuilders.CreateUserInfo(summaries);
     }
 
     public List<CharacterItemRecord> CreateStarterInventory(uint accountUid) =>

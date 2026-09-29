@@ -19,7 +19,7 @@ public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger)
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
         var session = context.State;
-        var parsed = GameProtocolEngine.TryParseBossDieCheckCommand(
+        var parsed = DungeonPacketBuilders.TryParseBossDieCheckCommand(
             request.Body,
             out var bossDieCheck);
         var bossIds = session.Dungeon.Room is not null
@@ -48,7 +48,7 @@ public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger)
                         !bossIds.Contains(monsterId)));
             }
 
-            bossDieReply = GameProtocolEngine.CreateBossDieCheck(
+            bossDieReply = DungeonPacketBuilders.CreateBossDieCheck(
                 success: true,
                 allBossesReported,
                 bossDieCheck.BossId);
@@ -64,7 +64,7 @@ public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger)
         }
         else
         {
-            bossDieReply = GameProtocolEngine.CreateBossDieCheck(
+            bossDieReply = DungeonPacketBuilders.CreateBossDieCheck(
                 success: false,
                 allBossesReported: false,
                 errorCode: 2);

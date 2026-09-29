@@ -96,20 +96,20 @@ internal static class CompoundItemSmokeTests
     private static void CheckProtocolVectors(Action<bool, string> check)
     {
         check(GameProtocolEngine.CompoundItemCommand == 27
-                && GameProtocolEngine.TryParseCompoundItemCommand(
+                && CraftPacketBuilders.TryParseCompoundItemCommand(
                     Convert.FromHexString("1500DE1301020001"),
                     out var direct)
                 && direct == new GameCompoundItemCommand(0x15, 5_086, true, 2)
-                && GameProtocolEngine.TryParseCompoundItemCommand(
+                && CraftPacketBuilders.TryParseCompoundItemCommand(
                     Convert.FromHexString("1600090000020001"),
                     out var slotted)
                 && slotted == new GameCompoundItemCommand(0x16, 9, false, 2)
-                && !GameProtocolEngine.TryParseCompoundItemCommand(
+                && !CraftPacketBuilders.TryParseCompoundItemCommand(
                     Convert.FromHexString("1500DE1302000000"),
                     out _),
             "CMD27 parses both target-client source modes and rejects invalid fixed bytes");
 
-        var reply = GameProtocolEngine.CreateCompoundItemReply(
+        var reply = CraftPacketBuilders.CreateCompoundItemReply(
         [
             new GameCompoundItemConsumption(0, 0, 900),
             new GameCompoundItemConsumption(0, 9, 100)
@@ -117,7 +117,7 @@ internal static class CompoundItemSmokeTests
         [
             new GameCompoundItemResult(4, 3_038, 2, 0, 0)
         ]);
-        var failure = GameProtocolEngine.CreateCompoundItemFailure(19);
+        var failure = CraftPacketBuilders.CreateCompoundItemFailure(19);
         check(reply.Type == GameProtocolEngine.CommandPacketType
                 && reply.ProtocolId == GameProtocolEngine.CompoundItemCommand
                 && reply.Payload.SequenceEqual(Convert.FromHexString(

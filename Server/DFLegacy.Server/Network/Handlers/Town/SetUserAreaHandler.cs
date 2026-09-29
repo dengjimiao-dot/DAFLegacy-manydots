@@ -7,8 +7,6 @@ namespace DFLegacy.Server;
 /// SET_USER_AREA (CMD 38): commits the area transition — persists the position, rebuilds USER_AREA/AREA_USERS projections and restores stamina silently (07 §5 group 14).
 /// </summary>
 public sealed class SetUserAreaHandler(JsonGameStore store,
-    PartyCoordinator partyCoordinator,
-    CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
 
@@ -41,7 +39,7 @@ public sealed class SetUserAreaHandler(JsonGameStore store,
             session.Character.X,
             session.Character.Y,
             session.Character.Direction);
-        var userArea = GameProtocolEngine.CreateUserArea(
+        var userArea = TownPacketBuilders.CreateUserArea(
             session.Character.TownId,
             session.Character.AreaId,
             townUser);
@@ -52,7 +50,7 @@ public sealed class SetUserAreaHandler(JsonGameStore store,
         // recreates the town actor with stamina zero. Rebuild
         // its projections, then restore stamina through the
         // client's silent NOTI 33 path.
-        var areaUsers = GameProtocolEngine.CreateAreaUsers(
+        var areaUsers = TownPacketBuilders.CreateAreaUsers(
             session.Character.TownId,
             session.Character.AreaId,
             [townUser]);

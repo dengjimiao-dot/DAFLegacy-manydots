@@ -34,7 +34,7 @@ public sealed class LoginHandler(
                 out var loginName,
                 out var loginPassword))
         {
-            var malformedLoginError = GameProtocolEngine.CreateCommandError(
+            var malformedLoginError = ConnectionPacketBuilders.CreateCommandError(
                 frame,
                 errorCode: 2);
             await context.Outbound.SendAsync(malformedLoginError, Name, cancellationToken);
@@ -52,7 +52,7 @@ public sealed class LoginHandler(
             : await store.FindAccountAsync(loginName, cancellationToken);
         if (authenticated is null)
         {
-            var loginError = GameProtocolEngine.CreateCommandError(
+            var loginError = ConnectionPacketBuilders.CreateCommandError(
                 frame,
                 errorCode: 2);
             await context.Outbound.SendAsync(loginError, Name, cancellationToken);

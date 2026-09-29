@@ -18,7 +18,7 @@ public sealed partial class ChannelSessionSenders
         return;
     }
 
-    var selectCardReply = GameProtocolEngine.CreateSelectCardReply(
+    var selectCardReply = DungeonPacketBuilders.CreateSelectCardReply(
         context.State.Dungeon.FreeCardIndex,
         context.State.Dungeon.GoldCardIndex,
         goldRewardRevealed: context.State.Dungeon.GoldCardIndex.HasValue,
@@ -213,7 +213,7 @@ public sealed partial class ChannelSessionSenders
     // rather than static .map monster rows. Until that mode is
     // simulated, an empty terminal room must remain settleable.
     context.State.Dungeon.ClearEnabled = true;
-    var enableClear = GameProtocolEngine.CreateEnableClearDungeon();
+    var enableClear = DungeonPacketBuilders.CreateEnableClearDungeon();
     await context.Outbound.SendAsync(enableClear, "DUNGEON", cancellationToken);
     await CompleteClearQuestTriggersAsync(context, 
         "empty boss-room settlement");
@@ -304,12 +304,12 @@ public sealed partial class ChannelSessionSenders
             quest.QuestId == QuestCatalog.TutorialCompletionQuestId);
     if (tutorialQuestActivated)
     {
-        var acceptQuest = GameProtocolEngine.CreateAcceptQuestReply(
+        var acceptQuest = QuestPacketBuilders.CreateAcceptQuestReply(
             QuestCatalog.TutorialCompletionQuestId,
             trigger: 1);
         await context.Outbound.SendAsync(acceptQuest, "TUTORIAL", cancellationToken);
 
-        var readyQuest = GameProtocolEngine.CreateSetQuestTriggerReply(
+        var readyQuest = QuestPacketBuilders.CreateSetQuestTriggerReply(
             QuestCatalog.TutorialCompletionQuestId,
             trigger: 0);
         await context.Outbound.SendAsync(readyQuest, "TUTORIAL", cancellationToken);

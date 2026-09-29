@@ -31,7 +31,7 @@ public sealed class FinishQuestHandler(
         var session = context.State;
         if (session.Character.Active is null || request.Body.Length < 4)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -44,7 +44,7 @@ public sealed class FinishQuestHandler(
             out var questDefinition);
         if (questIndex < 0 || !hasQuestDefinition)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -73,7 +73,7 @@ public sealed class FinishQuestHandler(
                         cancellationToken);
                 if (savedQuestProgress is null)
                 {
-                    var error = GameProtocolEngine.CreateCommandError(request, 22);
+                    var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
                     await context.Outbound.SendAsync(error, Name, cancellationToken);
                     return;
                 }
@@ -85,7 +85,7 @@ public sealed class FinishQuestHandler(
                         savedQuestProgress.CompletedQuestIds
                 };
                 var triggerUpdate =
-                    GameProtocolEngine.CreateSetQuestTriggerReply(
+                    QuestPacketBuilders.CreateSetQuestTriggerReply(
                         questId,
                         authoritativeTrigger);
                 await context.Outbound.SendAsync(triggerUpdate, Name, cancellationToken);
@@ -95,7 +95,7 @@ public sealed class FinishQuestHandler(
         if (!questDefinition.IsTriggerComplete(
                 session.Quest.Current[questIndex].Trigger))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected unfinished quest {QuestId}; remaining trigger={Trigger}.",
@@ -108,7 +108,7 @@ public sealed class FinishQuestHandler(
                 out var questChainType,
                 out var questGrowNumber))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected quest {QuestId} with invalid growth reward {RewardType}:{GrowthReward}.",
@@ -127,7 +127,7 @@ public sealed class FinishQuestHandler(
                 && (previousGrowType == 0
                     || previousAwakeningType != 0)))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected stale growth quest {QuestId}; chain={ChainType}, growType={GrowType}, awakening={AwakeningType}.",
@@ -145,7 +145,7 @@ public sealed class FinishQuestHandler(
                 session.Currency.VictoryPoints,
                 out var consumptionPlan))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected quest {QuestId} because its seeking requirements changed before completion.",
@@ -162,7 +162,7 @@ public sealed class FinishQuestHandler(
                 out creatureEvolution,
                 out var evolutionFailure))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Could not finish Creature evolution quest {QuestId}: {Reason}",
@@ -189,7 +189,7 @@ public sealed class FinishQuestHandler(
             senders.GetInventoryWeightLimit(context, session.Character.Active));
         if (!rewardPlan.Success)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Could not finish quest {QuestId}: {Reason}",
@@ -247,7 +247,7 @@ public sealed class FinishQuestHandler(
                     growthSkillChanges,
                     out nextSkills))
             {
-                var error = GameProtocolEngine.CreateCommandError(request, 22);
+                var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
                 logger.LogWarning(
                     "Rejected awakening quest {QuestId}: no valid skill slot remains for its PVF grants.",
@@ -262,7 +262,7 @@ public sealed class FinishQuestHandler(
                     nextSkills,
                     growthSkillChanges)))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
                 "Rejected growth quest {QuestId}: its PVF skill changes could not be applied atomically.",
@@ -323,7 +323,7 @@ public sealed class FinishQuestHandler(
                 questId, questDefinition, dungeonCatalog));
         if (completedCharacter is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 22);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -375,7 +375,7 @@ public sealed class FinishQuestHandler(
                 x: session.Character.X,
                 y: session.Character.Y,
                 catalog: itemCatalog);
-            var dropNotification = GameProtocolEngine.CreateDropItem(
+            var dropNotification = CraftPacketBuilders.CreateDropItem(
                 session.Character.LocalUserId,
                 session.Character.X,
                 session.Character.Y,
@@ -392,7 +392,7 @@ public sealed class FinishQuestHandler(
         if (creatureEvolution is not null)
         {
             var evolutionNotification =
-                GameProtocolEngine.CreateCreatureEvolution(
+                PetsPacketBuilders.CreateCreatureEvolution(
                     checked((byte)questDefinition.EvolutionCreatureKind),
                     session.Character.LocalUserId);
             await context.Outbound.SendAsync(evolutionNotification, Name, cancellationToken);
@@ -418,7 +418,7 @@ public sealed class FinishQuestHandler(
                 checked((uint)questDefinition.GoldReward)));
         }
 
-        var finishQuestReply = GameProtocolEngine.CreateFinishQuestReply(
+        var finishQuestReply = QuestPacketBuilders.CreateFinishQuestReply(
             questId,
             consumptionPlan.ChangedItems
                 .Select(item => new GameQuestConsumedItem(
@@ -450,7 +450,7 @@ public sealed class FinishQuestHandler(
         foreach (var change in nextQuestTriggerChanges)
         {
             var triggerUpdate =
-                GameProtocolEngine.CreateSetQuestTriggerReply(
+                QuestPacketBuilders.CreateSetQuestTriggerReply(
                     change.QuestId,
                     change.NewTrigger);
             await context.Outbound.SendAsync(triggerUpdate, Name, cancellationToken);

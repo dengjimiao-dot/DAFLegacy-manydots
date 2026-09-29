@@ -34,7 +34,7 @@ public sealed class IncreaseStatusHandler(
         var session = context.State;
         if (session.Character.Active is null || request.Body.Length < 4)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -45,7 +45,7 @@ public sealed class IncreaseStatusHandler(
             request.Body.AsSpan(2, sizeof(ushort)));
         if (!session.Inventory.Main.TryGetValue(sourceSlot, out var sourceItem))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -79,7 +79,7 @@ public sealed class IncreaseStatusHandler(
                 cancellationToken);
             if (!resetResult.Success || resetResult.Character is null)
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 17);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -103,7 +103,7 @@ public sealed class IncreaseStatusHandler(
             // The reference server refreshes the complete skill tree before
             // acknowledging INCREASE_STATUS type 10.
             await senders.SendCurrentSkillInfoAsync(context, cancellationToken);
-            var resetReply = GameProtocolEngine.CreateIncreaseStatusReply(
+            var resetReply = SkillPacketBuilders.CreateIncreaseStatusReply(
                 sourceSlot,
                 statusType: (byte)IncreaseStatusType.SkillReset,
                 amount: 1);
@@ -131,7 +131,7 @@ public sealed class IncreaseStatusHandler(
                 out var sourceDefinition)
             || sourceDefinition.IncreaseStatus is not { Amount: > 0 })
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -158,7 +158,7 @@ public sealed class IncreaseStatusHandler(
                 || useExperienceResult.Character is null
                 || useExperienceResult.Progression is null)
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 17);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -177,7 +177,7 @@ public sealed class IncreaseStatusHandler(
                 .ToDictionary(item => item.Slot);
 
             var experienceReply =
-                GameProtocolEngine.CreateIncreaseStatusReply(
+                SkillPacketBuilders.CreateIncreaseStatusReply(
                     sourceSlot,
                     statusType: (byte)IncreaseStatusType.Experience,
                     amount: checked((int)progression.GrantedExperience),
@@ -226,7 +226,7 @@ public sealed class IncreaseStatusHandler(
             cancellationToken);
         if (!useResult.Success || useResult.Character is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -244,7 +244,7 @@ public sealed class IncreaseStatusHandler(
             .ToDictionary(item => item.Slot);
         var responseAmount = ToIncreaseStatusWireAmount(
             increaseStatus);
-        var increaseStatusReply = GameProtocolEngine.CreateIncreaseStatusReply(
+        var increaseStatusReply = SkillPacketBuilders.CreateIncreaseStatusReply(
             sourceSlot,
             statusType: (byte)increaseStatus.Type,
             amount: responseAmount);

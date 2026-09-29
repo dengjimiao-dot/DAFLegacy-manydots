@@ -7,7 +7,6 @@ namespace DFLegacy.Server;
 /// SET_USER_POSITION (CMD 37): records the town position, seeds AREA_USERS once and mirrors movement to party presence (07 §5 group 14).
 /// </summary>
 public sealed class SetUserPositionHandler(PartyCoordinator partyCoordinator,
-    CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
 
@@ -63,7 +62,7 @@ public sealed class SetUserPositionHandler(PartyCoordinator partyCoordinator,
                 session.Character.Y,
                 session.Character.Direction);
 
-            var areaUsers = GameProtocolEngine.CreateAreaUsers(
+            var areaUsers = TownPacketBuilders.CreateAreaUsers(
                 session.Character.TownId,
                 session.Character.AreaId,
                 [townUser]);

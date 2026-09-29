@@ -20,7 +20,7 @@ public sealed class TutorialCompletionHandler(
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
         var session = context.State;
-        var tutorialModuleReply = GameProtocolEngine.CreateCommandReply(
+        var tutorialModuleReply = ConnectionPacketBuilders.CreateCommandReply(
             request,
             success: true);
         await context.Outbound.SendAsync(tutorialModuleReply, Name, cancellationToken);
@@ -28,7 +28,7 @@ public sealed class TutorialCompletionHandler(
         if (session.Dungeon.TutorialActive
             && session.Dungeon.ClearEnabled
             && session.Dungeon.AliveMonsters.Count == 0
-            && GameProtocolEngine.IsTutorialCompletionModule(request.Body))
+            && DungeonPacketBuilders.IsTutorialCompletionModule(request.Body))
         {
             await senders.CompleteTutorialAndReturnAsync(context, 
                 "tutorial-final-module");

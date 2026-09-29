@@ -8,8 +8,7 @@ namespace DFLegacy.Server;
 public sealed class MailboxSendHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     CharacterSessionRegistry characterSessions,
-    CharacterPacketBuilders builders,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    CharacterPacketBuilders builders) : IGameCommandHandler
 {
     public ushort ProtocolId => GameProtocolEngine.MailboxSendCommand;
 
@@ -25,7 +24,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
         if (session.Character.Active is null
             || !MailboxParsers.TryReadMailboxSend(request.Body, out var sendRequest))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -34,7 +33,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
 
         if (sendRequest.Gold > session.Currency.Gold)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -55,7 +54,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
                     out var sourceItem)
                 || sourceItem.ItemId != sendRequest.ItemId)
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 7);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -69,7 +68,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
                     sourceItem,
                     sourceDefinition))
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 7);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -80,7 +79,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             if (!isEquipment
                 && sendRequest.CountOrValue > sourceItem.CountOrValue)
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 7);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -119,7 +118,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             || sendRequest.Slot != 0
             || sendRequest.CountOrValue != 0)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 7);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -149,7 +148,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
                 CharacterMailSendFailure.RecipientNotFound => (byte)10,
                 _ => (byte)7
             };
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -159,7 +158,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
         session.Character.Active = sendResult.Sender;
         session.Currency.Gold = plannedGold;
         session.Inventory.Main = plannedInventory;
-        var sendReply = GameProtocolEngine.CreateCommandReply(
+        var sendReply = ConnectionPacketBuilders.CreateCommandReply(
             request,
             success: true);
         await context.Outbound.SendAsync(sendReply, Name, cancellationToken);
@@ -187,7 +186,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
 
         if (senderUpdates.Count > 0)
         {
-            var inventoryUpdate = GameProtocolEngine.CreateUpdateItemList(
+            var inventoryUpdate = InventoryPacketBuilders.CreateUpdateItemList(
                 0,
                 senderUpdates);
             await context.Outbound.SendAsync(inventoryUpdate, Name, cancellationToken);

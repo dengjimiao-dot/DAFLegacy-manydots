@@ -27,7 +27,7 @@ public sealed partial class CharacterPacketBuilders
         // Dungeon permissions are u16-counted (u16 id, u8 state) records, and
         // the acceptable-quest list is u8-counted. The stamina notification is
         // sent later, after AREA_USERS has created the local town actor.
-        yield return GameProtocolEngine.CreateDungeonPermissions(dungeonPermissions);
+        yield return DungeonPacketBuilders.CreateDungeonPermissions(dungeonPermissions);
 
         yield return CreateMainInventoryPacket(gold, victoryPoints, inventory);
         yield return CreateAvatarInventoryPacket(avatarInventory);
@@ -36,9 +36,9 @@ public sealed partial class CharacterPacketBuilders
         {
             yield return creaturePacket;
         }
-        yield return GameProtocolEngine.CreateSkillInfo(
+        yield return SkillPacketBuilders.CreateSkillInfo(
             (ushort)Math.Clamp(skillPoints, ushort.MinValue, ushort.MaxValue),
             panelSkills);
-        yield return GameProtocolEngine.CreateAcceptableQuestList(acceptableQuestIds);
+        yield return QuestPacketBuilders.CreateAcceptableQuestList(acceptableQuestIds);
     }
 }

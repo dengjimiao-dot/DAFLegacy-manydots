@@ -30,7 +30,7 @@ public sealed class SortItemHandler(JsonGameStore store,
             || !parsedSort
             || itemSpace is not (0 or 2 or 7))
         {
-            var errorReply = GameProtocolEngine.CreateSortItemError(
+            var errorReply = InventoryPacketBuilders.CreateSortItemError(
                 itemSpace);
             await context.Outbound.SendAsync(errorReply, Name, cancellationToken);
             logger.LogWarning(
@@ -65,7 +65,7 @@ public sealed class SortItemHandler(JsonGameStore store,
             creatureInventory: arrangedCreature.Values);
         if (savedSort is null)
         {
-            var errorReply = GameProtocolEngine.CreateSortItemError(
+            var errorReply = InventoryPacketBuilders.CreateSortItemError(
                 itemSpace);
             await context.Outbound.SendAsync(errorReply, Name, cancellationToken);
             logger.LogWarning(
@@ -80,7 +80,7 @@ public sealed class SortItemHandler(JsonGameStore store,
         session.Inventory.Warehouse = arrangedWarehouse;
         session.Inventory.Creature = arrangedCreature;
 
-        var sortReply = GameProtocolEngine.CreateSortItemReply(itemSpace);
+        var sortReply = InventoryPacketBuilders.CreateSortItemReply(itemSpace);
         await context.Outbound.SendAsync(sortReply, Name, cancellationToken);
 
         // The 60CN client's incremental item path (listType

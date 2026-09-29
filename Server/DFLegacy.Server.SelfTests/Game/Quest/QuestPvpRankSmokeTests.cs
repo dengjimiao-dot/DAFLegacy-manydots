@@ -24,8 +24,8 @@ internal static class QuestPvpRankSmokeTests
                 && !QuestPvpRankRequirement.IsPvpRank(quest with { Type = "seeking" }),
             "malformed PvP conditions and unrelated quest types do not auto-complete");
         var trigger = QuestPvpRankRequirement.GetTrigger(quest, 2);
-        var accepted = GameProtocolEngine.CreateAcceptQuestReply(1702, trigger);
-        var updated = GameProtocolEngine.CreateSetQuestTriggerReply(1702, trigger);
+        var accepted = QuestPacketBuilders.CreateAcceptQuestReply(1702, trigger);
+        var updated = QuestPacketBuilders.CreateSetQuestTriggerReply(1702, trigger);
         check(accepted.Payload.SequenceEqual(new byte[] { 1, 0xA6, 6, 0, 0, 0, 0, 0 })
                 && updated.Payload.SequenceEqual(new byte[] { 1, 0xA6, 6, 0, 0, 0, 0 }),
             "already-qualified PvP quests encode complete triggers in CMD33 and CMD35");

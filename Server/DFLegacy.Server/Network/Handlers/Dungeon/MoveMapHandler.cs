@@ -33,7 +33,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                 && targetY == session.Dungeon.RoomY)
             {
                 var duplicateMoveError =
-                    GameProtocolEngine.CreateCommandError(
+                    ConnectionPacketBuilders.CreateCommandError(
                         request,
                         errorCode: 4);
                 await context.Outbound.SendAsync(duplicateMoveError, Name, cancellationToken);
@@ -53,7 +53,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                 await senders.SettleDungeonCreatureHungerAsync(context, 
                     notifyClient: true,
                     cancellationToken);
-                var moveReply = GameProtocolEngine.CreateCommandReply(
+                var moveReply = ConnectionPacketBuilders.CreateCommandReply(
                     request,
                     success: true);
                 await context.Outbound.SendAsync(moveReply, Name, cancellationToken);
@@ -97,7 +97,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                 GameServerPacket nextMap;
                 if (transition.ReuseClientRoomState)
                 {
-                    nextMap = GameProtocolEngine.CreateCachedStartMap(
+                    nextMap = DungeonPacketBuilders.CreateCachedStartMap(
                         targetX,
                         targetY,
                         session.Dungeon.Room.ClientRandomSeed);
@@ -115,7 +115,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                             session.Dungeon.GroundItems,
                             targetX,
                             targetY);
-                    nextMap = GameProtocolEngine.CreateStartMap(
+                    nextMap = DungeonPacketBuilders.CreateStartMap(
                         targetX,
                         targetY,
                         session.Dungeon.Room.MapId,
@@ -152,7 +152,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
             }
             else
             {
-                var moveError = GameProtocolEngine.CreateCommandError(
+                var moveError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 4);
                 await context.Outbound.SendAsync(moveError, Name, cancellationToken);

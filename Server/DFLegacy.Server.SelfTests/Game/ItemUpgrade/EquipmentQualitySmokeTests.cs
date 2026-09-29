@@ -93,26 +93,26 @@ internal static class EquipmentQualitySmokeTests
     private static void CheckProtocolVectors(Action<bool, string> check)
     {
         var request = Convert.FromHexString("15000900686B4900");
-        check(GameProtocolEngine.TryParseResetItemAttributeCommand(
+        check(CraftPacketBuilders.TryParseResetItemAttributeCommand(
                     request,
                     out var command)
                 && command == new GameResetItemAttributeCommand(9, 27_496, 73)
-                && !GameProtocolEngine.TryParseResetItemAttributeCommand(
+                && !CraftPacketBuilders.TryParseResetItemAttributeCommand(
                     request.Append((byte)0).ToArray(),
                     out _),
             "CMD84 parses only the target-client 8-byte quality-adjustment request");
 
-        var success = GameProtocolEngine.CreateResetItemAttributeReply(
+        var success = CraftPacketBuilders.CreateResetItemAttributeReply(
             materialSlot: 73,
             materialRemaining: 16,
             operationType: (ushort)ItemAttributeModificationOperation.AdjustQuality);
-        var resealSuccess = GameProtocolEngine.CreateResetItemAttributeReply(
+        var resealSuccess = CraftPacketBuilders.CreateResetItemAttributeReply(
             materialSlot: 41,
             materialRemaining: 5,
             operationType: (ushort)ItemAttributeModificationOperation.Reseal);
-        var failure = GameProtocolEngine.CreateResetItemAttributeFailure(
+        var failure = CraftPacketBuilders.CreateResetItemAttributeFailure(
             (byte)ItemAttributeModificationFailure.InsufficientMaterial);
-        var unsupportedItem = GameProtocolEngine.CreateResetItemAttributeFailure(
+        var unsupportedItem = CraftPacketBuilders.CreateResetItemAttributeFailure(
             (byte)ItemAttributeModificationFailure.UnsupportedItem);
         check(success.Type == GameProtocolEngine.CommandPacketType
                 && success.ProtocolId

@@ -26,7 +26,7 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
             || session.Dungeon.InSelection)
         {
             var invalidState =
-                GameProtocolEngine.CreateRecoverStaminaError(4);
+                StaminaPacketBuilders.CreateRecoverStaminaError(4);
             await context.Outbound.SendAsync(invalidState, Name, cancellationToken);
             return;
         }
@@ -46,7 +46,7 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
                 _ => (byte)4
             };
             var error =
-                GameProtocolEngine.CreateRecoverStaminaError(errorCode);
+                StaminaPacketBuilders.CreateRecoverStaminaError(errorCode);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogInformation(
                 "Rejected stamina recovery for character {CharacterId}: failure={Failure}, cost={Cost}, gold={Gold}.",
@@ -60,10 +60,10 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
         session.Character.Active = recovery.Character;
         session.Currency.Gold = session.Character.Active.Gold;
         var recoveryReply =
-            GameProtocolEngine.CreateRecoverStaminaReply(session.Currency.Gold);
+            StaminaPacketBuilders.CreateRecoverStaminaReply(session.Currency.Gold);
         await context.Outbound.SendAsync(recoveryReply, Name, cancellationToken);
 
-        var fullStamina = GameProtocolEngine.CreateStamina(
+        var fullStamina = StaminaPacketBuilders.CreateStamina(
             DungeonWeaknessPolicy.FullStamina);
         await context.Outbound.SendAsync(fullStamina, Name, cancellationToken);
         logger.LogInformation(

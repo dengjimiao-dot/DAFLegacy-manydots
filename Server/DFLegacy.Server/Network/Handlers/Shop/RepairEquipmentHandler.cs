@@ -9,9 +9,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class RepairEquipmentHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<RepairEquipmentHandler> logger,
-    CharacterPacketBuilders builders,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ILogger<RepairEquipmentHandler> logger) : IGameCommandHandler
 {
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -33,7 +31,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
                 out var itemSpace,
                 out var repairSlot))
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 0x11);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -107,7 +105,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
                     inDungeonRepair,
                     out var repairPrice))
             {
-                var error = GameProtocolEngine.CreateCommandError(
+                var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     0x11);
                 await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -125,7 +123,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
             target => (long)target.Price);
         if (totalRepairPrice > session.Currency.Gold)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 10);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -153,7 +151,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
             creatureInventory: session.Inventory.Creature.Values);
         if (savedRepair is null)
         {
-            var error = GameProtocolEngine.CreateCommandError(
+            var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
@@ -165,7 +163,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
         session.Inventory.Main = plannedMain;
         session.Inventory.Equipped = plannedEquipment;
         var repairReply =
-            GameProtocolEngine.CreateRepairEquipmentReply(
+            ShopPacketBuilders.CreateRepairEquipmentReply(
                 checked((uint)session.Currency.Gold),
                 itemSpace,
                 repairSlot);

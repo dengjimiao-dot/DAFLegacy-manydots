@@ -52,7 +52,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 out var isGift)
             || isGift)
         {
-            var error = GameProtocolEngine.CreateCeraShopBuyError(
+            var error = ShopPacketBuilders.CreateCeraShopBuyError(
                 errorCode: 4);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             logger.LogWarning(
@@ -416,7 +416,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
 
         if (!purchaseValid || session.Currency.Cash < totalCashPrice)
         {
-            var error = GameProtocolEngine.CreateCeraShopBuyError(
+            var error = ShopPacketBuilders.CreateCeraShopBuyError(
                 errorCode: 4,
                 errorClientCategory,
                 errorProduct.CommodityNo);
@@ -450,7 +450,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
         if (savedCharacter is null)
         {
-            var error = GameProtocolEngine.CreateCeraShopBuyError(
+            var error = ShopPacketBuilders.CreateCeraShopBuyError(
                 errorCode: 4,
                 errorClientCategory,
                 errorProduct.CommodityNo);
@@ -522,7 +522,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 requestedProduct.CommodityNo,
                 out var purchasedProduct);
             var buyReply =
-                GameProtocolEngine.CreateCeraShopBuyReply(
+                ShopPacketBuilders.CreateCeraShopBuyReply(
                     purchasedProduct.ClientCategory,
                     requestedProduct.CommodityNo,
                     purchaseReplyRewards[index]);
@@ -553,7 +553,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
             await context.Outbound.SendAsync(creatureRefresh, Name, cancellationToken);
         }
 
-        var cashUpdate = GameProtocolEngine.CreateCeraUpdate(
+        var cashUpdate = ShopPacketBuilders.CreateCeraUpdate(
             success: true,
             value: (uint)session.Currency.Cash);
         await context.Outbound.SendAsync(cashUpdate, Name, cancellationToken);

@@ -9,9 +9,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class SellItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<SellItemHandler> logger,
-    CharacterPacketBuilders builders,
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ILogger<SellItemHandler> logger) : IGameCommandHandler
 {
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -40,7 +38,7 @@ public sealed class SellItemHandler(JsonGameStore store,
                 soldItem.Durability,
                 out var unitSellPrice))
         {
-            var error = GameProtocolEngine.CreateCommandError(request, 0x11);
+            var error = ConnectionPacketBuilders.CreateCommandError(request, 0x11);
             await context.Outbound.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -68,7 +66,7 @@ public sealed class SellItemHandler(JsonGameStore store,
             session.Inventory.Main.Values,
             session.Inventory.Equipped.Values,
             cancellationToken) ?? session.Character.Active;
-        var sellReply = GameProtocolEngine.CreateSellItemReply(
+        var sellReply = ShopPacketBuilders.CreateSellItemReply(
             updatedGold: checked((uint)session.Currency.Gold),
             itemSpace: listType,
             slot,

@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using DFLegacy.Server;
 
 namespace DFLegacy.Protocol;

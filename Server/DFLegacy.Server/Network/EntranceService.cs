@@ -203,6 +203,8 @@ public sealed class EntranceService(
             logger: loggerFactory.CreateLogger<ItemTradeStateHandler>()));
         registry.Register("economy.shop", new GenerateCeraTicketHandler(
             loggerFactory.CreateLogger<GenerateCeraTicketHandler>()));
+        registry.Register("economy.shop", new CeraQueryHandler(
+            loggerFactory.CreateLogger<CeraQueryHandler>()));
         registry.Register("progression.stamina", new RecoverStaminaHandler(
             store: store,
             staminaRecoveryCatalog: staminaRecoveryCatalog,

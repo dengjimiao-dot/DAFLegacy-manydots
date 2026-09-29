@@ -115,6 +115,41 @@ internal static class ProtocolGoldenSmokeTests
         check(Math.Abs(actualSeed - unixNow) <= 5,
             "CHANNELINFO seed is the current unix time, as the legacy branch produced");
 
+        // CERA 刷新(CMD 66):点券刷新按钮 → NOTI 53 余额回推,字节与既有变更
+        // 推送同源([u8 flag][u32 cera];客户端 NOTI 53 case 在 0x4255BA 按此布局读)。
+        var (ceraContext, ceraStream) = CreateTestContext(isChannelPort: true);
+        var ceraFrame = new PacketFrame(
+            GameProtocolConstants.CommandPacketType,
+            (byte)CmdPacketType.CERA,
+            DeclaredCrc32: 0,
+            [0x01, 0x00]);
+        check(await dispatcher.TryDispatchAsync(
+                ceraContext,
+                ceraFrame,
+                new CeraQueryHandler(NullLogger<CeraQueryHandler>.Instance),
+                CancellationToken.None),
+            "CERA (CMD 66) dispatches through the pipeline");
+        check(ceraStream.Length == 0,
+            "CERA before character selection answers nothing");
+        ceraContext.State.Character.Active = new CharacterRecord(
+            Id: Guid.NewGuid(),
+            Name: "CeraProbe",
+            Job: 0,
+            GrowType: 0,
+            Level: 1,
+            Sp: 0,
+            Cash: 108_740);
+        ceraContext.State.Currency.Cash = 108_740;
+        check(await dispatcher.TryDispatchAsync(
+                ceraContext,
+                ceraFrame,
+                new CeraQueryHandler(NullLogger<CeraQueryHandler>.Instance),
+                CancellationToken.None),
+            "CERA (CMD 66) dispatches for a selected character");
+        var expectedCera = ShopPacketBuilders.CreateCeraUpdate(success: true, value: 108_740u).Encode();
+        check(ceraStream.ToArray().SequenceEqual(expectedCera),
+            "CERA (CMD 66) answers with the NOTI 53 balance push the client reads as [flag][u32]");
+
         // 出站泵 FIFO(07 §3 I1):批量入队按序落流,单写者不乱序。
         var batch = new List<GameServerPacket>
         {

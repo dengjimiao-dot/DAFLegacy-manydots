@@ -122,6 +122,24 @@ public sealed class EntranceService(
         registry.Register("session.connection", new CheckConnectionHandler(options));
         registry.Register("session.connection", new ExitHandler(loggerFactory.CreateLogger<ExitHandler>()));
         registry.Register("session.connection", new AntibotHandler(loggerFactory.CreateLogger<AntibotHandler>()));
+        registry.Register("progression.skill", new IncreaseStatusHandler(
+            loggerFactory.CreateLogger<IncreaseStatusHandler>(),
+            store,
+            itemCatalog,
+            skillCatalog,
+            spCatalog,
+            experienceCatalog,
+            _sessionSenders));
+        registry.Register("progression.skill", new BuySkillHandler(
+            loggerFactory.CreateLogger<BuySkillHandler>(),
+            store,
+            skillCatalog,
+            premiumBenefitCatalog,
+            _sessionSenders));
+        registry.Register("progression.skill", new ChangeSkillSlotHandler(
+            store,
+            skillCatalog,
+            loggerFactory.CreateLogger<ChangeSkillSlotHandler>()));
         registry.Register("progression.quest", new AcceptQuestHandler(
             loggerFactory.CreateLogger<AcceptQuestHandler>(),
             store,
@@ -364,6 +382,46 @@ public sealed class EntranceService(
                 logger,
                 serverToken);
             connectionContext.KickConnection = KickConnection;
+                PacketFrame? queuedRequest = null;
+                Task<PacketFrame?>? pendingPacketRead = null;
+            // Pump-side adjacent-frame read for the CHANGE_SKILLSLOT swap
+            // pair: delay, availability probe, decode and accounting stay in
+            // the transport layer; a non-matching frame is queued back.
+            connectionContext.ReadAdjacentFrame = async (delay, accept, token) =>
+            {
+                await Task.Delay(delay, token);
+                if (client.Available <= 0)
+                {
+                    return default;
+                }
+
+                var adjacentRaw = await PacketFrame.ReadAsync(
+                    stream,
+                    options.MaximumPacketLength,
+                    token);
+                if (adjacentRaw is null)
+                {
+                    return default;
+                }
+
+                if (!accept(adjacentRaw))
+                {
+                    queuedRequest = adjacentRaw;
+                    return default;
+                }
+
+                if (!gameClientCipher!.TryDecode(adjacentRaw, out var adjacentDecoded))
+                {
+                    LogPacket("RX-ENC", runtimeSession, adjacentRaw);
+                    logger.LogWarning("Could not decode the adjacent skill quick-slot command.");
+                    return new AdjacentFrameResult(null, DecodeFailed: true);
+                }
+
+                runtime.CountPacket(runtimeSession);
+                runtimeSession.LastProtocolId = adjacentDecoded.ProtocolId;
+                LogPacket("RX", runtimeSession, adjacentDecoded, adjacentRaw);
+                return new AdjacentFrameResult(adjacentDecoded, DecodeFailed: false);
+            };
 
             try
             {
@@ -2065,8 +2123,6 @@ public sealed class EntranceService(
                     LogPacket("TX", runtimeSession, greeting);
                 }
 
-                PacketFrame? queuedRequest = null;
-                Task<PacketFrame?>? pendingPacketRead = null;
                 while (!serverToken.IsCancellationRequested)
                 {
                     var request = queuedRequest;
@@ -2784,585 +2840,8 @@ public sealed class EntranceService(
                             continue;
                         }
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.IncreaseStatusCommand)
-                        {
-                            if (session.Character.Active is null || request.Body.Length < 4)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 17);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
 
-                            var sourceSlot = BinaryPrimitives.ReadUInt16LittleEndian(
-                                request.Body.AsSpan(2, sizeof(ushort)));
-                            if (!session.Inventory.Main.TryGetValue(sourceSlot, out var sourceItem))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 17);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                logger.LogWarning(
-                                    "Rejected increase-status command for slot {SourceSlot}: the slot is empty.",
-                                    sourceSlot);
-                                continue;
-                            }
 
-                            if (sourceItem.ItemId is RiverLetheItemId or RiverLetheBellItemId)
-                            {
-                                var resetSkills = skillCatalog.CreateResetLayout(
-                                    session.Character.Active.Job,
-                                    session.Character.Active.GrowType,
-                                    session.Skill.Current,
-                                    InitialSkillsByJob.TryGetValue(
-                                        session.Character.Active.Job,
-                                        out var initialSkills)
-                                            ? initialSkills
-                                            : [],
-                                    awakeningType: session.Character.Active.AwakeningType);
-                                var accumulatedLevelSkillPoints =
-                                    spCatalog.CalculateTotalReward(session.Character.Active.Level);
-                                var resetResult = await store.UseSkillResetItemAsync(
-                                    session.Login.AccountName,
-                                    session.Character.Active.Id,
-                                    sourceSlot,
-                                    sourceItem.ItemId,
-                                    accumulatedLevelSkillPoints,
-                                    resetSkills,
-                                    serverToken);
-                                if (!resetResult.Success || resetResult.Character is null)
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 17);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    logger.LogWarning(
-                                        "Rejected skill-reset item {ItemId} at slot {SourceSlot}: persisted state changed ({Failure}).",
-                                        sourceItem.ItemId,
-                                        sourceSlot,
-                                        resetResult.Failure);
-                                    continue;
-                                }
-
-                                session.Character.Active = resetResult.Character;
-                                session.Skill.CurrentSp = resetResult.ResetSkillPoints;
-                                session.Skill.Current = (session.Character.Active.Skills ?? [])
-                                    .Where(skill => skill.Level > 0)
-                                    .OrderBy(skill => skill.Slot)
-                                    .ToList();
-                                session.Inventory.Main = (session.Character.Active.Inventory ?? [])
-                                    .ToDictionary(item => item.Slot);
-
-                                // The reference server refreshes the complete skill tree before
-                                // acknowledging INCREASE_STATUS type 10.
-                                await SendCurrentSkillInfoAsync();
-                                var resetReply = GameProtocolEngine.CreateIncreaseStatusReply(
-                                    sourceSlot,
-                                    statusType: (byte)IncreaseStatusType.SkillReset,
-                                    amount: 1);
-                                await resetReply.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, resetReply);
-                                logger.LogInformation(
-                                    "Used skill-reset item {ItemId} at slot {SourceSlot}; SP reset to level rewards {LevelSkillPoints} + bonus {BonusSp} = {SkillPoints}, restored skills={SkillCount}, preserved guild skills={GuildSkillCount}, stack remaining={RemainingCount}.",
-                                    sourceItem.ItemId,
-                                    sourceSlot,
-                                    accumulatedLevelSkillPoints,
-                                    session.Character.Active.BonusSp,
-                                    session.Skill.CurrentSp,
-                                    session.Skill.Current.Count,
-                                    session.Skill.Current.Count(skill =>
-                                        skillCatalog.TryGetDefinition(
-                                            session.Character.Active.Job,
-                                            skill.SkillId,
-                                            out var definition)
-                                        && definition.IsGuildSkill),
-                                    resetResult.RemainingItemCount);
-                                continue;
-                            }
-
-                            if (!itemCatalog.TryGetDefinition(
-                                    sourceItem.ItemId,
-                                    out var sourceDefinition)
-                                || sourceDefinition.IncreaseStatus is not { Amount: > 0 })
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 17);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                logger.LogWarning(
-                                    "Rejected increase-status command for slot {SourceSlot}: the slot does not contain a cached permanent-status item.",
-                                    sourceSlot);
-                                continue;
-                            }
-
-                            var increaseStatus = sourceDefinition.IncreaseStatus;
-                            if (increaseStatus.Type == IncreaseStatusType.Experience)
-                            {
-                                var useExperienceResult =
-                                    await store.UseExperienceBookItemAsync(
-                                        session.Login.AccountName,
-                                        session.Character.Active.Id,
-                                        sourceSlot,
-                                        sourceItem.ItemId,
-                                        checked((uint)increaseStatus.Amount),
-                                        experienceCatalog,
-                                        spCatalog,
-                                        serverToken);
-                                if (!useExperienceResult.Success
-                                    || useExperienceResult.Character is null
-                                    || useExperienceResult.Progression is null)
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(
-                                        request,
-                                        errorCode: 17);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    logger.LogWarning(
-                                        "Rejected experience book {ItemId} at slot {SourceSlot}: persisted item state changed or experience cannot be granted ({Failure}).",
-                                        sourceItem.ItemId,
-                                        sourceSlot,
-                                        useExperienceResult.Failure);
-                                    continue;
-                                }
-
-                                var progression = useExperienceResult.Progression;
-                                session.Character.Active = useExperienceResult.Character;
-                                session.Skill.CurrentSp = Math.Max(0, session.Character.Active.Sp);
-                                session.Inventory.Main = (session.Character.Active.Inventory ?? [])
-                                    .ToDictionary(item => item.Slot);
-
-                                var experienceReply =
-                                    GameProtocolEngine.CreateIncreaseStatusReply(
-                                        sourceSlot,
-                                        statusType: (byte)IncreaseStatusType.Experience,
-                                        amount: checked((int)progression.GrantedExperience),
-                                        firstAuxiliaryValue: checked((ushort)Math.Min(
-                                            useExperienceResult.GrantedSkillPoints,
-                                            ushort.MaxValue)),
-                                        secondAuxiliaryValue: 0);
-                                await experienceReply.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, experienceReply);
-
-                                if (progression.LeveledUp)
-                                {
-                                    await SendCurrentSkillInfoAsync();
-                                    await ValidateAndCorrectCharacterStatsAsync(
-                                        "experience-book level-up");
-                                }
-                                else
-                                {
-                                    await SendCurrentEquipmentStateAsync();
-                                }
-
-                                if (progression.LeveledUp)
-                                {
-                                    await SendAcceptableQuestListAsync();
-                                }
-
-                                logger.LogInformation(
-                                    "Used experience book {ItemId} at slot {SourceSlot}; experience=+{Experience}, cumulative={CumulativeExperience}, level={PreviousLevel}->{Level}, SP=+{SkillPoints}, stack remaining={RemainingCount}.",
-                                    sourceItem.ItemId,
-                                    sourceSlot,
-                                    progression.GrantedExperience,
-                                    progression.Experience,
-                                    progression.PreviousLevel,
-                                    progression.Level,
-                                    useExperienceResult.GrantedSkillPoints,
-                                    useExperienceResult.RemainingItemCount);
-                                continue;
-                            }
-
-                            var useResult = await store.UseIncreaseStatusItemAsync(
-                                session.Login.AccountName,
-                                session.Character.Active.Id,
-                                sourceSlot,
-                                sourceItem.ItemId,
-                                increaseStatus,
-                                serverToken);
-                            if (!useResult.Success || useResult.Character is null)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 17);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                logger.LogWarning(
-                                    "Rejected permanent-status item {ItemId} at slot {SourceSlot}: persisted item state changed ({Failure}).",
-                                    sourceItem.ItemId,
-                                    sourceSlot,
-                                    useResult.Failure);
-                                continue;
-                            }
-
-                            session.Character.Active = useResult.Character;
-                            session.Skill.CurrentSp = Math.Max(0, session.Character.Active.Sp);
-                            session.Inventory.Main = (session.Character.Active.Inventory ?? [])
-                                .ToDictionary(item => item.Slot);
-                            var responseAmount = ToIncreaseStatusWireAmount(
-                                increaseStatus);
-                            var increaseStatusReply = GameProtocolEngine.CreateIncreaseStatusReply(
-                                sourceSlot,
-                                statusType: (byte)increaseStatus.Type,
-                                amount: responseAmount);
-                            await increaseStatusReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, increaseStatusReply);
-                            logger.LogInformation(
-                                "Used permanent-status item {ItemId} at slot {SourceSlot}; type={StatusType}, persisted amount={Amount}, response amount={ResponseAmount}, remaining SP={RemainingSp}, cumulative bonuses=[SP:{BonusSp}, HP:{BonusHp}, MP:{BonusMp}, STR:{BonusStrength}, VIT:{BonusVitality}, INT:{BonusIntelligence}, SPI:{BonusSpirit}, MOVE:{BonusMovementSpeed}, ALLR:{BonusAllResistance}], stack remaining={RemainingCount}.",
-                                sourceItem.ItemId,
-                                sourceSlot,
-                                increaseStatus.Type,
-                                increaseStatus.Amount,
-                                responseAmount,
-                                session.Skill.CurrentSp,
-                                session.Character.Active.BonusSp,
-                                session.Character.Active.BonusMaximumHp,
-                                session.Character.Active.BonusMaximumMp,
-                                session.Character.Active.BonusStrength,
-                                session.Character.Active.BonusVitality,
-                                session.Character.Active.BonusIntelligence,
-                                session.Character.Active.BonusSpirit,
-                                session.Character.Active.BonusMovementSpeed,
-                                session.Character.Active.BonusAllElementResistance,
-                                useResult.RemainingItemCount);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.BuySkillCommand)
-                        {
-                            if (session.Character.Active is null || request.Body.Length < 3)
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(request, 4);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            // DNF 1.0.1.9 command 31 carries one u8 skill id
-                            // after the two-byte command sequence.
-                            var wireSkillIndex = request.Body[2];
-                            if (!skillCatalog.TryGetDefinition(
-                                    session.Character.Active.Job,
-                                    wireSkillIndex,
-                                    out var definition))
-                            {
-                                var error = GameProtocolEngine.CreateCommandError(request, 4);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                continue;
-                            }
-
-                            var existingIndex = session.Skill.Current.FindIndex(skill =>
-                                skill.SkillId == definition.SkillId);
-                            var currentLevel = existingIndex >= 0
-                                ? session.Skill.Current[existingIndex].Level
-                                : 0;
-                            var targetLevel = currentLevel + 1;
-                            var maximumLevel = definition.MaximumLevelFor(
-                                session.Character.Active.GrowType,
-                                session.Character.Active.AwakeningType);
-                            var hasPrerequisites = true;
-                            for (var index = 0; index + 1 < definition.Prerequisites.Length; index += 2)
-                            {
-                                var prerequisiteId = definition.Prerequisites[index];
-                                var prerequisiteLevel = definition.Prerequisites[index + 1];
-                                if (prerequisiteId is < byte.MinValue or > byte.MaxValue
-                                    || !session.Skill.Current.Any(skill =>
-                                        skill.SkillId == (byte)prerequisiteId
-                                        && skill.Level >= prerequisiteLevel))
-                                {
-                                    hasPrerequisites = false;
-                                    break;
-                                }
-                            }
-
-                            var cost = definition.CostFor(currentLevel, targetLevel);
-                            var requiredCharacterLevel =
-                                definition.RequiredCharacterLevelFor(targetLevel);
-                            var effectiveCharacterLevel =
-                                premiumBenefitCatalog.GetEffectiveSkillLevel(
-                                    session.Character.Active.Level,
-                                    GetActivePremiumServiceTypes());
-                            if (maximumLevel <= 0
-                                || targetLevel > maximumLevel
-                                || requiredCharacterLevel > effectiveCharacterLevel
-                                || !hasPrerequisites
-                                || cost > session.Skill.CurrentSp)
-                            {
-                                var errorCode = cost > session.Skill.CurrentSp ? (byte)2 : (byte)18;
-                                var error = GameProtocolEngine.CreateCommandError(request, errorCode);
-                                await error.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, error);
-                                logger.LogInformation(
-                                    "Rejected skill {SkillId} level {TargetLevel}: character level {CharacterLevel}, Premium-effective level {EffectiveLevel}, required level {RequiredLevel}, SP {CurrentSp}/{Cost}.",
-                                    definition.SkillId,
-                                    targetLevel,
-                                    session.Character.Active.Level,
-                                    effectiveCharacterLevel,
-                                    requiredCharacterLevel,
-                                    session.Skill.CurrentSp,
-                                    cost);
-                                continue;
-                            }
-
-                            byte learnedSkillSlot;
-                            if (existingIndex >= 0)
-                            {
-                                session.Skill.Current[existingIndex] = session.Skill.Current[existingIndex] with
-                                {
-                                    Level = checked((byte)targetLevel)
-                                };
-                                learnedSkillSlot = session.Skill.Current[existingIndex].Slot;
-                            }
-                            else
-                            {
-                                var occupied = session.Skill.Current
-                                    .Select(skill => skill.Slot)
-                                    .ToHashSet();
-                                var slot = skillCatalog.AllocateSlot(definition, occupied);
-                                if (!slot.HasValue)
-                                {
-                                    var error = GameProtocolEngine.CreateCommandError(request, 1);
-                                    await error.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, error);
-                                    continue;
-                                }
-
-                                session.Skill.Current.Add(new CharacterSkillRecord(
-                                    slot.Value,
-                                    definition.SkillId,
-                                    checked((byte)targetLevel)));
-                                learnedSkillSlot = slot.Value;
-                            }
-
-                            session.Skill.CurrentSp -= cost;
-                            session.Skill.Current = session.Skill.Current.OrderBy(skill => skill.Slot).ToList();
-                            session.Character.Active = await store.SaveCharacterSkillsAsync(
-                                session.Login.AccountName,
-                                session.Character.Active.Id,
-                                session.Skill.CurrentSp,
-                                session.Skill.Current,
-                                serverToken) ?? session.Character.Active;
-
-                            var buySkillReply = GameProtocolEngine.CreateBuySkillReply(
-                                checked((ushort)Math.Min(session.Skill.CurrentSp, ushort.MaxValue)),
-                                learnedSkillSlot,
-                                definition.SkillId,
-                                checked((byte)targetLevel));
-                            await buySkillReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, buySkillReply);
-                            logger.LogInformation(
-                                "Learned skill {SkillId} level {Level}; cost {Cost} SP, {RemainingSp} SP remains.",
-                                definition.SkillId,
-                                targetLevel,
-                                cost,
-                                session.Skill.CurrentSp);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.ChangeSkillSlotCommand)
-                        {
-                            if (session.Character.Active is null || request.Body.Length < 4)
-                            {
-                                var invalidQuickSlotReply =
-                                    GameProtocolEngine.CreateCommandError(request, errorCode: 1);
-                                await invalidQuickSlotReply.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, invalidQuickSlotReply);
-                                continue;
-                            }
-
-                            var sourceQuickSlot = request.Body[2];
-                            var destinationQuickSlot = request.Body[3];
-
-                            // Dropping a skill onto an occupied quick slot sends
-                            // spare->target and target->source as two adjacent
-                            // commands. Wait for both before acknowledging them
-                            // in wire order, so the target is not left visibly
-                            // empty between the two client-side swaps.
-                            await Task.Delay(TimeSpan.FromMilliseconds(5), serverToken);
-                            PacketFrame? adjacentRawRequest = null;
-                            if (client.Available > 0)
-                            {
-                                adjacentRawRequest = await PacketFrame.ReadAsync(
-                                    stream,
-                                    options.MaximumPacketLength,
-                                    serverToken);
-                            }
-
-                            if (adjacentRawRequest is not null
-                                && adjacentRawRequest.Type == GameProtocolEngine.CommandPacketType
-                                && adjacentRawRequest.ProtocolId
-                                    == GameProtocolEngine.ChangeSkillSlotCommand)
-                            {
-                                if (!gameClientCipher!.TryDecode(
-                                        adjacentRawRequest,
-                                        out var adjacentRequest))
-                                {
-                                    LogPacket("RX-ENC", runtimeSession, adjacentRawRequest);
-                                    logger.LogWarning(
-                                        "Could not decode the adjacent skill quick-slot command.");
-                                    continue;
-                                }
-
-                                runtime.CountPacket(runtimeSession);
-                                runtimeSession.LastProtocolId = adjacentRequest.ProtocolId;
-                                LogPacket("RX", runtimeSession, adjacentRequest);
-
-                                if (adjacentRequest.Body.Length >= 4)
-                                {
-                                    var adjacentSourceSlot = adjacentRequest.Body[2];
-                                    var adjacentDestinationSlot = adjacentRequest.Body[3];
-                                    var isCompoundMove = adjacentSourceSlot == destinationQuickSlot;
-                                    var replies = new[]
-                                    {
-                                        (Request: request,
-                                            Source: sourceQuickSlot,
-                                            Destination: destinationQuickSlot),
-                                        (Request: adjacentRequest,
-                                            Source: adjacentSourceSlot,
-                                            Destination: adjacentDestinationSlot)
-                                    };
-
-                                    IReadOnlyList<CharacterSkillRecord> candidateSkills = session.Skill.Current;
-                                    var rejected = false;
-                                    var rejectionReason = string.Empty;
-                                    foreach (var (_, replySourceSlot, replyDestinationSlot) in replies)
-                                    {
-                                        if (!skillCatalog.TrySwapSlots(
-                                            session.Character.Active.Job,
-                                            candidateSkills,
-                                            replySourceSlot,
-                                            replyDestinationSlot,
-                                            out var swappedSkills,
-                                            out rejectionReason))
-                                        {
-                                            rejected = true;
-                                            break;
-                                        }
-
-                                        candidateSkills = swappedSkills;
-                                    }
-
-                                    if (!rejected && !session.Skill.Current.SequenceEqual(candidateSkills))
-                                    {
-                                        session.Skill.Current = candidateSkills.ToList();
-                                        session.Character.Active = await store.SaveCharacterSkillsAsync(
-                                            session.Login.AccountName,
-                                            session.Character.Active.Id,
-                                            session.Skill.CurrentSp,
-                                            session.Skill.Current,
-                                            serverToken) ?? session.Character.Active;
-                                    }
-
-                                    foreach (var (replyRequest, replySourceSlot, replyDestinationSlot) in replies)
-                                    {
-                                        var quickSlotBatchReply = rejected
-                                            ? GameProtocolEngine.CreateCommandError(
-                                                replyRequest,
-                                                errorCode: 1)
-                                            : GameProtocolEngine.CreateChangeSkillSlotReply(
-                                                replySourceSlot,
-                                                replyDestinationSlot);
-                                        await quickSlotBatchReply.WriteAsync(stream, serverToken);
-                                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                                        LogPacket("TX", runtimeSession, quickSlotBatchReply);
-                                    }
-
-                                    if (rejected)
-                                    {
-                                        logger.LogWarning(
-                                            "Rejected adjacent skill-slot changes {FirstSource}->{FirstDestination}, {SecondSource}->{SecondDestination}: {Reason}.",
-                                            sourceQuickSlot,
-                                            destinationQuickSlot,
-                                            adjacentSourceSlot,
-                                            adjacentDestinationSlot,
-                                            rejectionReason);
-                                    }
-                                    else
-                                    {
-                                        logger.LogInformation(
-                                            "Changed adjacent skill slots {FirstSource}->{FirstDestination}, {SecondSource}->{SecondDestination}; compound={Compound}.",
-                                            sourceQuickSlot,
-                                            destinationQuickSlot,
-                                            adjacentSourceSlot,
-                                            adjacentDestinationSlot,
-                                            isCompoundMove);
-                                    }
-
-                                    continue;
-                                }
-                            }
-                            else if (adjacentRawRequest is not null)
-                            {
-                                queuedRequest = adjacentRawRequest;
-                            }
-
-                            var skillSlotMoveAccepted = skillCatalog.TrySwapSlots(
-                                session.Character.Active.Job,
-                                session.Skill.Current,
-                                sourceQuickSlot,
-                                destinationQuickSlot,
-                                out var movedSkills,
-                                out var simpleRejectionReason);
-                            if (skillSlotMoveAccepted && !session.Skill.Current.SequenceEqual(movedSkills))
-                            {
-                                session.Skill.Current = movedSkills.ToList();
-                                session.Character.Active = await store.SaveCharacterSkillsAsync(
-                                    session.Login.AccountName,
-                                    session.Character.Active.Id,
-                                    session.Skill.CurrentSp,
-                                    session.Skill.Current,
-                                    serverToken) ?? session.Character.Active;
-                            }
-
-                            var quickSlotReply = skillSlotMoveAccepted
-                                ? GameProtocolEngine.CreateChangeSkillSlotReply(
-                                    sourceQuickSlot,
-                                    destinationQuickSlot)
-                                : GameProtocolEngine.CreateCommandError(request, errorCode: 1);
-                            await quickSlotReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, quickSlotReply);
-                            if (skillSlotMoveAccepted)
-                            {
-                                logger.LogInformation(
-                                    "Changed skill slot from {SourceSlot} to {DestinationSlot}.",
-                                    sourceQuickSlot,
-                                    destinationQuickSlot);
-                            }
-                            else
-                            {
-                                logger.LogWarning(
-                                    "Rejected skill-slot change {SourceSlot}->{DestinationSlot}: {Reason}.",
-                                    sourceQuickSlot,
-                                    destinationQuickSlot,
-                                    simpleRejectionReason);
-                            }
-
-                            continue;
-                        }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.SortItemCommand)

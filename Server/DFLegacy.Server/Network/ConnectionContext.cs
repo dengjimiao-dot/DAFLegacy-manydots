@@ -1,4 +1,5 @@
 using System.Net;
+using DFLegacy.Protocol;
 
 namespace DFLegacy.Server;
 
@@ -54,4 +55,20 @@ public sealed class ConnectionContext
     /// character-session lease being claimed by a newer login.
     /// </summary>
     public Action? KickConnection { get; set; }
+
+    /// <summary>
+    /// Reads the immediately following frame when one is already buffered,
+    /// for the only lookahead consumer: the CHANGE_SKILLSLOT quick-slot swap
+    /// pair. Wired by the pump, which keeps the delay, the cipher decode and
+    /// the packet accounting in the transport layer (07 §4.8.1 U1); a frame
+    /// the accept predicate rejects is queued back for the normal read loop.
+    /// </summary>
+    public Func<TimeSpan, Func<PacketFrame, bool>, CancellationToken, ValueTask<AdjacentFrameResult>>? ReadAdjacentFrame { get; set; }
 }
+
+/// <summary>
+/// Outcome of a pump-side adjacent-frame read: <see cref="DecodeFailed"/>
+/// reproduces the legacy branch's abort-without-reply path, an empty frame
+/// means nothing was buffered (or the frame was queued back).
+/// </summary>
+public readonly record struct AdjacentFrameResult(PacketFrame? Frame, bool DecodeFailed);

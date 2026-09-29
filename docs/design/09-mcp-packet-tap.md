@@ -383,6 +383,10 @@ McpModuleLoader.TryAttach(builder, options);
 
 工具组不单独配置（§15.4）；容量参数（ring 4096、单包截断 4096/8192 字节、订阅通道 1024）为代码常量。`README.md` 选项表实现时补三行。
 
+**模块 DLL 必须与 Server 同批重建**（2026-09-29 以一次真实改动登记）：模块与宿主同进程，直接引用宿主类型（`Network/Core/PacketTypes.cs` 的 `PacketTypeNames`、`IPacketTapSink` 等），因此任何触及宿主类型面的改动（本次为 `PacketNames` 删除与 `PacketTapEvent.PlainText` 下线）都必须重发 `DFLegacy.Mcp.dll`（`publish-mcp.sh` / `publish-mcp.bat`）后再启用。加载器经 `Resolving` 钩子从 `AppContext.BaseDirectory` 解析模块（`Infrastructure/McpModuleLoader.cs`），故产物须放在服务端可执行文件同目录。
+
+跨版本混用的失败形态是**静默失效**而非启动报错：旧模块中已不存在的类型引用在该方法执行时抛 `TypeLoadException`，被 `PacketTapHub.Publish` 的兜底 try/catch 吞掉（"追踪绝不影响会话"的设计使然），且异常点在入 ring 之前，于是**事件全不落 ring**——`packet_watch` 永远等不到事件、`tap_status` 的 seq 不前进，而 `packet_names_search` 与 `packet-names://` 资源在调用时直接报错。启用后先各调一次 `tap_status` 与 `packet_names_search`，两者都正常才认为模块与宿主同版。
+
 ---
 
 ## 9. 安全边界

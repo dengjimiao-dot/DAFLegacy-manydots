@@ -145,6 +145,8 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 }
 ```
 
+模块 DLL 与 Server 同进程、直接引用服务端类型，因此**服务端类型面有改动后须重发模块**（`publish-mcp.sh` / `publish-mcp.bat`）再启用；跨版本混用不会启动报错，而是抓包静默失效（详见 `docs/design/09-mcp-packet-tap.md` §8）。
+
 工具均为只读（`packet_watch` 实时跟踪、`packet_get` 取单包详情、`packet_wait` 等回包、`packet_names_search` 查包号↔报文名、`session_list`、`tap_status`）。详见 `docs/design/09-mcp-packet-tap.md`。
 
 ### 启动器

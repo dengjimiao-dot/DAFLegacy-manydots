@@ -543,8 +543,17 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | `CompoundItemReplayEntry` 从 EntranceService 私有嵌套记录迁至 `Game/Compound/`(public) | 状态域类需引用;属组织层搬迁,字节语义不变 |
 | 状态域以**公共字段**而非属性承载 | §4.3"字段一一对应"的字面落地;ref 排空语义所需 |
 
-### 11.3 遗留项
+### 11.3 R2 实施记录(组 5-8,同日续)
 
-- **SELECT_CHARACTER(CMD 4,组 3 最复杂段)**:约 670 行编排(租约认领、五库存修复、合同兑换、技能/任务/副本解锁迁移、初始化包突发),依赖跨组发送助手与初始化包分组注册,留待 R1 收尾;其初始化包构建器(`CreateTownInitializationPackets` 等已存在的枚举器方法)届时按 §6·R1 InitPacketBuilderRegistry 形态分组注册。
-- 组 4-15 未迁移;R6 清退(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
+- **已挂载**:组 5 Chat(SEND_MESSAGE 17/CREATURE_SEND 124/CREATURE_SCRIPT 132,注册组 `social.chat`)、组 6 Mailbox(OPEN 99/EXTRACT 98/SEND 97/CHANGE_LETTER_STAT 144,`social.mailbox`)、组 7 Quest(ACCEPT 33/GIVEUP 34/TRIGGER 35/FINISH 36,`progression.quest`)、组 8 Skill(CHANGE_SKILLSLOT 30/BUY_SKILL 31/INCREASE_STATUS 32,`progression.skill`)。
+- **Parser 外置续**:ChatParsers(SendMessageRequest+解析)、MailboxParsers(三个 TryReadMailbox* + MailboxSendRequest);测试引用同步。
+- **共享助手归口**:ChannelSessionSenders 续接收任务流助手(触发计算/寻求刷新/任务物品授予/可接列表/技能面板)、城镇外观与装备状态发送簇(含精灵状态/初始体力)、仓库容量结算与重量上限;CharacterPacketBuilders 续接收邮件附件规划、城镇外观构建、物品/背包/仓库/精灵包家族与初始技能表。
+- **新增泵层能力(登记偏差)**:`ConnectionContext.ReadAdjacentFrame(AdjacentFrameResult)`——CHANGE_SKILLSLOT 复合换位需要预读紧邻帧;延迟/可用性探测/解密/计账保持在传输层(§4.8.1 U1),不匹配帧回排 `queuedRequest`,解密失败复现"中断且不回复"路径。原分支在 handler 内直读 stream 的形态由此封口,成为 4.2 的第二项增补成员。
+- **规模**:EntranceService.cs 14,832 → 10,791 行;新增 8 个 handler 组目录(PascalCase 对齐 4.8.3 表)。
+- 阶段基线:SelfTests 全量(20 套件)通过;真机冒烟仍为遗留项。
+
+### 11.4 遗留项
+
+- **SELECT_CHARACTER(CMD 4,组 3 最复杂段)**:已于 R1 收尾完成(SelectCharacterHandler + CharacterPacketBuilders 初始化包家族)。
+- 组 9-15(物品三组/精灵/副本/城镇/组队)未迁移;R6 清退(删除旧分支与 5 个 Interlocked 标志、5 处 WhenAny 收敛为单调度点)未开始。
 - 真机冒烟复测未做:已挂载的 9 协议需按 §7.4 清单在真机回归(登录→选角→建/删角→返回选角)。

@@ -1450,56 +1450,65 @@ public sealed class EntranceService(
                         break;
                     }
 
-                    if (Interlocked.Exchange(ref session.Mailbox.PendingAlarm, 0) != 0
-                        && session.Character.Active is not null)
+                    while (session.Events.Reader.TryRead(out var connectionEvent))
                     {
-                        await SendNewMailAlarmAsync();
-                    }
-
-                    while (session.Premium.PendingUpdates.TryDequeue(out var premiumUpdate))
-                    {
-                        if (session.Character.Active is not null)
+                        switch (connectionEvent.Kind)
                         {
-                            await SendPremiumServiceInfoAsync(
-                                premiumUpdate.ServiceType,
-                                premiumUpdate.RemainingSeconds);
+                            case ConnectionEventKind.MailAlarm:
+                                if (session.Character.Active is not null)
+                                {
+                                    await SendNewMailAlarmAsync();
+                                }
+
+                                break;
+                            case ConnectionEventKind.PremiumServiceUpdate:
+                                if (session.Character.Active is not null)
+                                {
+                                    await SendPremiumServiceInfoAsync(
+                                        connectionEvent.ServiceType,
+                                        (uint)connectionEvent.Value);
+                                }
+
+                                break;
+                            case ConnectionEventKind.CeraValueUpdated:
+                                if (session.Character.Active is not null)
+                                {
+                                    session.Currency.Cash = connectionEvent.Value;
+                                    var ceraNotification = GameProtocolEngine.CreateCeraUpdate(
+                                        success: true,
+                                        value: (uint)connectionEvent.Value);
+                                    await ceraNotification.WriteAsync(stream, serverToken);
+                                    Interlocked.Increment(ref runtimeSession.SentPackets);
+                                    LogPacket("TX", runtimeSession, ceraNotification);
+                                }
+
+                                break;
+                            case ConnectionEventKind.FatigueReset:
+                                if (session.Character.Active is not null)
+                                {
+                                    session.Character.Active = session.Character.Active with
+                                    {
+                                        UsedFatigue = 0
+                                    };
+                                    if (session.Dungeon.CurrentDungeonId == 0)
+                                    {
+                                        await SendTownFatigueStateAsync();
+                                    }
+                                }
+
+                                break;
+                            case ConnectionEventKind.WeaknessRecovered:
+                                if (session.Character.Active is not null)
+                                {
+                                    session.Character.Active = session.Character.Active with
+                                    {
+                                        WeaknessRecovery = (byte)connectionEvent.Value,
+                                        LegacyIsWeakened = null
+                                    };
+                                }
+
+                                break;
                         }
-                    }
-
-                    var queuedCeraValue = Interlocked.Exchange(
-                        ref session.Premium.PendingCeraValue,
-                        -1);
-                    if (queuedCeraValue >= 0 && session.Character.Active is not null)
-                    {
-                        session.Currency.Cash = queuedCeraValue;
-                        var ceraNotification = GameProtocolEngine.CreateCeraUpdate(
-                            success: true,
-                            value: (uint)queuedCeraValue);
-                        await ceraNotification.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, ceraNotification);
-                    }
-
-                    if (Volatile.Read(ref session.Weakness.PendingFatigueReset) != 0
-                        && session.Character.Active is not null)
-                    {
-                        session.Character.Active = session.Character.Active with { UsedFatigue = 0 };
-                        if (session.Dungeon.CurrentDungeonId == 0)
-                        {
-                            await SendTownFatigueStateAsync();
-                        }
-                    }
-
-                    var queuedWeaknessRecovery = Interlocked.Exchange(
-                        ref session.Weakness.PendingWeaknessRecovery,
-                        -1);
-                    if (queuedWeaknessRecovery >= 0 && session.Character.Active is not null)
-                    {
-                        session.Character.Active = session.Character.Active with
-                        {
-                            WeaknessRecovery = (byte)queuedWeaknessRecovery,
-                            LegacyIsWeakened = null
-                        };
                     }
 
                     if (isChannelPort)
@@ -1573,38 +1582,12 @@ public sealed class EntranceService(
 
 
 
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.AntibotCommand)
-                        {
-                            // Fire-and-forget client report: the heartbeat counter
-                            // advances without any answer ever coming back, so the
-                            // report is consumed quietly instead of tripping the
-                            // unknown-packet warning once per minute.
-                            var parsedAntibot = AntibotReportParser.TryParse(
-                                request.Body,
-                                out var antibotReport);
-                            logger.LogDebug(
-                                "Antibot report seq={Seq} parsed={Parsed} kind={Kind} declaredBytes={Bytes}.",
-                                antibotReport.Sequence,
-                                parsedAntibot,
-                                antibotReport.RecordKind,
-                                antibotReport.DeclaredLength);
-                            continue;
-                        }
-
-                        var gameReply = request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.CheckConnectionCommand
-                            ? GameProtocolEngine.CreateChannelInfo(
-                                ClientEncoding.GetBytes($"{options.Channel.Name} {options.Channel.ChannelNumber}"),
-                                channelType: 1,
-                                result: 1,
-                                serverId: 1,
-                                channelNumber: checked((byte)options.Channel.ChannelNumber),
-                                seed: checked((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
-                                [Encoding.ASCII.GetBytes(options.GameplayDatagram.Host)],
-                                port1: checked((uint)options.GameplayDatagram.PrimaryPort),
-                                port2: checked((uint)options.GameplayDatagram.SecondaryPort))
-                            : GameProtocolEngine.Handle(request, protocolSession.SessionToken);
+                        // Last-resort fallback for commands the registry does not
+                        // mount yet; CHECK_CONNECTION is dispatched by the registry
+                        // (CheckConnectionHandler) before reaching this point.
+                        var gameReply = GameProtocolEngine.Handle(
+                            request,
+                            protocolSession.SessionToken);
                         if (gameReply is null)
                         {
                             logger.LogWarning(

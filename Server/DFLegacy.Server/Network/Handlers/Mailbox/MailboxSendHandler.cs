@@ -193,13 +193,10 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             await context.Outbound.SendAsync(inventoryUpdate, Name, cancellationToken);
         }
 
+        // The registry callback enqueues the mail alarm event for the target
+        // session; a self-addressed mail therefore alarms through the owning
+        // connection's event drain exactly like any other recipient (R6).
         characterSessions.NotifyMailReceived(
             sendResult.RecipientCharacterId);
-        if (sendResult.RecipientCharacterId == session.Character.Active.Id
-            && Interlocked.Exchange(ref session.Mailbox.PendingAlarm, 0) != 0)
-        {
-            await senders.SendNewMailAlarmAsync(context, cancellationToken: cancellationToken);
-        }
-
     }
 }

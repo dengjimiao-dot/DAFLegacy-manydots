@@ -1642,7 +1642,6 @@ public async Task SendTownFatigueStateAsync(
     ConnectionContext context,
     CancellationToken cancellationToken = default)
 {
-    Interlocked.Exchange(ref context.State.Weakness.PendingFatigueReset, 0);
     // AREA_USERS constructs the town HUD. EVENT_INFO then selects
     // and initializes its normal/premium fatigue-bar resources.
     var eventInfo = GameProtocolEngine.CreateEventInfo();

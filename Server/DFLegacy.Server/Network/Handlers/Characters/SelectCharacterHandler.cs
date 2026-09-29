@@ -68,7 +68,7 @@ public sealed partial class SelectCharacterHandler(
             context.Runtime.Id,
             () => context.KickConnection?.Invoke(),
             cancellationToken,
-            () => Interlocked.Exchange(ref session.Mailbox.PendingAlarm, 1),
+            () => session.Events.Writer.TryWrite(new ConnectionEvent(ConnectionEventKind.MailAlarm)),
             (serviceType, remainSeconds) =>
             {
                 var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -83,16 +83,17 @@ public sealed partial class SelectCharacterHandler(
                 {
                     session.Premium.ExpiryUnix[serviceType] = expiry;
                 }
-                session.Premium.PendingUpdates.Enqueue((serviceType, remainSeconds));
+                session.Events.Writer.TryWrite(new ConnectionEvent(
+                    ConnectionEventKind.PremiumServiceUpdate,
+                    serviceType,
+                    remainSeconds > int.MaxValue ? int.MaxValue : (int)remainSeconds));
             },
-            value => Interlocked.Exchange(
-                ref session.Premium.PendingCeraValue,
-                value > int.MaxValue
+            value => session.Events.Writer.TryWrite(new ConnectionEvent(
+                ConnectionEventKind.CeraValueUpdated,
+                Value: value > int.MaxValue
                     ? int.MaxValue
-                    : (int)value),
-            () => Interlocked.Exchange(
-                ref session.Weakness.PendingFatigueReset,
-                1),
+                    : (int)value)),
+            () => session.Events.Writer.TryWrite(new ConnectionEvent(ConnectionEventKind.FatigueReset)),
             (messageType, targetAreaUserId, messageBytes) =>
                 _ = SendTypedMessageNotificationSafeAsync(
                     context,
@@ -111,9 +112,9 @@ public sealed partial class SelectCharacterHandler(
                 _ = SendPopupNotificationSafeAsync(context, messageBytes),
             recovery =>
             {
-                Interlocked.Exchange(
-                    ref session.Weakness.PendingWeaknessRecovery,
-                    recovery);
+                session.Events.Writer.TryWrite(new ConnectionEvent(
+                    ConnectionEventKind.WeaknessRecovered,
+                    Value: recovery));
                 _ = SendWeaknessRecoveryNotificationSafeAsync(context, recovery);
             },
             (dungeonId, maximumDifficulty) =>

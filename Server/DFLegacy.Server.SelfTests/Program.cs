@@ -1531,7 +1531,7 @@ Check(GameProtocolEngine.CreateSortItemReply(2).Payload.SequenceEqual(new byte[]
 Check(GameProtocolEngine.CreateSortItemError(7, 4).Payload.SequenceEqual(
         new byte[] { 0, 4, 7 }),
     "DFLegacy sort-item failure carries the error and item space consumed by the old client");
-var inventoryMoveParser = typeof(EntranceService).GetMethod(
+var inventoryMoveParser = typeof(InventoryParsers).GetMethod(
     "TryReadInventoryMove",
     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 object?[] inventoryMoveArguments =
@@ -1636,7 +1636,7 @@ Check(GameProtocolEngine.CreateUseStackableItemReply(41, 0).Payload.SequenceEqua
 Check(GameProtocolEngine.CreateUseStackableItemError(17, 0).Payload.SequenceEqual(
         new byte[] { 0, 17, 0 }),
     "USE_STACKABLE failure returns error code and main-list type for pending-state cleanup");
-var consumeItemsParser = typeof(EntranceService).GetMethod(
+var consumeItemsParser = typeof(InventoryParsers).GetMethod(
     "TryReadConsumeItems",
     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 object?[] consumeItemsArguments =
@@ -6678,7 +6678,7 @@ Check(renameCreatureParser is not null
         new byte[] { 0xCD, 0xC3, 0xD7, 0xD3 }),
     "DFLegacy Creature rename parser reads card slot 190, item space 7 and the GBK name from CMD 103");
 
-var sortItemParser = typeof(EntranceService).GetMethod(
+var sortItemParser = typeof(InventoryParsers).GetMethod(
     "TryReadSortItem",
     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 object?[] sortItemArguments = [new byte[] { 0x0E, 0x00, 0x00 }, (byte)0xFF];

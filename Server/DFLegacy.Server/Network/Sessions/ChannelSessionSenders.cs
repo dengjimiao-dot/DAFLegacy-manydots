@@ -824,4 +824,769 @@ public async Task SendInitialStaminaStateAsync(
         GetProjectedStaminaRecovery(context));
     await context.Outbound.SendAsync(stamina, "STAMINA_NOTI", cancellationToken);
     context.State.Weakness.StaminaStateInitialized = true;
-}}
+}
+
+    // ---- Inventory-move senders and the Creature-move planner cluster
+    // (migrated verbatim from EntranceService; the dungeon branches keep
+    // delegating wrappers until group 13 migrates).
+
+public async Task<bool> SettleDungeonCreatureHungerAsync(
+    ConnectionContext context,
+    bool notifyClient,
+    CancellationToken cancellationToken)
+{
+    if (context.State.Dungeon.CreatureStomachCheckpointSeconds is not long checkpoint)
+    {
+        return true;
+    }
+
+    var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    var elapsedSeconds = checked((uint)Math.Min(
+        uint.MaxValue,
+        Math.Max(0L, now - checkpoint)));
+    if (elapsedSeconds == 0)
+    {
+        return true;
+    }
+
+    if (context.State.Character.Active is null
+        || !CreatureHungerPlanner.TrySettle(
+            context.State.Inventory.Creature,
+            elapsedSeconds,
+            itemCatalog,
+            out var hungerPlan))
+    {
+        context.State.Dungeon.CreatureStomachCheckpointSeconds = now;
+        return true;
+    }
+
+    if (!hungerPlan.Changed)
+    {
+        context.State.Dungeon.CreatureStomachCheckpointSeconds = now;
+        return true;
+    }
+
+    var saved = await store.SaveCharacterItemSpacesAsync(
+        context.State.Login.AccountName,
+        context.State.Character.Active.Id,
+        context.State.Currency.Gold,
+        context.State.Inventory.Main.Values,
+        context.State.Inventory.Equipped.Values,
+        context.State.Inventory.Warehouse.Values,
+        cancellationToken,
+        avatarInventory: context.State.Inventory.Avatar.Values,
+        creatureInventory: hungerPlan.Inventory.Values);
+    if (saved is null)
+    {
+        logger.LogWarning(
+            "Could not persist Creature stomach settlement for character {CharacterId} in dungeon {DungeonId}.",
+            context.State.Character.Active.Id,
+            context.State.Dungeon.CurrentDungeonId);
+        return false;
+    }
+
+    context.State.Inventory.Creature = hungerPlan.Inventory;
+    context.State.Character.Active = context.State.Character.Active with
+    {
+        CreatureInventory = hungerPlan.Inventory.Values
+            .OrderBy(item => item.Slot)
+            .ToList()
+    };
+    context.State.Dungeon.CreatureStomachCheckpointSeconds = now;
+
+    if (hungerPlan.BecameDead)
+    {
+        // The 13339 timer path emits NOTI 100 exactly when the
+        // effective stomach crosses below one.  Do this even
+        // for a silent settlement so the client cannot keep a
+        // live map object after a transactional refresh.
+        await SendEquippedCreatureDeathAsync(context, cancellationToken: cancellationToken);
+    }
+
+    if (notifyClient && hungerPlan.StomachChanged)
+    {
+        var stomachState = GameProtocolEngine.CreateCreatureState(
+            hungerPlan.CreatureUid,
+            hungerPlan.Stomach);
+        await context.Outbound.SendAsync(stomachState, "CREATURE_STATE", cancellationToken);
+    }
+
+    if (notifyClient && hungerPlan.ConsumedFoodCount != 0)
+    {
+        var creatureItems = builders.CreateCreatureInventoryItemListPacket(
+            context.State.Inventory.Creature.Values);
+        await context.Outbound.SendAsync(creatureItems, "CREATURE_STATE", cancellationToken);
+    }
+
+    logger.LogInformation(
+        "Dungeon {DungeonId} settled {ElapsedSeconds}s of Creature hunger for uid {CreatureUid}: stomach {PreviousStomach}->{Stomach}, remainder {PreviousRemainder}->{Remainder}s, auto-consumed food item 24 x{ConsumedFoodCount}.",
+        context.State.Dungeon.CurrentDungeonId,
+        hungerPlan.ElapsedSeconds,
+        hungerPlan.CreatureUid,
+        hungerPlan.PreviousStomach,
+        hungerPlan.Stomach,
+        hungerPlan.PreviousRemainderSeconds,
+        hungerPlan.RemainderSeconds,
+        hungerPlan.ConsumedFoodCount);
+    return true;
+}
+
+public async Task SendInventoryMoveNoOpAsync(
+    ConnectionContext context,
+    byte sourceListType,
+    ushort sourceSlot,
+    byte destinationListType,
+    ushort destinationSlot,
+    string reason,
+    CancellationToken cancellationToken = default)
+{
+    var noOpReply = GameProtocolEngine.CreateMoveItemSpaceReply(
+        sourceListType,
+        sourceSlot,
+        movedCount: 0,
+        destinationListType,
+        destinationSlot);
+    await context.Outbound.SendAsync(noOpReply, "INVENTORY_DELTA", cancellationToken);
+
+    if (sourceListType == 0 || destinationListType == 0)
+    {
+        var mainRefresh = builders.CreateMainInventoryPacket(
+            context.State.Currency.Gold,
+            context.State.Currency.VictoryPoints,
+            context.State.Inventory.Main.Values);
+        await context.Outbound.SendAsync(mainRefresh, "INVENTORY_DELTA", cancellationToken);
+    }
+
+    if (sourceListType == 2 || destinationListType == 2)
+    {
+        var warehouseRefresh = builders.CreateWarehousePacket(
+            context.State.Inventory.Warehouse.Values,
+            context.State.Inventory.WarehouseCapacity);
+        await context.Outbound.SendAsync(warehouseRefresh, "INVENTORY_DELTA", cancellationToken);
+    }
+
+    if (sourceListType == 1 || destinationListType == 1)
+    {
+        var avatarRefresh = builders.CreateAvatarInventoryPacket(
+            context.State.Inventory.Avatar.Values);
+        await context.Outbound.SendAsync(avatarRefresh, "INVENTORY_DELTA", cancellationToken);
+    }
+
+    if (sourceListType == 7 || destinationListType == 7)
+    {
+        foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
+                     context.State.Inventory.Creature.Values))
+        {
+            await context.Outbound.SendAsync(creatureRefresh, "INVENTORY_DELTA", cancellationToken);
+        }
+    }
+
+    if ((sourceListType == 3 || destinationListType == 3)
+        && sourceListType != 7
+        && destinationListType != 7)
+    {
+        await SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
+    }
+
+    logger.LogInformation(
+        "Completed rejected inventory move as a no-op from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}: {Reason}.",
+        sourceListType,
+        sourceSlot,
+        destinationListType,
+        destinationSlot,
+        reason);
+}
+
+public async Task SendMainInventoryMoveDeltaAsync(
+    ConnectionContext context,
+    CancellationToken cancellationToken,
+    params ushort[] slots)
+{
+    foreach (var slot in slots
+                 .Where(CharacterInventoryLayout.IsMainItemSlot)
+                 .Distinct())
+    {
+        var entry = context.State.Inventory.Main.TryGetValue(slot, out var item)
+            ? builders.ToGameInventoryEntry(item)
+            : new GameInventoryEntry(slot, ushort.MaxValue, 0);
+        var update = GameProtocolEngine.CreateUpdateItemList(0, [entry]);
+        await context.Outbound.SendAsync(update, "INVENTORY_DELTA", cancellationToken);
+    }
+}
+
+    internal bool TryPlanCreatureInventoryMove(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> warehouse,
+        ushort warehouseCapacity,
+        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory,
+        byte sourceListType,
+        ushort sourceSlot,
+        int moveCount,
+        byte destinationListType,
+        ushort destinationSlot,
+        out CreatureInventoryMovePlan plan,
+        out string failure)
+    {
+        plan = null!;
+        failure = string.Empty;
+        if (sourceListType is not (2 or 3 or 7)
+            || destinationListType is not (2 or 3 or 7)
+            || sourceListType != 7 && destinationListType != 7)
+        {
+            failure = "Creature space only supports its native equipment slots and character storage";
+            return false;
+        }
+
+        if (!IsCreatureMoveSlotValid(sourceListType, sourceSlot, warehouseCapacity)
+            || destinationSlot != ushort.MaxValue
+                && !IsCreatureMoveSlotValid(
+                    destinationListType,
+                    destinationSlot,
+                    warehouseCapacity))
+        {
+            failure = "Creature move contains an invalid slot";
+            return false;
+        }
+
+        var plannedWarehouse = warehouse.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var plannedCreature = creatureInventory.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value);
+        var actualSourceList = sourceListType;
+        var actualSourceClientSlot = sourceSlot;
+        var actualDestinationList = destinationListType;
+        var actualDestinationClientSlot = destinationSlot;
+        var actualSourceStorageSlot = MapCreatureEndpointSlot(
+            actualSourceList,
+            actualSourceClientSlot);
+        var actualDestinationStorageSlot = actualDestinationClientSlot == ushort.MaxValue
+            ? ushort.MaxValue
+            : MapCreatureEndpointSlot(
+                actualDestinationList,
+                actualDestinationClientSlot);
+        var sourceSpace = GetCreatureMoveSpace(
+            actualSourceList,
+            plannedWarehouse,
+            plannedCreature);
+        var destinationSpace = GetCreatureMoveSpace(
+            actualDestinationList,
+            plannedWarehouse,
+            plannedCreature);
+        if (!sourceSpace.TryGetValue(actualSourceStorageSlot, out var sourceItem))
+        {
+            if (actualDestinationStorageSlot == ushort.MaxValue
+                || !destinationSpace.TryGetValue(
+                    actualDestinationStorageSlot,
+                    out sourceItem))
+            {
+                failure = "Creature move source is empty";
+                return false;
+            }
+
+            (actualSourceList, actualDestinationList) =
+                (actualDestinationList, actualSourceList);
+            (actualSourceClientSlot, actualDestinationClientSlot) =
+                (actualDestinationClientSlot, actualSourceClientSlot);
+            (actualSourceStorageSlot, actualDestinationStorageSlot) =
+                (actualDestinationStorageSlot, actualSourceStorageSlot);
+            sourceSpace = GetCreatureMoveSpace(
+                actualSourceList,
+                plannedWarehouse,
+                plannedCreature);
+            destinationSpace = GetCreatureMoveSpace(
+                actualDestinationList,
+                plannedWarehouse,
+                plannedCreature);
+        }
+
+        if (!itemCatalog.TryGetDefinition(sourceItem.ItemId, out var sourceDefinition))
+        {
+            failure = "Creature move item is unknown";
+            return false;
+        }
+
+        if (actualSourceList == 3 || actualDestinationList == 3)
+        {
+            sourceItem = CharacterItemSealing.UnsealWhenEquipped(
+                sourceItem,
+                sourceDefinition);
+        }
+
+        if (actualDestinationClientSlot == ushort.MaxValue)
+        {
+            actualDestinationClientSlot = FindCreatureMoveDestination(
+                destinationSpace,
+                actualDestinationList,
+                sourceItem,
+                sourceDefinition,
+                actualSourceList == actualDestinationList
+                    ? actualSourceClientSlot
+                    : null,
+                warehouseCapacity);
+            actualDestinationStorageSlot = actualDestinationClientSlot == ushort.MaxValue
+                ? ushort.MaxValue
+                : MapCreatureEndpointSlot(
+                    actualDestinationList,
+                    actualDestinationClientSlot);
+        }
+
+        if (actualDestinationClientSlot == ushort.MaxValue
+            || !IsCreatureMoveSlotValid(
+                actualDestinationList,
+                actualDestinationClientSlot,
+                warehouseCapacity)
+            || !IsCompatibleCreatureMoveSlot(
+                actualDestinationList,
+                sourceDefinition,
+                actualDestinationClientSlot,
+                warehouseCapacity))
+        {
+            failure = "Creature move destination is full or incompatible";
+            return false;
+        }
+
+        if (actualSourceList == actualDestinationList
+            && actualSourceStorageSlot == actualDestinationStorageSlot)
+        {
+            plan = new CreatureInventoryMovePlan(
+                plannedWarehouse,
+                plannedCreature,
+                sourceDefinition.IsStackable ? sourceItem.CountOrValue : 1,
+                destinationSlot == ushort.MaxValue
+                    ? actualDestinationClientSlot
+                    : destinationSlot,
+                sourceItem.ItemId,
+                EquippedSlotsChanged: false,
+                EquippedCreatureChanged: false);
+            return true;
+        }
+
+        destinationSpace.TryGetValue(actualDestinationStorageSlot, out var displacedItem);
+        if (displacedItem is not null
+            && (!itemCatalog.TryGetDefinition(
+                    displacedItem.ItemId,
+                    out var displacedDefinition)
+                || !IsCompatibleCreatureMoveSlot(
+                    actualSourceList,
+                    displacedDefinition,
+                    actualSourceClientSlot,
+                    warehouseCapacity)))
+        {
+            failure = "Creature move would displace an incompatible item";
+            return false;
+        }
+
+        if (displacedItem is not null
+            && (actualSourceList == 3 || actualDestinationList == 3))
+        {
+            displacedItem = CharacterItemSealing.UnsealWhenEquipped(
+                displacedItem,
+                itemCatalog);
+        }
+
+        var availableQuantity = sourceDefinition.IsStackable
+            ? sourceItem.CountOrValue
+            : 1u;
+        var requestedQuantity = moveCount <= 0
+            ? availableQuantity
+            : Math.Min(availableQuantity, checked((uint)moveCount));
+        if (requestedQuantity == 0)
+        {
+            failure = "Creature move count is zero";
+            return false;
+        }
+
+        var canStack = sourceDefinition.IsStackable
+            && displacedItem is not null
+            && displacedItem.ItemId == sourceItem.ItemId
+            && displacedItem.State == sourceItem.State
+            && displacedItem.Durability == sourceItem.Durability
+            && displacedItem.SealState == sourceItem.SealState;
+        if (canStack)
+        {
+            var stackLimit = CharacterInventoryPlanner.GetStackLimit(sourceDefinition);
+            var available = stackLimit > displacedItem!.CountOrValue
+                ? stackLimit - displacedItem.CountOrValue
+                : 0;
+            if (available == 0)
+            {
+                failure = "Creature destination stack is full";
+                return false;
+            }
+
+            requestedQuantity = Math.Min(requestedQuantity, available);
+            destinationSpace[actualDestinationStorageSlot] = displacedItem with
+            {
+                CountOrValue = displacedItem.CountOrValue + requestedQuantity
+            };
+            if (requestedQuantity == sourceItem.CountOrValue)
+            {
+                sourceSpace.Remove(actualSourceStorageSlot);
+            }
+            else
+            {
+                sourceSpace[actualSourceStorageSlot] = sourceItem with
+                {
+                    CountOrValue = sourceItem.CountOrValue - requestedQuantity
+                };
+            }
+        }
+        else if (sourceDefinition.IsStackable
+            && displacedItem is null
+            && requestedQuantity < sourceItem.CountOrValue)
+        {
+            sourceSpace[actualSourceStorageSlot] = sourceItem with
+            {
+                CountOrValue = sourceItem.CountOrValue - requestedQuantity
+            };
+            destinationSpace[actualDestinationStorageSlot] = sourceItem with
+            {
+                Slot = actualDestinationStorageSlot,
+                CountOrValue = requestedQuantity
+            };
+        }
+        else
+        {
+            sourceSpace.Remove(actualSourceStorageSlot);
+            destinationSpace[actualDestinationStorageSlot] = sourceItem with
+            {
+                Slot = actualDestinationStorageSlot
+            };
+            if (displacedItem is not null)
+            {
+                sourceSpace[actualSourceStorageSlot] = displacedItem with
+                {
+                    Slot = actualSourceStorageSlot
+                };
+            }
+        }
+
+        var normalizedCreature = CharacterCreatureInventoryPlanner.Normalize(
+            plannedCreature.Values,
+            itemCatalog);
+        if (normalizedCreature.OverflowItems.Count != 0)
+        {
+            failure = "Creature move normalization overflowed";
+            return false;
+        }
+
+        var equippedChanged = Enumerable.Range(
+                CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+                CharacterCreatureInventoryLayout.Capacity
+                    - CharacterCreatureInventoryLayout.EquippedCreatureSlot)
+            .Select(checkedSlot => checked((ushort)checkedSlot))
+            .Any(slot => !Equals(
+                creatureInventory.GetValueOrDefault(slot),
+                normalizedCreature.Inventory.GetValueOrDefault(slot)));
+        var equippedCreatureChanged = !Equals(
+            creatureInventory.GetValueOrDefault(
+                CharacterCreatureInventoryLayout.EquippedCreatureSlot),
+            normalizedCreature.Inventory.GetValueOrDefault(
+                CharacterCreatureInventoryLayout.EquippedCreatureSlot));
+        plan = new CreatureInventoryMovePlan(
+            plannedWarehouse,
+            normalizedCreature.Inventory,
+            requestedQuantity,
+            destinationSlot == ushort.MaxValue
+                ? actualDestinationClientSlot
+                : destinationSlot,
+            sourceItem.ItemId,
+            equippedChanged,
+            equippedCreatureChanged);
+        return true;
+    }
+
+    internal ushort FindCreatureMoveDestination(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> destination,
+        byte destinationListType,
+        CharacterItemRecord item,
+        ItemDefinition definition,
+        ushort? excludedSlot,
+        ushort warehouseCapacity)
+    {
+        if (destinationListType == 3)
+        {
+            if (!CharacterCreatureInventoryLayout.TryGetEquippedSlot(
+                    definition,
+                    out var equippedStorageSlot)
+                || destination.ContainsKey(equippedStorageSlot))
+            {
+                return ushort.MaxValue;
+            }
+
+            return MapCreatureStorageSlotToClient(equippedStorageSlot);
+        }
+
+        if (definition.IsStackable)
+        {
+            var stackLimit = CharacterInventoryPlanner.GetStackLimit(definition);
+            var partial = destination.Values
+                .Where(candidate => candidate.Slot != excludedSlot
+                    && candidate.ItemId == item.ItemId
+                    && candidate.State == item.State
+                    && candidate.Durability == item.Durability
+                    && candidate.SealState == item.SealState
+                    && candidate.CountOrValue < stackLimit
+                    && IsCompatibleCreatureMoveSlot(
+                        destinationListType,
+                        definition,
+                        candidate.Slot,
+                        warehouseCapacity))
+                .OrderBy(candidate => candidate.Slot)
+                .Select(candidate => candidate.Slot)
+                .DefaultIfEmpty(ushort.MaxValue)
+                .First();
+            if (partial != ushort.MaxValue)
+            {
+                return partial;
+            }
+        }
+
+        if (destinationListType == 2)
+        {
+            return FindFreeInventorySlot(
+                destination,
+                0,
+                warehouseCapacity);
+        }
+
+        if (!CharacterCreatureInventoryLayout.TryGetBagRange(
+                definition,
+                out var start,
+                out var end))
+        {
+            return ushort.MaxValue;
+        }
+
+        return FindFreeInventorySlot(destination, start, end);
+    }
+
+    internal bool IsCompatibleCreatureMoveSlot(
+        byte listType,
+        ItemDefinition definition,
+        ushort slot,
+        ushort warehouseCapacity) => listType switch
+    {
+        2 => definition.InventoryCategory != ItemInventoryCategory.Avatar
+            && slot < warehouseCapacity,
+        3 => definition.InventoryCategory == ItemInventoryCategory.Creature
+            && CharacterCreatureInventoryLayout.TryGetEquippedSlot(
+                definition,
+                out var equippedSlot)
+            && equippedSlot == MapCreatureEndpointSlot(3, slot),
+        7 => definition.InventoryCategory == ItemInventoryCategory.Creature
+            && CharacterCreatureInventoryLayout.IsCompatibleSlot(definition, slot),
+        _ => false
+    };
+
+    internal static bool IsCreatureMoveSlotValid(
+        byte listType,
+        ushort slot,
+        ushort warehouseCapacity) =>
+        listType switch
+        {
+            2 => slot < warehouseCapacity,
+            3 => slot is >= CharacterCreatureInventoryLayout.ClientEquippedCreatureSlot
+                and <= CharacterCreatureInventoryLayout.ClientEquippedArtifactGreenSlot,
+            7 => CharacterCreatureInventoryLayout.IsInventorySlot(slot),
+            _ => false
+        };
+
+    internal static Dictionary<ushort, CharacterItemRecord> GetCreatureMoveSpace(
+        byte listType,
+        Dictionary<ushort, CharacterItemRecord> warehouse,
+        Dictionary<ushort, CharacterItemRecord> creatureInventory) =>
+        listType is 3 or 7 ? creatureInventory : warehouse;
+
+    internal static ushort MapCreatureEndpointSlot(byte listType, ushort slot) =>
+        listType == 3
+            ? slot switch
+            {
+                CharacterCreatureInventoryLayout.ClientEquippedCreatureSlot =>
+                    CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+                CharacterCreatureInventoryLayout.ClientEquippedArtifactRedSlot =>
+                    CharacterCreatureInventoryLayout.EquippedArtifactRedSlot,
+                CharacterCreatureInventoryLayout.ClientEquippedArtifactBlueSlot =>
+                    CharacterCreatureInventoryLayout.EquippedArtifactBlueSlot,
+                CharacterCreatureInventoryLayout.ClientEquippedArtifactGreenSlot =>
+                    CharacterCreatureInventoryLayout.EquippedArtifactGreenSlot,
+                _ => ushort.MaxValue
+            }
+            : slot;
+
+    internal static ushort MapCreatureStorageSlotToClient(ushort slot) => slot switch
+    {
+        CharacterCreatureInventoryLayout.EquippedCreatureSlot =>
+            CharacterCreatureInventoryLayout.ClientEquippedCreatureSlot,
+        CharacterCreatureInventoryLayout.EquippedArtifactRedSlot =>
+            CharacterCreatureInventoryLayout.ClientEquippedArtifactRedSlot,
+        CharacterCreatureInventoryLayout.EquippedArtifactBlueSlot =>
+            CharacterCreatureInventoryLayout.ClientEquippedArtifactBlueSlot,
+        CharacterCreatureInventoryLayout.EquippedArtifactGreenSlot =>
+            CharacterCreatureInventoryLayout.ClientEquippedArtifactGreenSlot,
+        _ => ushort.MaxValue
+    };
+
+    internal static ushort FindFreeInventorySlot(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
+        ushort firstSlot,
+        int exclusiveUpperBound = 256)
+    {
+        for (var slot = (int)firstSlot; slot < exclusiveUpperBound; slot++)
+        {
+            if (!inventory.ContainsKey((ushort)slot))
+            {
+                return (ushort)slot;
+            }
+        }
+
+        return ushort.MaxValue;
+    }
+
+    // ---- Inventory-space validators and slot search helpers (migrated
+    // verbatim; chain branches call them through delegating wrappers).
+
+    internal static bool TryGetInventorySpace(
+        byte listType,
+        Dictionary<ushort, CharacterItemRecord> mainInventory,
+        Dictionary<ushort, CharacterItemRecord> avatarInventory,
+        Dictionary<ushort, CharacterItemRecord> equippedInventory,
+        Dictionary<ushort, CharacterItemRecord> warehouseInventory,
+        out Dictionary<ushort, CharacterItemRecord> space)
+    {
+        if (listType == 0)
+        {
+            space = mainInventory;
+            return true;
+        }
+
+        if (listType == 3)
+        {
+            space = equippedInventory;
+            return true;
+        }
+
+        if (listType == 1)
+        {
+            space = avatarInventory;
+            return true;
+        }
+
+        if (listType == 2)
+        {
+            space = warehouseInventory;
+            return true;
+        }
+
+        space = null!;
+        return false;
+    }
+
+    internal static bool IsInventorySlotValid(
+        byte listType,
+        ushort slot,
+        ushort warehouseCapacity) => listType switch
+    {
+        0 => CharacterInventoryLayout.IsMainItemSlot(slot),
+        1 => CharacterAvatarInventoryLayout.IsBagSlot(slot),
+        2 => slot < warehouseCapacity,
+        3 => slot < 23,
+        _ => false
+    };
+
+    internal bool IsCompatibleMainInventorySlot(
+        CharacterItemRecord item,
+        ushort slot) =>
+        itemCatalog.TryGetDefinition(item.ItemId, out var definition)
+        && definition.InventoryCategory is not (
+            ItemInventoryCategory.Avatar or ItemInventoryCategory.Creature)
+        && CharacterInventoryLayout.IsCompatibleSlot(definition, slot);
+
+    internal bool IsCompatibleInventorySlot(
+        byte listType,
+        CharacterItemRecord item,
+        ushort slot,
+        ushort warehouseCapacity)
+    {
+        if (!itemCatalog.TryGetDefinition(item.ItemId, out var definition))
+        {
+            return false;
+        }
+
+        return listType switch
+        {
+            0 => definition.InventoryCategory is not (
+                    ItemInventoryCategory.Avatar or ItemInventoryCategory.Creature)
+                && CharacterInventoryLayout.IsCompatibleSlot(definition, slot),
+            1 => definition.InventoryCategory == ItemInventoryCategory.Avatar
+                && CharacterAvatarInventoryLayout.IsBagSlot(slot),
+            2 => definition.InventoryCategory != ItemInventoryCategory.Avatar
+                && slot < warehouseCapacity,
+            3 when CharacterAvatarInventoryLayout.IsWornSlot(slot) =>
+                CharacterAvatarInventoryLayout.IsCompatibleWornSlot(definition, slot),
+            3 => slot < 23
+                && definition.InventoryCategory == ItemInventoryCategory.Equipment,
+            _ => false
+        };
+    }
+
+    internal ushort FindFreeCompatibleMainInventorySlot(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
+        CharacterItemRecord item)
+    {
+        if (!itemCatalog.TryGetDefinition(item.ItemId, out var definition))
+        {
+            return ushort.MaxValue;
+        }
+
+        if (CharacterInventoryLayout.TryGetCategoryRange(
+                definition.InventoryCategory,
+                out var start,
+                out var end))
+        {
+            var categorySlot = FindFreeInventorySlot(inventory, start, end);
+            if (categorySlot != ushort.MaxValue)
+            {
+                return categorySlot;
+            }
+        }
+
+        return FindFreeInventorySlot(
+            inventory,
+            CharacterInventoryLayout.QuickSlotStart,
+            CharacterInventoryLayout.QuickSlotEnd);
+    }
+
+    internal ushort FindPartialStackSlot(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
+        CharacterItemRecord item,
+        byte listType,
+        ushort? excludedSlot)
+    {
+        if (listType is not (0 or 2)
+            || !itemCatalog.TryGetDefinition(item.ItemId, out var definition)
+            || !definition.IsStackable
+            || listType == 2
+                && definition.InventoryCategory == ItemInventoryCategory.Avatar)
+        {
+            return ushort.MaxValue;
+        }
+
+        var stackLimit = CharacterInventoryPlanner.GetStackLimit(definition);
+        return inventory.Values
+            .Where(candidate => candidate.Slot != excludedSlot
+                && candidate.ItemId == item.ItemId
+                && candidate.State == item.State
+                && candidate.Durability == item.Durability
+                && candidate.SealState == item.SealState
+                && candidate.CountOrValue < stackLimit
+                && (listType != 0
+                    || CharacterInventoryLayout.IsCompatibleSlot(
+                        definition,
+                        candidate.Slot)))
+            .OrderBy(candidate => candidate.Slot)
+            .Select(candidate => candidate.Slot)
+            .DefaultIfEmpty(ushort.MaxValue)
+            .First();
+    }
+
+}

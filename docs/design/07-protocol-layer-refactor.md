@@ -539,7 +539,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | `ConnectionContext` 暂无 `Services` 成员(§4.2) | handler 依赖走构造注入,无 DI 容器可挂;出现真实消费者(泵层/装配期)再加 |
 | U3 阶段门槛:迁移期由分发器执行,门槛不合格**回落旧分支**(按原拒绝路径应答);handler 内同时保留登记的门槛语义 | 迁移期字节保真最稳妥;清退旧分支(R6)后 handler 自含成为唯一权威 |
 | 注册表在 `ExecuteAsync` 监听器启动前装配,而非类型构造期 | 装配依赖实例字段(构建器等);失败仍在启动期抛出(§3 I5 不变) |
-| 基建目录 `Network/Dispatch|Sessions|Outbound|Timers|Parsers|Builders` | §4.1 分层图的落地名;4.8.3 映射表只覆盖 handler 组目录,此处登记防歧义 |
+| 基建目录 `Network/{Dispatch,Sessions,Outbound,Timers,Parsers,Builders,Core,Protocol}` | §4.1 分层图的落地名;4.8.3 映射表只覆盖 handler 组目录,此处登记防歧义。`Core`=通用工具(加密/解密/名称枚举/日志明文/PVF 读取/包基元/Tap 接口),`Protocol`=协议核心(分帧/游戏与入口引擎/UDP 数据报协议),镜参考项目 `Network/{Core,Protocol}` 两极 |
 | `CompoundItemReplayEntry` 从 EntranceService 私有嵌套记录迁至 `Game/Compound/`(public) | 状态域类需引用;属组织层搬迁,字节语义不变 |
 | 状态域以**公共字段**而非属性承载 | §4.3"字段一一对应"的字面落地;ref 排空语义所需 |
 
@@ -558,6 +558,10 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **Parser 外置续**:InventoryParsers(5 解析器 + ConsumeItemsRequestEntry)、ShopParsers(5 解析器 + CeraShopPurchaseRequestItem);SelfTests 反射目标同步更新为解析器新家。
 - **目录形态对齐 §4.8.3 三层镜像**:全部 `<组>Parsers` 从 `Network/Handlers/<组>/` 提升至与 Handlers 平级的 `Network/Parsers/<组>/`(Chat/Login/Characters/Mailbox/Shop/Inventory 六个同名目录;共享长度前缀读取器 ClientBodyParsers 置 Parsers 根),与参考项目 `Network/{Handlers,Parsers,Builders}` 三层形态一致。
 - **CharacterPacketBuilders 按功能块拆为 partial**:主文件保留共享编码与物品投影,功能块分为 Roster/Skills/Inventory/Initialization/Creature/Town/Mail/Premium 八个 partial 文件(单文件 41-173 行),调用点零改动。
+- **`Protocol/` 迁入 `Network/` 并按参考项目两极分治**(2026-09-29,镜 `Network/{Core,Protocol}`):
+  - `Network/Protocol/`(协议核心,字节冷冻不变):PacketFrame/GameProtocolEngine/EntranceMetadata/EntranceProtocolEngine/GameDatagramProtocol/LegacyDatagramProtocol;
+  - `Network/Core/`(通用工具统一管理):Crc32/EntranceCrypto/GameClientPayloadCipher/GameServerPacket(包基元+GamePayloadCipher 服务端加解密)/PacketNames/PacketPlainText/PvfArchiveReader(非协议格式读取工具,仅自测消费),以及自 `Tap/` 迁入的 IPacketTapSink(空目录 `Tap/` 移除);
+  - 命名空间保持不变(`DFLegacy.Protocol`),调用点零改动;§1.3/§4.1 引用 `Protocol/` 的物理位置以本节为准,字节冻结(N2/I4)不受影响。
 - **共享助手归口**:ChannelSessionSenders 承接库存移动发送器/精灵移动规划簇/库存空间校验族(FindFreeInventorySlot/TryGetInventorySpace/IsInventorySlotValid/兼容槽与部分堆叠搜索)、SendPremiumServiceInfo/SendTownFatigueState;CreatureInventoryMovePlan 迁至 Game/Inventory/。
 - **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;按 4.7 单文件上限的子流程拆分作为遗留项(见 11.4)。
 - **规模**:EntranceService.cs 14,832 → 5,128 行;累计挂载协议 43/71;SelfTests 20 套件全量通过(真机冒烟仍为遗留项)。

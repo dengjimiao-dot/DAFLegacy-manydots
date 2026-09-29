@@ -63,9 +63,10 @@ public sealed class EntranceService(
     // Protocol-layer dispatch (07 §4.6): mounted command handlers take over
     // their protocol exclusively; unmounted ids keep flowing through the
     // legacy branch chain until their group migrates.
-    private readonly GameCommandRegistry _gameCommands =
-        BuildGameCommandRegistry(options, loggerFactory);
+    private GameCommandRegistry _gameCommands = null!;
     private readonly GameCommandDispatcher _gameCommandDispatcher = new(logger);
+    private readonly CharacterPacketBuilders _characterPacketBuilders =
+        new(store, itemCatalog, pvpExperienceCatalog);
     private EntranceContent? _content;
     private static readonly Encoding ClientEncoding = CreateClientEncoding();
     private static readonly GameSkillEntry[] DebugSwordmanSkills =
@@ -109,23 +110,10 @@ public sealed class EntranceService(
                 new(1, 1, 0), new(51, 1, 1)
             ]
         };
-    private static readonly (ushort ItemId, uint Count)[] TestStarterInventoryItems =
-    [
-        (8, 100), (27093, 1), (14873, 1), (12874, 1),
-        (10874, 1), (16873, 1), (18874, 1), (22021, 1),
-        (20093, 1), (24032, 1), (27546, 1), (28223, 1),
-        (3037, 1000)
-    ];
-    private static readonly (ushort ItemId, uint Count)[] NormalStarterInventoryItems =
-    [
-        (26043, 1),
-        (8, 100)
-    ];
-
     // Assembly of the dispatch table (07 §4.6): handler construction is
     // manual because every dependency is already a constructor parameter
     // here; a duplicate registration throws before any listener starts.
-    private static GameCommandRegistry BuildGameCommandRegistry(
+    private GameCommandRegistry BuildGameCommandRegistry(
         ServerOptions options,
         ILoggerFactory loggerFactory)
     {
@@ -133,6 +121,16 @@ public sealed class EntranceService(
         registry.Register("session.connection", new CheckConnectionHandler(options));
         registry.Register("session.connection", new ExitHandler(loggerFactory.CreateLogger<ExitHandler>()));
         registry.Register("session.connection", new AntibotHandler(loggerFactory.CreateLogger<AntibotHandler>()));
+        registry.Register("session.login", new LoginHandler(store, loggerFactory.CreateLogger<LoginHandler>()));
+        registry.Register("session.login", new SetUdpEndpointHandler(gameplayDatagram, partyCoordinator));
+        registry.Register("progression.character", new GetUserInfoHandler(_characterPacketBuilders));
+        registry.Register("progression.character", new CreateCharacterHandler(store, _characterPacketBuilders));
+        registry.Register("progression.character", new DeleteCharacterHandler(store, _characterPacketBuilders));
+        registry.Register("progression.character", new ReturnSelectCharacterHandler(
+            store,
+            characterSessions,
+            partyCoordinator,
+            loggerFactory.CreateLogger<ReturnSelectCharacterHandler>()));
         return registry;
     }
 
@@ -143,6 +141,10 @@ public sealed class EntranceService(
             logger.LogWarning("Entrance listener is disabled.");
             return;
         }
+
+        // Assemble the dispatch table before any listener starts: a duplicate
+        // registration throws here and fails the service (07 §3 I5).
+        _gameCommands = BuildGameCommandRegistry(options, loggerFactory);
 
         // Startup listing of the mounted dispatch table (07 §4.6): one line
         // per registered group so a mis-mounted protocol is visible at boot.
@@ -840,23 +842,11 @@ public sealed class EntranceService(
                     LogPacket("TX", runtimeSession, creatureResponse);
                 }
 
-                async Task SaveCurrentLocationAsync(CancellationToken cancellationToken)
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    session.Character.Active = await store.SaveCharacterLocationAsync(
-                        session.Login.AccountName,
-                        session.Character.Active.Id,
-                        session.Character.TownId,
-                        session.Character.AreaId,
-                        session.Character.X,
-                        session.Character.Y,
-                        session.Character.Direction,
-                        cancellationToken) ?? session.Character.Active;
-                }
+                Task SaveCurrentLocationAsync(CancellationToken cancellationToken) =>
+                    SessionLocationPersistence.SaveCurrentLocationAsync(
+                        store,
+                        session,
+                        cancellationToken);
 
                 async Task EnableEmptyBossRoomSettlementAsync(DungeonRoomDefinition room)
                 {
@@ -2581,197 +2571,6 @@ public sealed class EntranceService(
                         }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.LoginCommand)
-                        {
-                            if (!TryReadLoginCredentials(
-                                    request.Body,
-                                    out var loginName,
-                                    out var loginPassword))
-                            {
-                                var malformedLoginError = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 2);
-                                await malformedLoginError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, malformedLoginError);
-                                logger.LogWarning(
-                                    "Rejected malformed login command for channel session {SessionId}.",
-                                    runtimeSession.Id);
-                                continue;
-                            }
-
-                            var authenticated = loginPassword is not null
-                                ? await store.AuthenticateAsync(
-                                    loginName,
-                                    loginPassword,
-                                    serverToken)
-                                : await store.FindAccountAsync(loginName, serverToken);
-                            if (authenticated is null)
-                            {
-                                var loginError = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 2);
-                                await loginError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, loginError);
-                                continue;
-                            }
-
-                            session.Login.AccountName = authenticated.UserName;
-                            session.Login.AccountUid = authenticated.AccountUid;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.SetUdpEndpointCommand)
-                        {
-                var parsed = GameDatagramProtocol.TryParseNatReport(
-                    request.Body,
-                    out var natReport);
-                if (parsed)
-                {
-                    gameplayDatagram.SetNatReport(
-                        runtimeSession.Id,
-                        natReport);
-                    // Party members need the fresh endpoint right away or
-                    // their client keeps the "连接中" connecting status.
-                    partyCoordinator.RefreshPartyEndpoints(runtimeSession.Id);
-                }
-
-                            var endpointReply = parsed
-                                ? GameProtocolEngine.CreateCommandReply(request, success: true)
-                                : GameProtocolEngine.CreateCommandError(request, errorCode: 2);
-                            await endpointReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, endpointReply);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.GetUserInfoCommand)
-                        {
-                            var userInfo = await CreateUserInfoAsync(session.Login.AccountUid, serverToken);
-                            await userInfo.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, userInfo);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId
-                                == GameProtocolEngine.ReturnSelectCharacterCommand)
-                        {
-                            if (session.Character.Active is { TutorialStarted: false })
-                            {
-                                var tutorialError = GameProtocolEngine.CreateCommandError(
-                                    request,
-                                    errorCode: 4);
-                                await tutorialError.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, tutorialError);
-                                logger.LogInformation(
-                                    "Rejected return to character selection for {CharacterId} until the tutorial is complete.",
-                                    session.Character.Active.Id);
-                                continue;
-                            }
-
-                            var returningCharacterId = session.Character.Active?.Id;
-                            if (session.Character.Active is not null)
-                            {
-                                if (session.Dungeon.CurrentDungeonId != 0 && session.Dungeon.MonsterExperienceGained > 0)
-                                {
-                                    session.Character.Active = await store.SaveCharacterProgressionAsync(
-                                        session.Login.AccountName,
-                                        session.Character.Active.Id,
-                                        session.Character.Active.Level,
-                                        session.Character.Active.Experience,
-                                        session.Skill.CurrentSp,
-                                        serverToken) ?? session.Character.Active;
-                                }
-
-                                // Command 7 is the town menu's "Select
-                                // Character" action. Persist the last stable
-                                // town position before detaching the active
-                                // character from this channel session.
-                                await SaveCurrentLocationAsync(serverToken);
-                            }
-
-                            // Leaving the game world detaches town presence
-                            // and party membership before the lease goes.
-                            partyCoordinator.OnSessionClosed(runtimeSession.Id);
-                            characterSessions.Release(session.Character.Lease);
-                            session.Character.Lease = null;
-                            session.Character.Active = null;
-                            session.Character.LastProjectedCombatStats = null;
-                            session.Premium.ExpiryUnix.Clear();
-                            session.Inventory.Main.Clear();
-                            session.Inventory.Avatar.Clear();
-                            session.Inventory.Equipped.Clear();
-                            session.Inventory.Warehouse.Clear();
-                            session.Inventory.WarehouseCapacity = CharacterWarehouseProgression.InitialCapacity;
-                            session.Skill.Current.Clear();
-                            session.Quest.Current.Clear();
-                            session.Quest.CompletedIds.Clear();
-                            session.Skill.CurrentSp = 0;
-                            session.Currency.Gold = 0;
-                            session.Currency.Cash = 0;
-                            session.Currency.VictoryPoints = 0;
-                            session.Dungeon.CurrentDungeonId = 0;
-                            session.Dungeon.Layout = null;
-                            session.Dungeon.Room = null;
-                            session.Dungeon.InSelection = false;
-                            session.Dungeon.RoomX = 0;
-                            session.Dungeon.RoomY = 0;
-                            session.Dungeon.Difficulty = 0;
-                            session.Dungeon.AliveMonsters.Clear();
-                            session.Dungeon.ReportedBossDeaths.Clear();
-                            session.Dungeon.BossCascadeDeaths.Clear();
-                            session.Dungeon.DestroyedPassiveObjects.Clear();
-                            session.Dungeon.GroundItems.ResetDungeon();
-                            session.Dungeon.Run.Stop();
-                            session.Dungeon.TutorialActive = false;
-                            session.Dungeon.CharacterAlive = true;
-                            session.Dungeon.DeathGeneration++;
-                            session.Dungeon.DeathTimeout = null;
-                            session.Dungeon.ClearEnabled = false;
-                            session.Dungeon.ResultSent = false;
-                            session.Dungeon.CardLayoutSent = false;
-                            session.Dungeon.CardRightsSent = false;
-                            session.Dungeon.CardSelectionDeadline = null;
-                            session.Dungeon.ClearReward = null;
-                            session.Dungeon.FreeCardIndex = null;
-                            session.Dungeon.GoldCardIndex = null;
-                            session.Dungeon.MonsterExperienceGained = 0;
-                            session.Dungeon.ClearExperience = null;
-                            session.Dungeon.ConsumedFatigue = 0;
-                            session.Dungeon.CreatureStomachCheckpointSeconds = null;
-                            session.Dungeon.LeveledUp = false;
-                            session.Dungeon.NormalMonsterKills = 0;
-                            session.Dungeon.ChampionMonsterKills = 0;
-                            session.Dungeon.BossMonsterKills = 0;
-                            session.Dungeon.ChampionRewardOrdinal = 0;
-                            session.Character.MovementValue = 100;
-                            session.Character.AreaRosterInitialized = false;
-                            session.Weakness.StaminaStateInitialized = false;
-
-                            var returnReply = GameProtocolEngine.CreateCommandReply(
-                                request,
-                                success: true);
-                            await returnReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, returnReply);
-
-                            // The 60CN client refreshes the roster itself with a
-                            // GET_USERINFO (CMD 8) right after this acknowledgement;
-                            // pushing the roster here too arrives as a second list
-                            // and makes the select-screen event notice pop up twice.
-                            logger.LogInformation(
-                                "Returned character {CharacterId} to character selection for account {Account}.",
-                                returningCharacterId,
-                                session.Login.AccountName);
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.SelectCharacterCommand)
                         {
                             var characters = await store.GetCharactersAsync(session.Login.AccountUid, serverToken);
@@ -2912,7 +2711,7 @@ public sealed class EntranceService(
                                 && definition.InventoryCategory == ItemInventoryCategory.Creature;
 
                             var savedInventory = character.Inventory
-                                ?? CreateStarterInventory(session.Login.AccountUid);
+                                ?? _characterPacketBuilders.CreateStarterInventory(session.Login.AccountUid);
                             var savedWarehouse = character.Warehouse ?? [];
                             var residualWarehouseUpgrades =
                                 CharacterWarehouseProgression.SettleUpgradeItems(
@@ -12606,69 +12405,6 @@ public sealed class EntranceService(
                         }
 
                         if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.DeleteCharacterCommand)
-                        {
-                            var deleted = false;
-                            var slot = (byte)0;
-                            if (TryReadDeleteCharacter(request.Body, out slot))
-                            {
-                                var delete = await store.DeleteCharacterAsync(
-                                    session.Login.AccountUid,
-                                    slot,
-                                    serverToken);
-                                deleted = delete.Deleted;
-                            }
-
-                            var deleteReply = deleted
-                                ? GameProtocolEngine.CreateDeleteCharacterReply(slot)
-                                : GameProtocolEngine.CreateCommandError(request, errorCode: 2);
-                            await deleteReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, deleteReply);
-
-                            if (deleted)
-                            {
-                                var userInfo = await CreateUserInfoAsync(session.Login.AccountUid, serverToken);
-                                await userInfo.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, userInfo);
-                            }
-
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
-                            && request.ProtocolId == GameProtocolEngine.CreateCharacterCommand)
-                        {
-                            var created = false;
-                            if (TryReadCreateCharacter(request.Body, out var job, out var nameBytes))
-                            {
-                                var create = await store.CreateCharacterAsync(
-                                    session.Login.AccountUid,
-                                    new CreateCharacterRequest(ClientEncoding.GetString(nameBytes), job, 0, 1),
-                                    serverToken);
-                                created = create.Created;
-                            }
-
-                            var createReply = created
-                                ? GameProtocolEngine.CreateCommandReply(request, success: true)
-                                : GameProtocolEngine.CreateCommandError(request, errorCode: 2);
-                            await createReply.WriteAsync(stream, serverToken);
-                            Interlocked.Increment(ref runtimeSession.SentPackets);
-                            LogPacket("TX", runtimeSession, createReply);
-
-                            if (created)
-                            {
-                                var userInfo = await CreateUserInfoAsync(session.Login.AccountUid, serverToken);
-                                await userInfo.WriteAsync(stream, serverToken);
-                                Interlocked.Increment(ref runtimeSession.SentPackets);
-                                LogPacket("TX", runtimeSession, userInfo);
-                            }
-
-                            continue;
-                        }
-
-                        if (request.Type == GameProtocolEngine.CommandPacketType
                             && request.ProtocolId == GameProtocolEngine.AntibotCommand)
                         {
                             // Fire-and-forget client report: the heartbeat counter
@@ -12820,35 +12556,6 @@ public sealed class EntranceService(
         }
     }
 
-    private async Task<GameServerPacket> CreateUserInfoAsync(uint accountUidValue, CancellationToken cancellationToken)
-    {
-        var characters = await store.GetCharactersAsync(accountUidValue, cancellationToken);
-        var summaries = characters
-            .Take(MaximumTransferRoster.MaximumVisibleCharacters)
-            .Select(character => new GameCharacterSummary(
-                character.Slot,
-                EncodeCharacterName(character.Name),
-                (byte)Math.Clamp(character.Job, byte.MinValue, byte.MaxValue),
-                (byte)Math.Clamp(character.GrowType, 0, 15),
-                (byte)Math.Clamp(character.Level, 1, byte.MaxValue),
-                (character.Equipment ?? [])
-                    .Where(item => item.ItemId != 0
-                        && (item.Slot == 9
-                            || itemCatalog.TryGetDefinition(
-                                item.ItemId,
-                                out var definition)
-                            && CharacterAvatarInventoryLayout.IsCompatibleWornSlot(
-                                definition,
-                                item.Slot)))
-                    .Select(ToGameInventoryEntry)
-                    .ToArray(),
-                character.CharacterNo,
-                (byte)Math.Clamp(character.AwakeningType, byte.MinValue, byte.MaxValue),
-                pvpExperienceCatalog.GetGradeForPoints(character.PvpPoints)))
-            .ToArray();
-        return GameProtocolEngine.CreateUserInfo(summaries);
-    }
-
     private static int ToIncreaseStatusWireAmount(IncreaseStatusEffect effect) =>
         effect.Type is IncreaseStatusType.SkillPoints or IncreaseStatusType.Experience
             ? effect.Amount
@@ -12921,25 +12628,6 @@ public sealed class EntranceService(
             panelSkills);
         yield return GameProtocolEngine.CreateAcceptableQuestList(acceptableQuestIds);
     }
-
-    internal static IReadOnlyList<(ushort ItemId, uint Count)>
-        GetStarterInventoryItems(uint accountUidValue) =>
-        AccountUidRules.IsTest(accountUidValue)
-            ? TestStarterInventoryItems
-            : AccountUidRules.IsNormal(accountUidValue)
-                ? NormalStarterInventoryItems
-                : [];
-
-    private List<CharacterItemRecord> CreateStarterInventory(uint accountUidValue) =>
-        GetStarterInventoryItems(accountUidValue)
-            .Select((item, index) => CharacterItemIdentity.Ensure(
-                new CharacterItemRecord(
-                    Slot: checked((ushort)(index + 9)),
-                    ItemId: item.ItemId,
-                    CountOrValue: item.Count,
-                    Durability: itemCatalog.GetInitialDurability(item.ItemId)),
-                itemCatalog))
-            .ToList();
 
     private bool TryPlanLegacyPremiumContractRedemption(
         IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
@@ -13136,17 +12824,8 @@ public sealed class EntranceService(
         yield return CreateMainInventoryPacket(gold, victoryPoints, inventory);
     }
 
-    private GameInventoryEntry ToGameInventoryEntry(CharacterItemRecord item)
-    {
-        var wire = CharacterItemWireProjection.Project(item, itemCatalog);
-        return new GameInventoryEntry(
-            item.Slot,
-            item.ItemId,
-            wire.AddInfo,
-            wire.ItemAttr,
-            wire.Durability,
-            wire.SealState);
-    }
+    private GameInventoryEntry ToGameInventoryEntry(CharacterItemRecord item) =>
+        _characterPacketBuilders.ToGameInventoryEntry(item);
 
     private GameMailEntry ToGameMailEntry(CharacterMailRecord mail)
     {
@@ -14361,16 +14040,8 @@ public sealed class EntranceService(
         byte[] MessageBytes,
         byte[] TargetNameBytes);
 
-    private static byte[] EncodeCharacterName(string name)
-    {
-        var bytes = ClientEncoding.GetBytes(name);
-        if (bytes.Length is > 0 and < 31)
-        {
-            return bytes;
-        }
-
-        return Encoding.ASCII.GetBytes(name.Length == 0 ? "DFLegacy" : name[..Math.Min(name.Length, 20)]);
-    }
+    private static byte[] EncodeCharacterName(string name) =>
+        CharacterPacketBuilders.EncodeCharacterName(name);
 
     internal static bool TryReadSendMessage(
         byte[] body,
@@ -14459,69 +14130,6 @@ public sealed class EntranceService(
 
         nameBytes = span.Slice(sizeof(uint), (int)nameLength).ToArray();
         return !nameBytes.Contains((byte)0);
-    }
-
-    internal static bool TryReadLoginCredentials(
-        byte[] body,
-        out string name,
-        out string? password)
-    {
-        name = "test";
-        password = null;
-        if (!TryReadLengthPrefixedBytes(body, 2, out var bytes, out var offset))
-        {
-            return false;
-        }
-
-        name = ClientEncoding.GetString(bytes);
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return false;
-        }
-
-        if (offset == body.Length)
-        {
-            return true;
-        }
-
-        if (!TryReadLengthPrefixedBytes(body, offset, out var passwordBytes, out _))
-        {
-            return false;
-        }
-
-        // The current launcher-backed client appends machine/session metadata
-        // after the length-prefixed password. Authentication only consumes the
-        // two credential fields; requiring the password to end at the packet
-        // boundary silently left the channel session on its former test-account
-        // defaults.
-        password = ClientEncoding.GetString(passwordBytes);
-        return !string.IsNullOrEmpty(password);
-    }
-
-    private static bool TryReadCreateCharacter(byte[] body, out byte job, out byte[] nameBytes)
-    {
-        job = 0;
-        nameBytes = [];
-        if (body.Length < 7)
-        {
-            return false;
-        }
-
-        job = body[2];
-        return TryReadLengthPrefixedBytes(body, 3, out nameBytes, out _)
-            && nameBytes.Length is > 0 and < 31;
-    }
-
-    private static bool TryReadDeleteCharacter(byte[] body, out byte slot)
-    {
-        slot = 0;
-        if (body.Length < 3)
-        {
-            return false;
-        }
-
-        slot = body[2];
-        return slot < MaximumTransferRoster.MaximumVisibleCharacters;
     }
 
     private static bool TryReadMailboxExtract(byte[] body, out uint mailId)
@@ -14615,26 +14223,8 @@ public sealed class EntranceService(
         byte[] source,
         int offset,
         out byte[] value,
-        out int nextOffset)
-    {
-        value = [];
-        nextOffset = offset;
-        if (offset < 0 || source.Length - offset < sizeof(uint))
-        {
-            return false;
-        }
-
-        var length = BinaryPrimitives.ReadUInt32LittleEndian(source.AsSpan(offset, sizeof(uint)));
-        offset += sizeof(uint);
-        if (length > int.MaxValue || source.Length - offset < (int)length)
-        {
-            return false;
-        }
-
-        value = source.AsSpan(offset, (int)length).ToArray();
-        nextOffset = offset + (int)length;
-        return true;
-    }
+        out int nextOffset) =>
+        ClientBodyParsers.TryReadLengthPrefixedBytes(source, offset, out value, out nextOffset);
 
     private static Encoding CreateClientEncoding()
     {

@@ -4276,12 +4276,12 @@ try
         && AccountUidRules.IsReserved(10_000_001)
         && AccountUidRules.IsNormal(AccountUidRules.NormalUidStart),
         "UID boundary classification keeps the inclusive test limit and reserved interval explicit");
-    var firstTestUidStarterItems = EntranceService.GetStarterInventoryItems(1);
-    var lastTestUidStarterItems = EntranceService.GetStarterInventoryItems(
+    var firstTestUidStarterItems = CharacterPacketBuilders.GetStarterInventoryItems(1);
+    var lastTestUidStarterItems = CharacterPacketBuilders.GetStarterInventoryItems(
         AccountUidRules.MaximumTestUid);
-    var reservedUidStarterItems = EntranceService.GetStarterInventoryItems(
+    var reservedUidStarterItems = CharacterPacketBuilders.GetStarterInventoryItems(
         AccountUidRules.MaximumTestUid + 1);
-    var normalUidStarterItems = EntranceService.GetStarterInventoryItems(
+    var normalUidStarterItems = CharacterPacketBuilders.GetStarterInventoryItems(
         AccountUidRules.NormalUidStart);
     Check(firstTestUidStarterItems.Count == 13
         && lastTestUidStarterItems.SequenceEqual(firstTestUidStarterItems)
@@ -7312,7 +7312,7 @@ var loginPlainBody = new byte[] { 0x78, 0x56, 4, 0, 0, 0, (byte)'t', (byte)'e', 
 var metadataLoginBody = Convert.FromHexString(
     "01000600000073616D706C65060000007365637265740008000000000102030405060700000000");
 Check(
-    EntranceService.TryReadLoginCredentials(
+    LoginParsers.TryReadLoginCredentials(
         metadataLoginBody,
         out var metadataLoginName,
         out var metadataLoginPassword)
@@ -7320,7 +7320,7 @@ Check(
     && metadataLoginPassword == "secret",
     "channel login accepts launcher credentials followed by client machine/session metadata");
 Check(
-    EntranceService.TryReadLoginCredentials(
+    LoginParsers.TryReadLoginCredentials(
         loginPlainBody,
         out var legacyLoginName,
         out var legacyLoginPassword)

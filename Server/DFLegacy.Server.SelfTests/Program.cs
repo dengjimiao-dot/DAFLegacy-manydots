@@ -4378,6 +4378,15 @@ async Task RunProgramInlineSuite()
             && !testCharacter.Character.TutorialStarted,
             "test account custom roles start with zero SP, share the global CharacterNo sequence and require the tutorial");
 
+        // New characters start with zero gold; fund the weakness-recovery flow
+        // before asserting its charging behavior.
+        await identityStore.SaveCharacterInventoryAsync(
+            "test-identity",
+            testCharacter.Character!.Id,
+            gold: 1_000,
+            testCharacter.Character.Inventory ?? [],
+            testCharacter.Character.Equipment ?? []);
+
         var weakenedCharacter = await identityStore.SetCharacterWeaknessRecoveryAsync(
             testCharacter.Character!.Id,
             recovery: 0);

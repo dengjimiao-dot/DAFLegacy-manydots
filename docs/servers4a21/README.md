@@ -10,5 +10,5 @@
 | [servers4a21-01…10](servers4a21-01-login-character.md) | 按系统拆分的参考分册(登录选角 / 背包 / 物品附魔时装 / 副本流程 / 副本特殊 / 城镇技能任务 / 社交组队交易 / 团战 PvP / 商店事件邮件 / 宠物佣兵副职) |
 | [tools/](tools/) | 分册生成脚本与源数据(`build_dispatch_*.py`;源码位置经 `S4A21_ROOT` 环境变量传入,不写死本机路径) |
 
-- 关联:schema 模式参照 [docs/sql/86S4A21_schema.sql](../sql/86S4A21_schema.sql)(与 [60A1 正式基线](../sql/60A1_schema.sql) 的取舍说明见 [design/README.md](../design/README.md) §08 条目)。
+- 关联:schema 模式参照 [docs/sql/86S4A21_schema.sql](../sql/86S4A21_schema.sql)(与 [60A1 正式基线](../sql/act1_schema.sql) 的取舍说明见 [design/README.md](../design/README.md) §08 条目)。
 - 本目录文档中的 file:line 均为整理时点状态,仅作对照;A21 源码不在本仓库,行号不随其演进而更新。

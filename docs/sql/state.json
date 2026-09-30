@@ -7086,7 +7086,7 @@
           "Level": 1,
           "Sp": 500,
           "Cash": 10250,
-          "Gold": 50000,
+          "Gold": 0,
           "Inventory": [
             {
               "Slot": 10,

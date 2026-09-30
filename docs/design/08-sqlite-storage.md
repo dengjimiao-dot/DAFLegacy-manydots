@@ -1,12 +1,11 @@
 # 08 · SQLite 存储迁移（JsonGameStore → SQLite）
 
-- 状态：**草案**（2026-09-28 起草；2026-09-29 基线重构定稿：统称 **60A1**，表设计模式取自 86S4A21、功能面上限兼容早期草案，见 D7；同日审查修订：基线 SQL 移除连接 PRAGMA（D2）、澄清 user_version 互验不变量（D3）、补齐 CHECK 约束（D7））
+- 状态：**草案**（2026-09-28 起草；2026-09-29 基线重构定稿：统称 **60A1**，表设计模式取自 86S4A21、功能面上限兼容早期草案，见 D7；同日审查修订：基线 SQL 移除连接 PRAGMA（D2）、澄清 user_version 互验不变量（D3）、补齐 CHECK 约束（D7）；2026-09-30 修订：删除早期草案留档文件、缺口预留表并入基线（D7/D8），账号资产默认值改为 0）
 - 日期：2026-09-28
 - 上级文档：[04 · 迁移计划](04-migration-plan.md)（§5 Q6 的遗留议题）、[01 · 目标架构](01-target-architecture.md)
 - 关联文档：
   - [02 · 可移植性契约](02-portability-contracts.md)（R5 数据锚点、R7 状态完整落盘）
-  - [docs/sql/60A1_schema.sql](../sql/60A1_schema.sql)（**本次产出的最终基线 schema**：表设计模式取自 86S4A21，功能面上限兼容早期草案；命名统称 60A1）
-  - [docs/sql/60A1_draft_schema.sql](../sql/60A1_draft_schema.sql)（早期 60 版草案；本基线的**功能上限参照**，不再演进）
+  - [docs/sql/act1_schema.sql](../sql/act1_schema.sql)（**本次产出的最终基线 schema**：表设计模式取自 86S4A21，功能面上限兼容早期草案；命名统称 60A1）
   - [docs/sql/86S4A21_schema.sql](../sql/86S4A21_schema.sql)（参照项目 ServerS4A21 的 schema；**表设计模式参考基准**，仅取模式不搬功能）
   - [feature-backfill-plan-vs-s4a21](../servers4a21/feature-backfill-plan-vs-s4a21.md) §2.3（存储层结构性差异对照）
 
@@ -190,14 +189,23 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   hex）、单字段更新变成整包重写。60 物品 16 个字段少且稳定，扁平列 + PacketDumper
   golden 测试在协议层守护字节级行为，职责不混。
 
-### D7 最终 schema：以 docs/sql/60A1_schema.sql 为基线
+### D7 最终 schema：以 docs/sql/act1_schema.sql 为基线
 
-16 张表：`schema_metadata`、`server_settings`、`monster_base_exp`、`accounts`、
+23 张表：`schema_metadata`、`server_settings`、`monster_base_exp`、`accounts`、
 `account_premium`、`characters`、`character_items`、`character_skills`、`character_quests`、
 `character_completed_quests`、`character_dungeon_unlocks`、`character_dungeon_progress`、
 `account_dungeon_progress`、`character_mail`、`character_fatigue`、`character_exp_boost`
-（+ SQLite 自管的 `sqlite_sequence`）。`schema_metadata.baseline_id = 100`（数值，
-`PRAGMA user_version` 同值互验）。
+（以上 16 张为已实现功能面）+ 预留 7 张：`character_friends`、`character_blacklist`、
+`guilds`、`guild_members`、`guild_applications`、`private_stores`、`private_store_items`
+（D8，未实现；另有 SQLite 自管的 `sqlite_sequence`）。
+`schema_metadata.baseline_id = 100`（数值，`PRAGMA user_version` 同值互验）。
+2026-09-30 修订：按「60 基线 SQL 只保留一个文件」的决定删除
+`docs/sql/60A1_draft_schema.sql`（早期草案留档，其功能面已在此前重构中并入基线
+预留列/表），缺口预留表设计直接并入本基线（D8）；账号资产默认值改为 0
+（`accounts.cash`、`characters.gold`，运行时 `JsonGameStore` 记录默认值与
+`CurrencyState` 初始值同步为 0，种子 `data_schema.sql` 随之再生成）。
+2026-09-30 改名：基线 `60A1_schema.sql` → `act1_schema.sql`，种子
+`60A1_seed_test.sql` → `data_schema.sql`（「统称 60A1」的基线代号不变）。
 
 设计原则（2026-09-29 重构定稿）：**表设计模式以 86S4A21 基线为参考骨架，裁剪 60 版
 用不到的功能；功能面上限兼容早期草案**。
@@ -236,6 +244,27 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   `character_mail.{text, is_new, state}`（保管箱状态机 1/2/3）、`characters` 的
   觉醒/师徒/PvP 六列/胜点/预置标记等当前实现的持久化面（逐项落点见 §5 覆盖审计）；
   `server_settings`、`monster_base_exp` 保留待用（GM 倍率/怪物经验，见 §9 Q3）。
+
+### D8 已知缺口功能的预留表设计（并入基线）
+
+- 状态：**表已并入 act1_schema.sql（2026-09-30，原名 60A1_schema.sql），功能
+  实现未开始**；任一系统实现前按 AGENTS.md D1 以 IDA + 抓包定协议格式，
+  经用户确认后动代码（D2）。
+- 沿革：2026-09-30 增设并直接并入基线；同期删除早期草案留档文件
+  （其功能面已在此前重构中并入基线预留列/表）。
+- 新表七张：
+  - `character_friends` / `character_blacklist`：单向关系，character_id 为键，
+    双外键级联——单服无跨服好友，任一方删除角色时双向清理即期望行为；
+  - `guilds` / `guild_members` / `guild_applications`：会长外键不带级联
+    （删除会长角色前须先转让或解散）；rank 档位编码不预设值域；
+  - `private_stores` / `private_store_items`：每角色一店；上架条目按
+    `item_uid` 物理行引用（一件物品全局至多一条上架记录），成交或撤架
+    在同一事务内换主或归位。
+- 明确不设表：组队（会话态）、玩家交易（履约为既有表上的单事务原子交换）、
+  决斗场（结算写 `characters.pvp_*` 聚合列）——与 D7 裁剪审计表/战报表族的
+  取向一致；后续需要留痕时按增量迁移增补。
+- 约束：未逆向定论的值域与格式（公会档位、商店名上限、徽标与公会战格式等）
+  不预设列约束；落地按 D3 增量迁移推进。
 
 ## 5. 已实现功能 → 表覆盖审计
 
@@ -279,7 +308,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   （**不删除**；含密码哈希，处置同现状）。此后库为真源，同名 `state.json` 再出现仅告警不导入。
 - 种子产物：`tools/export_state_sql.py`（Python，随 tools/ 既有工具惯例）把 `state.json`
   转换为**数据种子 SQL** —— 只保留 `test` 账号数据（其余账号一律不进入产物），产出
-  `docs/sql/60A1_seed_test.sql`（全新库先执行 60A1 基线 schema 再应用本文件）；
+  `docs/sql/data_schema.sql`（全新库先执行 60A1 基线 schema 再应用本文件）；
   生成时先在内存库回放产物 SQL 并与源 JSON 逐字段校验，不过不落盘。不再生成二进制
   样例库。M2 的服务端内导入器（运行期导入本地**完整** `state.json`）以同一规则用 C# 落地。
 
@@ -289,7 +318,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 |---|---|
 | `AccountRecord.Id` / `CharacterRecord.Id` / 物品 `InstanceId` | 原样入 `*_uid` / `instance_id`（TEXT） |
 | `AccountUid` / `CharacterNo` | 非 0 直接作主键；为 0（早期数据）按 `AccountUidRules` 现场分配；全部导完后把「下一个可分配 id」推进到已导入最大值之上 |
-| `AccountRecord.Cash` | 入 `accounts.cash`（null → 50,000 默认）。角色镜像与账号值由 `MigrateAccountCashLocked` 保证相等，以账号值为准 |
+| `AccountRecord.Cash` | 入 `accounts.cash`（null → 0，与基线默认一致）。角色镜像与账号值由 `MigrateAccountCashLocked` 保证相等，以账号值为准 |
 | `PremiumServices` / 兼容字段 `PremiumExpireAt` | 归并进 `account_premium`（执行旧 `MigratePremiumServicesLocked` 的归并逻辑后再清源字段） |
 | 五个物品列表 | `Inventory/Equipment/Warehouse/AvatarInventory/CreatureInventory` → `character_items` container = 0/3/2/1/7 |
 | `Quests` / `CompletedQuestIds` / `RewardedQuestIds` | 前者入 `character_quests`；后两者合入 `character_completed_quests`，领过奖的行带 `rewarded_at`（导完即跑一次 `MigrateLegacyQuestRewards` 逻辑补发遗留奖励）。JSON 无完成/领奖时间源，`completed_at`/`rewarded_at` 一律戳导入时刻，二者仅作「是否领过奖」的 NULL 判别，不作时间语义使用 |

@@ -209,7 +209,7 @@ public sealed record CharacterRecord(
     int Level,
     int Sp,
     int Cash,
-    int Gold = 50_000,
+    int Gold = 0,
     List<CharacterItemRecord>? Inventory = null,
     List<CharacterItemRecord>? Equipment = null,
     List<CharacterSkillRecord>? Skills = null,
@@ -393,7 +393,7 @@ public sealed class JsonGameStore(
     ItemCatalog? itemCatalog = null)
 {
     private const byte LegacyOverlordContractServiceType = 17;
-    private const int DefaultAccountCash = 50_000;
+    private const int DefaultAccountCash = 0;
 
     public const string PresetCharacterName = "Berserker";
     public const int PresetCharacterJob = 0;
@@ -765,7 +765,7 @@ public sealed class JsonGameStore(
             GrowType: PresetCharacterGrowType,
             Level: CharacterExperienceCatalog.MaximumLevel,
             Sp: 500,
-            Cash: 50000,
+            Cash: 0,
             Equipment: CreatePresetEquipment(),
             AvatarInventory: CreatePresetAvatarInventory(),
             CreatureInventory: CreatePresetCreatureInventory(),

@@ -8,12 +8,12 @@ state.json）在 SqliteGameStore 落地后由 M2 里程碑提供，本脚本只�
 
 用法：
     python tools/export_state_sql.py --state docs/sql/state.json \
-        --schema docs/sql/60A1_schema.sql [--out docs/sql/60A1_seed_test.sql]
+        --schema docs/sql/act1_schema.sql [--out docs/sql/data_schema.sql]
 
 行为：
   * 只导出 username == 'test' 的账号（含其全部角色/物品/技能/任务/邮件等
     子数据），其余账号一律不进入产物 —— 分发产物不含真实账号数据。
-  * 产物为纯 SQL（单事务）：先对全新库执行 60A1_schema.sql 建表，再应用
+  * 产物为纯 SQL（单事务）：先对全新库执行 act1_schema.sql 建表，再应用
     本文件即得仅含 test 账号的样例库。
   * 落盘前先在内存库回放（schema + 产物 SQL），与源 JSON 逐字段校验
     （行数 + 每账号/每角色/每物品关键列比对），校验不过不写文件。
@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 BASELINE_ID = 100
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 100  # 与基线 PRAGMA user_version 同值（08 文档 D3 互验不变量）
 TEST_USERNAME = "test"
 
 # AccountUidRules（Game/Account/AccountIdentity.cs）
@@ -40,9 +40,10 @@ INVALID_UID = 0
 MAXIMUM_TEST_UID = 10_000_000
 NORMAL_UID_START = 18_000_000
 
-# 缺省值（JsonGameStore.cs 记录默认值）
-DEFAULT_ACCOUNT_CASH = 50_000
-DEFAULT_CHARACTER_GOLD = 50_000
+# 缺省值：账号资产默认 0（与 60A1 基线及 JsonGameStore 记录默认值一致），
+# 仅在 JSON 字段为 null 时使用。
+DEFAULT_ACCOUNT_CASH = 0
+DEFAULT_CHARACTER_GOLD = 0
 FULL_STAMINA = 100  # DungeonWeaknessPolicy.FullStamina
 
 # GameProtocolEngine 契约类型
@@ -466,14 +467,14 @@ def verify(conn: sqlite3.Connection, state: dict, stats: dict, rows: tuple) -> l
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--state", required=True, help="源 state.json 路径")
-    parser.add_argument("--schema", required=True, help="60A1_schema.sql 路径")
+    parser.add_argument("--schema", required=True, help="act1_schema.sql 路径")
     parser.add_argument("--out", help="产物 SQL 路径（默认与 state.json 同目录"
-                                      " 60A1_seed_test.sql）")
+                                      " data_schema.sql）")
     args = parser.parse_args()
 
     state_path = Path(args.state)
     schema_path = Path(args.schema)
-    out_path = Path(args.out) if args.out else state_path.with_name("60A1_seed_test.sql")
+    out_path = Path(args.out) if args.out else state_path.with_name("data_schema.sql")
 
     if not state_path.is_file():
         raise SystemExit(f"找不到 {state_path}")
@@ -514,8 +515,8 @@ def main() -> int:
 -- 适用基线：{BASELINE_ID}（schema_version {SCHEMA_VERSION}）
 --
 -- 用法（全新库）：
---   sqlite3 game.db < docs/sql/60A1_schema.sql
---   sqlite3 game.db < docs/sql/60A1_seed_test.sql
+--   sqlite3 game.db < docs/sql/act1_schema.sql
+--   sqlite3 game.db < docs/sql/data_schema.sql
 --
 -- 运行期规范化（NormalizeCharacterExperience / SettleWarehouseUpgradeItems /
 -- 预置角色刷新）不在本文件内，由服务端启动流程执行。

@@ -39,8 +39,8 @@
 
 - 现状唯一持久化入口 `Persistence/JsonGameStore.cs`(约 5,600 行):单文件 `state.json` 全量重写、无事务边界。
 - 方案:`SqliteGameStore` 同签名替换(公开签名不变,Admin API/EntranceService 零改动);基线 + 增量两段式迁移;`state.json` 单事务一次性导入,失败即回滚删库、原文件保留。里程碑 M0–M3。
-- schema 基线:[docs/sql/60A1_schema.sql](../sql/60A1_schema.sql)(统称 60A1,16 张表;**表设计模式取自 [86S4A21](../sql/86S4A21_schema.sql)、功能面上限兼容 [60A1 早期草案留档](../sql/60A1_draft_schema.sql)**;`lock_state`/`hunt_trigger_format`/`account_dungeon_progress`/`character_exp_boost` 为草案兼容预留;不采纳 86 的 item_core BLOB,物品走扁平列 + item_uid 代理主键)。
-- 代码现状:未动工(无 `SqliteGameStore`/`Microsoft.Data.Sqlite` 引用;`docs/sql/60A1_seed_test.sql` 为 `tools/export_state_sql.py` 导出的 **test 账号数据种子 SQL**,不再生成二进制样例库)。
+- schema 基线:[docs/sql/act1_schema.sql](../sql/act1_schema.sql)(统称 60A1,23 张表,其中 7 张为未实现功能的预留表,见该文档 D8;**表设计模式取自 [86S4A21](../sql/86S4A21_schema.sql)、功能面上限兼容已移除的早期草案**;`lock_state`/`hunt_trigger_format`/`account_dungeon_progress`/`character_exp_boost` 为草案兼容预留;不采纳 86 的 item_core BLOB,物品走扁平列 + item_uid 代理主键)。
+- 代码现状:未动工(无 `SqliteGameStore`/`Microsoft.Data.Sqlite` 引用;`docs/sql/data_schema.sql` 为 `tools/export_state_sql.py` 导出的 **test 账号数据种子 SQL**,不再生成二进制样例库)。
 
 ### 09 · DAF-MCP 协议包实时监听(已实现)
 

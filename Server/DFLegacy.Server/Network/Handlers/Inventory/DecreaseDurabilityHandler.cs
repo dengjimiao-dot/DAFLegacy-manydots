@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// DECREASE_DURABILITY (CMD 51): applies the client-reported durability decay (07 §5 group 9).
 /// </summary>
-public sealed class DecreaseDurabilityHandler(JsonGameStore store,
+public sealed class DecreaseDurabilityHandler(IGameStore store,
     ItemCatalog itemCatalog
     ) : IGameCommandHandler
 {

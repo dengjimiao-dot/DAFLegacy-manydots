@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
@@ -383,18 +384,18 @@ public sealed class ObjectDropCatalog
 }
 
 public sealed class ObjectDropGenerator(
-    ServerOptions options,
+    ServerSettings settings,
     ObjectDropCatalog objectDrops,
     GoldDropCatalog goldDrops)
 {
-    public bool Enabled => options.Drop.Enabled;
+    public bool Enabled => settings.DropEnabled;
 
     public IReadOnlyList<DungeonGeneratedDrop> Generate(
         byte generationLevel,
         byte dungeonDifficulty,
         IDropRandomSource? random = null)
     {
-        if (!options.Drop.Enabled
+        if (!settings.DropEnabled
             || !objectDrops.TryGetProbabilityBand(generationLevel, out var band))
         {
             return [];
@@ -402,7 +403,7 @@ public sealed class ObjectDropGenerator(
 
         random ??= GameRandomSource.Shared;
         var result = new List<DungeonGeneratedDrop>(2);
-        var ratePercent = Math.Max(0, options.Drop.RatePercent);
+        var ratePercent = Math.Max(0, settings.DropRatePercent);
         if (goldDrops.TryGetLevel(generationLevel, out var gold)
             && ShouldGenerate(
                 band.GoldProbability,
@@ -459,7 +460,7 @@ public sealed class ObjectDropGenerator(
             return false;
         }
 
-        if (options.Drop.ForceDrops)
+        if (settings.DropForce)
         {
             return true;
         }

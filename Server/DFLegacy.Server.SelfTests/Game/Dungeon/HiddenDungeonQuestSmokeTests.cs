@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using DFLegacy.Protocol;
 using DFLegacy.Server;
 using Microsoft.Extensions.Logging.Abstractions;
+using DFLegacy.Server.SelfTests.Sqlite;
 
 internal static class HiddenDungeonQuestSmokeTests
 {
@@ -15,7 +16,7 @@ internal static class HiddenDungeonQuestSmokeTests
                 "[quest mapping table]\n4 `->` 524\n116 `->` 672\n42 `->` 255\n43 `->` 4096\n[/quest mapping table]\n");
             var options = new ServerOptions
             {
-                DataPath = Path.Combine(root, "state.json"),
+                DatabasePath = Path.Combine(root, "state.db"),
                 ScriptPvfPath = "",
                 SkillScriptPath = root
             };
@@ -23,7 +24,8 @@ internal static class HiddenDungeonQuestSmokeTests
             var quests = new QuestCatalog(scripts, NullLogger<QuestCatalog>.Instance);
             check(quests.CompletionMapping[116] == 672,
                 "quest completion uses the PVF mapping index rather than the quest ID");
-            var store = new JsonGameStore(options, NullLogger<JsonGameStore>.Instance);
+            TestGameStore.SeedDefaultTestAccount(options);
+            var store = TestGameStore.Create(options);
             await store.InitializeAsync();
             var character = (await store.GetCharactersAsync("test"))[0];
             check(!HiddenDungeonUnlockCatalog.ResolveVisibleDungeonIds([9], character.UnlockedDungeonIds).Contains((ushort)9),
@@ -37,7 +39,7 @@ internal static class HiddenDungeonQuestSmokeTests
             character = (await store.CompleteCharacterQuestAsync("test", character.Id, 116,
                 character.Level, character.Experience, character.Sp, character.Gold,
                 character.Inventory ?? [], [], [116], unlockedDungeonIds: [9]))!;
-            var reloaded = new JsonGameStore(options, NullLogger<JsonGameStore>.Instance);
+            var reloaded = TestGameStore.Create(options);
             await reloaded.InitializeAsync();
             character = (await reloaded.GetCharactersAsync("test"))[0];
             check(character.Quests!.Count == 0 && character.CompletedQuestIds!.Contains(116)

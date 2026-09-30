@@ -6,13 +6,13 @@ internal static class PathResolverSmokeTests
     {
         check(PathResolver.Normalize("..\\Script.pvf") == "../Script.pvf",
             "Normalize rewrites backslashes to forward slashes");
-        check(PathResolver.Normalize("data/state.json") == "data/state.json",
+        check(PathResolver.Normalize("data/state.db") == "data/state.db",
             "Normalize leaves forward slashes untouched");
 
         var anchor = Path.Combine(Path.GetTempPath(), "dflegacy-anchor");
-        var resolved = PathResolver.Resolve("data/state.json", anchor);
+        var resolved = PathResolver.Resolve("data/state.db", anchor);
         check(Path.IsPathRooted(resolved)
-                && resolved.EndsWith(Path.Combine("data", "state.json"), StringComparison.Ordinal),
+                && resolved.EndsWith(Path.Combine("data", "state.db"), StringComparison.Ordinal),
             "Resolve anchors configured paths at the given home");
 
         // 旧的反斜杠配置在同一锚点下解析出同一路径（R3 兼容性）。

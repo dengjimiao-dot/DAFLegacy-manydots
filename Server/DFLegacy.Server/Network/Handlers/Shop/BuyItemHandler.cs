@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// BUY_ITEM (CMD 21): NPC shop purchases with the shared inventory/warehouse overflow path (07 §5 group 10).
 /// </summary>
-public sealed class BuyItemHandler(JsonGameStore store,
+public sealed class BuyItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterSessionRegistry characterSessions,
     CharacterPacketBuilders builders,

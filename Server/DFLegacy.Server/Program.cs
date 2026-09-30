@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using DFLegacy.Protocol;
 using DFLegacy.Server;
+using DFLegacy.Server.Sqlite;
 
 // 组合根：配置与数据锚点（R5）。优先级 --home <path> > DFLEGACY_HOME > BaseDirectory。
 var homeAnchor = PathResolver.ResolveHome(args);
@@ -31,14 +32,29 @@ builder.Configuration.AddJsonFile(
 var options = builder.Configuration.GetSection("DFLegacy").Get<ServerOptions>() ?? new ServerOptions();
 options.HomeDirectory = homeAnchor;
 
-// DAF-MCP 模块运行期加载（docs/design/09-mcp-packet-tap.md §5.3）：默认关闭即
-// 短路；失败只降级 MCP。组合根的 app.Logger 要到 Build 后才有，装配期日志走
-// 同格式的引导记录器。
+// 引导期日志（app.Logger 要到 Build 后才有）：脚本源校验与 MCP 模块装载共用。
 var moduleLogger = LoggerFactory.Create(logging => logging.AddSimpleConsole(console =>
 {
     console.SingleLine = true;
     console.TimestampFormat = "HH:mm:ss ";
-})).CreateLogger("DFLegacy.Server.McpModuleLoader");
+})).CreateLogger("DFLegacy.Server.Startup");
+
+// Script.pvf 是协议与玩法数据的唯一来源（R9）：缺失则任何游戏功能都无从提供。
+// 仅记录错误，不阻断启动；ScriptFileSystem 会回退到目录源或空索引。
+var configuredScriptPvfPath = options.ScriptPvfPath;
+var scriptPvfPath = string.IsNullOrWhiteSpace(configuredScriptPvfPath)
+    ? null
+    : PathResolver.Resolve(configuredScriptPvfPath, options.HomeDirectory);
+if (scriptPvfPath is null || !File.Exists(scriptPvfPath))
+{
+    moduleLogger.LogError(
+        "Script.pvf file not found: {ScriptPvfPath}. Place the archive there or point "
+        + "ScriptPvfPath in server.json at it; script-backed game features stay unavailable.",
+        scriptPvfPath ?? "(ScriptPvfPath is not configured)");
+}
+
+// DAF-MCP 模块运行期加载（docs/design/09-mcp-packet-tap.md §5.3）：默认关闭即
+// 短路；失败只降级 MCP。
 McpModuleLoader.TryAttach(builder.Services, options, moduleLogger);
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -48,8 +64,27 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<ScriptFileSystem>();
+builder.Services.AddSingleton<EntranceChannelDirectory>();
 builder.Services.AddSingleton<RuntimeState>();
-builder.Services.AddSingleton<JsonGameStore>();
+// 持久化：SQLite 短连接 + 增量落盘（docs/design/08-sqlite-storage.md D1/D4）。
+// IGameStore 是消费方唯一认识的门面，实现类不进容器——换存储形态只改这里。
+builder.Services.AddSingleton(serviceProvider =>
+    SqliteGameStore.CreateDatabase(
+        options,
+        serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Sqlite")));
+builder.Services.AddSingleton<SqliteGameStore>();
+builder.Services.AddSingleton<IGameStore>(serviceProvider =>
+    serviceProvider.GetRequiredService<SqliteGameStore>());
+// 全局倍率与掉落开关（server_settings 表）：启动读一次，之后读路径用内存快照。
+// 掉落与经验判定每只怪/每次通关都触发，不能每次查库。
+builder.Services.AddSingleton(serviceProvider =>
+{
+    var database = SqliteGameStore.CreateDatabase(
+        options,
+        serviceProvider.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Sqlite.Settings"));
+    return ServerSettings.Read(database);
+});
 builder.Services.AddSingleton<CharacterSessionRegistry>();
 builder.Services.AddSingleton<PartyCoordinator>();
 builder.Services.AddSingleton<SkillCatalog>();
@@ -103,6 +138,10 @@ if (options.Logging.Enabled)
 var app = builder.Build();
 
 // 快照/日志通道开关（= EnablePacketTracing）；Tap 通道由 MCP 模块宿主自行接入。
+// server_settings 的生效值随启动日志打印一次，便于部署后目视核对库里的实际参数。
+var serverSettings = app.Services.GetRequiredService<ServerSettings>();
+app.Logger.LogInformation("Server settings loaded from server_settings: {ServerSettings}", serverSettings.Describe());
+
 var runtimeState = app.Services.GetRequiredService<RuntimeState>();
 runtimeState.TracingEnabled = options.EnablePacketTracing;
 
@@ -139,7 +178,7 @@ app.Logger.LogInformation(
     "Configuration anchor: {HomeDirectory}", homeAnchor);
 var itemCatalog = app.Services.GetRequiredService<ItemCatalog>();
 itemCatalog.Initialize();
-var gameStore = app.Services.GetRequiredService<JsonGameStore>();
+var gameStore = app.Services.GetRequiredService<IGameStore>();
 await gameStore.InitializeAsync();
 var compoundCatalog = app.Services.GetRequiredService<CompoundCatalog>();
 compoundCatalog.Initialize();
@@ -185,12 +224,9 @@ hellDropCatalog.Initialize();
 
 // 启动完成前汇总缺失数据（R9）：降级不静默——每项缺失在上游各自有
 // Error/Warning 日志，这里再给出一页式清单，避免掩盖配置错误。
+// 脚本源不在此列：缺失已在组合根最前面硬失败。
 var scripts = app.Services.GetRequiredService<ScriptFileSystem>();
 var missingData = new List<string>();
-if (!scripts.IsPvf)
-{
-    missingData.Add("script source (Script.pvf not found; directory fallback or none)");
-}
 if (itemCatalog.Count == 0)
 {
     missingData.Add("item definitions (item production disabled)");
@@ -314,11 +350,11 @@ app.MapGet("/api/status", (RuntimeState runtime, ScriptFileSystem scripts, ItemC
 
 app.MapGet("/api/sessions", (RuntimeState runtime) => Results.Ok(runtime.Sessions()));
 app.MapGet("/api/packets", (RuntimeState runtime) => Results.Ok(runtime.RecentPackets()));
-app.MapGet("/api/accounts", async (JsonGameStore store, CancellationToken token) =>
+app.MapGet("/api/accounts", async (IGameStore store, CancellationToken token) =>
     Results.Ok(await store.GetAccountsAsync(token)));
 
 app.MapGet("/api/admin/characters", async (
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry sessions,
     CancellationToken token) =>
 {
@@ -415,7 +451,7 @@ app.MapGet("/api/admin/message-types", () => Results.Ok(
 app.MapPost("/api/admin/characters/{characterId:guid}/mail", async (
     Guid characterId,
     AdminSendMailRequest request,
-    JsonGameStore store,
+    IGameStore store,
     ItemCatalog items,
     CharacterSessionRegistry sessions,
     CancellationToken token) =>
@@ -542,7 +578,7 @@ app.MapPut("/api/admin/characters/{characterId:guid}/dungeons/{dungeonId:int}", 
     Guid characterId,
     int dungeonId,
     AdminSetDungeonDifficultyRequest request,
-    JsonGameStore store,
+    IGameStore store,
     DungeonCatalog dungeons,
     CharacterSessionRegistry sessions,
     CancellationToken token) =>
@@ -585,7 +621,7 @@ app.MapPut("/api/admin/characters/{characterId:guid}/dungeons/{dungeonId:int}", 
 // the embedded IE page uses the same origin and does not carry a separate login.
 app.MapPost("/api/client-pay/cera", async (
     ClientCeraTopUpRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     CancellationToken token) =>
 {
@@ -611,7 +647,7 @@ app.MapPost("/api/client-pay/cera", async (
 
 app.MapPost("/api/client-pay/diamond", async (
     ClientDiamondGrantRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     CancellationToken token) =>
 {
@@ -644,7 +680,7 @@ app.MapPost("/api/client-pay/diamond", async (
 
 app.MapPost("/api/client-pay/premium", async (
     ClientPremiumGrantRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     CancellationToken token) =>
 {
@@ -676,7 +712,7 @@ app.MapPost("/api/client-pay/premium", async (
     return Results.Ok(result);
 });
 
-app.MapPost("/api/accounts", async (CreateAccountRequest request, JsonGameStore store, CancellationToken token) =>
+app.MapPost("/api/accounts", async (CreateAccountRequest request, IGameStore store, CancellationToken token) =>
 {
     var result = await store.CreateAccountAsync(request, token);
     if (result.Created)
@@ -692,7 +728,7 @@ app.MapPost("/api/accounts", async (CreateAccountRequest request, JsonGameStore 
 app.MapPut("/api/accounts/{userName}/password", async (
     string userName,
     ChangeAccountPasswordRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CancellationToken token) =>
 {
     var result = await store.ChangePasswordAsync(userName, request, token);
@@ -707,7 +743,7 @@ app.MapPut("/api/accounts/{userName}/password", async (
 app.MapPost("/api/accounts/{userName}/password/reset", async (
     string userName,
     ResetAccountPasswordRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CancellationToken token) =>
 {
     var result = await store.ResetPasswordAsync(userName, request, token);
@@ -722,7 +758,7 @@ app.MapPost("/api/accounts/{userName}/password/reset", async (
 app.MapPost("/api/accounts/{userName}/characters", async (
     string userName,
     CreateCharacterRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CancellationToken token) =>
 {
     var result = await store.CreateCharacterAsync(userName, request, token);
@@ -734,7 +770,7 @@ app.MapPost("/api/accounts/{userName}/characters", async (
 app.MapPut("/api/characters/{characterId:guid}/fatigue", async (
     Guid characterId,
     SetCharacterFatigueRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CancellationToken token) =>
 {
     if (request.UsedFatigue > GameProtocolConstants.BlackDiamondMaximumFatigue)
@@ -756,14 +792,14 @@ app.MapPut("/api/characters/{characterId:guid}/fatigue", async (
 
 app.MapGet("/api/characters/{characterId:guid}/mail", async (
     Guid characterId,
-    JsonGameStore store,
+    IGameStore store,
     CancellationToken token) =>
     Results.Ok(await store.GetCharacterMailsAsync(characterId, token)));
 
 app.MapPost("/api/characters/{characterId:guid}/mail", async (
     Guid characterId,
     CreateCharacterMailRequest request,
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry sessions,
     CancellationToken token) =>
 {
@@ -888,12 +924,10 @@ app.MapGet("/", () => Results.Text(
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     app.Logger.LogInformation("Admin API ready at http://{Host}:{Port}", options.Admin.Host, options.Admin.Port);
-    var scripts = app.Services.GetRequiredService<ScriptFileSystem>();
-    if (!scripts.FileExists("etc/channel_info.etc"))
-    {
-        app.Logger.LogWarning(
-            "etc/channel_info.etc is missing from Script.pvf. Entrance handshake works, but protocol 9 download is disabled.");
-    }
 });
+
+// 启动即构建入口频道目录：解析 PVF etc/channel_info.etc + etc/etc.chn.str 并打印
+// 频道列表（目录缺失或无有效行时回退单频道，同样有日志；脚本缺失告警由目录统一输出）。
+app.Services.GetRequiredService<EntranceChannelDirectory>();
 
 await app.RunAsync();

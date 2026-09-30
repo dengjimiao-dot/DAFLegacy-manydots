@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// HATCH_CREATURE (CMD 105): hatches the creature egg at the requested slot and refreshes the creature list (07 §5 group 12).
 /// </summary>
-public sealed class HatchCreatureHandler(JsonGameStore store,
+public sealed class HatchCreatureHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {

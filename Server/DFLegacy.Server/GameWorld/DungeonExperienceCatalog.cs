@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
@@ -41,21 +42,21 @@ public sealed class DungeonExperienceCatalog
 
     public DungeonExperienceCatalog(
         ServerOptions options,
+        ServerSettings settings,
         ScriptFileSystem scripts,
+        EntranceChannelDirectory channelDirectory,
         ILogger<DungeonExperienceCatalog> logger)
     {
         _rates = LoadRates(scripts, logger);
-        _operatorMonsterMultiplier = NormalizeRate(
-            options.Experience?.MonsterMultiplier ?? 1.0,
-            1.0);
-        _operatorClearMultiplier = NormalizeRate(
-            options.Experience?.ClearMultiplier ?? 1.0,
-            1.0);
-        _blackDiamondClearBonusRate = NormalizeRate(options.Experience?.BlackDiamondClearBonusRate ?? 0.05, 0);
-        _eventBonusRate = NormalizeRate(options.Experience?.ClearEventBonusRate ?? 0, 0);
-        _eventStartsAt = options.Experience?.ClearEventStartsAt;
-        _eventEndsAt = options.Experience?.ClearEventEndsAt;
-        _channelBonusRates = LoadChannelBonusRates(scripts, options.Channel.ServerNumber, options.Channel.ChannelNumber);
+        _operatorMonsterMultiplier = NormalizeRate(settings.ExperienceMultiplier, 1.0);
+        _operatorClearMultiplier = NormalizeRate(settings.ClearMultiplier, 1.0);
+        _blackDiamondClearBonusRate = NormalizeRate(
+            settings.ClearBonusBlackDiamondRate,
+            0);
+        _eventBonusRate = NormalizeRate(settings.ClearBonusEventRate, 0);
+        _eventStartsAt = settings.ClearBonusEventStartsAt;
+        _eventEndsAt = settings.ClearBonusEventEndsAt;
+        _channelBonusRates = LoadChannelBonusRates(scripts, options.Channel.ServerNumber, channelDirectory.Session.Number);
 
         logger.LogInformation(
             "Loaded dungeon EXP rates from {Source}: monster={MonsterRate}, clear={ClearRate}, party=[{PartyRates}], difficulty=[{DifficultyRates}], rank=[{RankRates}], kind=[{KindRates}], operatorMonster={OperatorMonster}, operatorClear={OperatorClear}.",
@@ -71,7 +72,7 @@ public sealed class DungeonExperienceCatalog
         logger.LogInformation(
             "Clear EXP bonus policy: blackDiamond={BlackDiamondRate}, event={EventRate}, eventStart={EventStart}, eventEnd={EventEnd}, server={ServerNumber}, channel={ChannelNumber}, matchingDungeons={DungeonCount}.",
             _blackDiamondClearBonusRate, _eventBonusRate, _eventStartsAt, _eventEndsAt,
-            options.Channel.ServerNumber, options.Channel.ChannelNumber, _channelBonusRates.Count);
+            options.Channel.ServerNumber, channelDirectory.Session.Number, _channelBonusRates.Count);
     }
 
     public int MonsterBaseRewardCount => MonsterBaseRewards.Length;

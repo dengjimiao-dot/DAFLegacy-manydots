@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// UPGRADE_ITEM (CMD 83): equipment reinforcement with the quality-adjustment policy (07 §5 group 11).
 /// </summary>
-public sealed class UpgradeItemHandler(JsonGameStore store,
+public sealed class UpgradeItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     EquipmentReinforcementCatalog reinforcementCatalog,
     CharacterPacketBuilders builders,

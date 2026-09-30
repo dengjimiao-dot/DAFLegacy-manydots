@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// MAILBOX_EXTRACT (CMD 98): claims the mail, places gold and the attachment into the matching inventory space and refreshes the affected lists (07 §5 group 6).
 /// </summary>
-public sealed class MailboxExtractHandler(JsonGameStore store,
+public sealed class MailboxExtractHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler

@@ -1,6 +1,7 @@
 using DFLegacy.Protocol;
 using DFLegacy.Server;
 using Microsoft.Extensions.Logging.Abstractions;
+using DFLegacy.Server.SelfTests.Sqlite;
 
 internal static class EquipmentQualitySmokeTests
 {
@@ -464,11 +465,10 @@ internal static class EquipmentQualitySmokeTests
     {
         var options = new ServerOptions
         {
-            DataPath = Path.Combine(fixtureRoot, "quality-state.json")
+            DatabasePath = Path.Combine(fixtureRoot, "quality-state.db")
         };
-        var store = new JsonGameStore(
-            options,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(options);
+        var store = TestGameStore.Create(options);
         await store.InitializeAsync();
         var character = (await store.GetCharactersAsync("test"))[0];
         var expectedMain = new CharacterItemRecord[]
@@ -513,9 +513,7 @@ internal static class EquipmentQualitySmokeTests
             plannedMain,
             plannedEquipment);
 
-        var reloadedStore = new JsonGameStore(
-            options,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedStore = TestGameStore.Create(options);
         await reloadedStore.InitializeAsync();
         var reloaded = (await reloadedStore.GetCharactersAsync("test"))[0];
         check(committed is not null
@@ -564,9 +562,7 @@ internal static class EquipmentQualitySmokeTests
                 plannedEquipment,
                 plannedResealMain,
                 plannedEquipment);
-        var resealReloadStore = new JsonGameStore(
-            options,
-            NullLogger<JsonGameStore>.Instance);
+        var resealReloadStore = TestGameStore.Create(options);
         await resealReloadStore.InitializeAsync();
         var resealReloaded = (await resealReloadStore.GetCharactersAsync("test"))[0];
         check(committedReseal?.Inventory?.SequenceEqual(plannedResealMain) == true

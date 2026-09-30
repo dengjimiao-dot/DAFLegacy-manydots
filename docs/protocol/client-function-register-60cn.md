@@ -183,3 +183,20 @@
 | `sub_843AC0`(CMD 42 发送器) | 0x843AC0 | 反编 | 击杀上报(0x843B39 发 CMD 42):怪物 id u16 + 本机玩家 id u16 + 0 u32×2 + 受保护整数 u32×2 + u8 |
 | 全 NOTI case 缩放特征扫描 | 跳转表 0x42A081(152 case) | 反汇 | 逐 case 匹配「调用 5 个缩放入口 / 访问控制器字段 +0x8D4..+0x8F4 / 引用输出全局 0xB0EF38」,命中 0 处(无包触发) |
 | 缩放参数立即数(补丁点,**草案**) | 0x4E8CE0(倍率 2.0f)/ 0x4E8CF0(放大 300)/ 0x4E8CFA(保持 1000);HP 路径同形:0x4E5DDD(1.2f)/ 0x4E5DED(100)/ 0x4E5DF7(150);连击抬升常量 1000:0x4E8C77 / 0x4E8C7E / 0x4E8CA4 / 0x4E8CB6 | 反汇 | IJL15 参数可配置方案的补丁点,详见 [client-camera-zoom-60cn.md](client-camera-zoom-60cn.md) §9(草案,未实现)与 §10(主路径伪代码) |
+
+## 10. 入口握手层(2026-09-30,样本与取证见 [60a4-handshake-protocol.md](60a4-handshake-protocol.md) §11)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| `sub_8916D0`(buf, cap) | 0x8916D0 | 反编 | 拼 `ChannelScript.pvf` 本地路径:`GetModuleFileNameA`→`_splitpath`→`<exe 目录>\ChannelScript.pvf` |
+| `sub_891D90`(this, a2) | 0x891D90 | 反编 | 加载本地 `ChannelScript.pvf`:读 [32B 密钥][16B][4B 长度][密文],长度须 0<len<0x100000 且为块大小整数倍;密钥经 `sub_8911D0` 变换后以常量 IV(unk_A8DB00)初始化加密上下文(`sub_8C1460`);Hex-Rays 以异常码 0..7 作控制流,解密续段待逐 case |
+| `sub_892060`(this) | 0x892060 | 反编 | 保存本地 `ChannelScript.pvf`:[32B 密钥][16B IV(上下文 vtbl+8 取出)][4B 长度][密文(vtbl+8 加密)] |
+| `sub_891430`(this) | 0x891430 | 反编 | 解密后明文按文本处理(strlen),以 `ChannelScript.pvf` 名登记(`sub_77BBF0`) |
+| `sub_894E50`(this, a2) | 0x894E50 | 反编 | 入口收尾编排:成功=脚本登记→`sub_894B10` 元数据应用→`sub_892060` 落盘;失败重试计数(不足 10 次错误码 89/否则 128);客户端目录存在 `_ChannelTest` 文件时把收到的元数据原样 dump 到 `ChannelInfo.txt` |
+| `sub_894B10`(this) | 0x894B10 | 反编 | 入口元数据解析(协议 1/3 消费侧):u32 组数+每组[20B 组名+u32 频道数+N×48B 记录(20B 显示名+u32 容量+u32 在线+16B 主机+u32 端口)];组名 strncmp 0x13 命中内置 109 项表 `Str1`,未命中抛 4096;拥挤=100×在线/容量>95;完成后 `sub_72A270` 应用 `Etc/pvpChannelList.etc` |
+| `sub_8929C0`(显示名) | 0x8929C0 | 反编 | 显示名→频道号:提取全部数字字符(0x30–0x39)拼接后 atol(显示名前缀不得含数字的客户端依据) |
+| `sub_71FE80`(this, 组下标+1, 频道号) | 0x71FE80 | 反编 | (组,频道号) 查客户端频道表,未命中返回 0(该频道不注册) |
+| `sub_8C1460` / `sub_8C0930` | 0x8C1460 / 0x8C0930 | 反编 | 加密上下文初始化(密钥 32B、块 16B、IV 16B)/ 块大小读取 |
+| `Str1` 组名表 | 0xb53d78 | 反编+导出 | 109 项组名指针数组:前 9 项 cain,diregie,siroco,prey,casillas,hilder,ruke,seria,anton(与本项目 `EntranceMetadata.ServerGroups` 同序同集),后 100 项 china_1..china_100 占位 |
+| RTTI `.?AVCNEntranceChannel@@` / `.?AVCNEntranceModule@@` | 0xafdb8c / 0xafdbac | 引用 | 入口频道/入口模块类(与 60A4 样本 §2 清单同族) |
+| `Etc/channel_info.etc` | 0xa6bfe4(引用点 0x720823) | 反汇 | 引用点位于未定义代码区,消费函数待定位(登记为悬置项) |

@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// GET_ITEM (CMD 46): world-drop pickup (07 §5 group 11).
 /// </summary>
-public sealed class GetItemHandler(JsonGameStore store,
+public sealed class GetItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterStatCatalog characterStatCatalog,
     CharacterPacketBuilders builders,

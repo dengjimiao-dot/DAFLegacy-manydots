@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
@@ -32,15 +33,15 @@ public sealed class MonsterChampionDropCatalog
         @"^\s*(?<item>\d+)\s+(?<probability>\d+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private readonly ServerOptions _options;
+    private readonly ServerSettings _settings;
     private readonly Lazy<CatalogState> _state;
 
     public MonsterChampionDropCatalog(
-        ServerOptions options,
+        ServerSettings settings,
         ScriptFileSystem scripts,
         ILogger<MonsterChampionDropCatalog> logger)
     {
-        _options = options;
+        _settings = settings;
         _state = new Lazy<CatalogState>(
             () => Load(scripts, logger),
             LazyThreadSafetyMode.ExecutionAndPublication);
@@ -69,7 +70,7 @@ public sealed class MonsterChampionDropCatalog
         byte monsterType,
         IDropRandomSource? random = null)
     {
-        if (!_options.Drop.Enabled
+        if (!_settings.DropEnabled
             || !_state.Value.Definitions.TryGetValue(monsterIndex, out var definition))
         {
             return [];
@@ -113,7 +114,7 @@ public sealed class MonsterChampionDropCatalog
                 0,
                 ProbabilityDenominator);
             if (probability == 0
-                || (!_options.Drop.ForceDrops
+                || (!_settings.DropForce
                     && random.Next(ProbabilityDenominator) >= probability))
             {
                 continue;

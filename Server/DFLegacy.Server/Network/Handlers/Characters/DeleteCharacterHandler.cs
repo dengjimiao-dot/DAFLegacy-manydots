@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 /// fresh USERINFO roster follows.
 /// </summary>
 public sealed class DeleteCharacterHandler(
-    JsonGameStore store,
+    IGameStore store,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.DELETE_CHARACTER;

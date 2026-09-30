@@ -118,7 +118,9 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 | 设置 | 用途 |
 | --- | --- |
 | `ScriptPvfPath` | PVF 路径；相对路径以服务端程序目录为基准。更新 PVF 后重启服务端重新加载。 |
-| `DataPath` | 存档路径，默认 `data/state.json`，相对路径以服务端程序目录为基准。 |
+| `DatabasePath` | SQLite 存档路径，默认 `Data/game.db`，相对路径以服务端程序目录为基准。库不存在时按基线 schema 建空库（不播种任何数据，账号与角色经 Admin API 或客户端流程创建），已存在时直接使用、不重建。 |
+
+爆率、经验倍率、深渊掉落次数与配方率、掉落开关、黑钻与活动经验加成等**游戏内容参数不在本文件**——它们以 `server_settings` 表为唯一真源，随库持久化；启动时读一次并打印生效值，改库后重启生效。频道容量（`Channel.MaximumUsers`，默认 10）在本文件 `Channel` 节；频道当前人数为在线会话数动态值；频道目录解析自 PVF（`etc/channel_info.etc` + `etc/etc.chn.str`），启动成功时打印列表。
 | `Admin` | HTTP 监听地址和端口，默认 `127.0.0.1:8081`。 |
 | `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DFLegacy.Mcp.dll`。 |
 | `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，默认 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |

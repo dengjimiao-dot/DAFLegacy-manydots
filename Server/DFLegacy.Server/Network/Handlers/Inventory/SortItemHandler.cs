@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SORT_ITEM (CMD 20): sorts main, warehouse or creature space and pushes the rebuilt list (07 §5 group 9).
 /// </summary>
-public sealed class SortItemHandler(JsonGameStore store,
+public sealed class SortItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {

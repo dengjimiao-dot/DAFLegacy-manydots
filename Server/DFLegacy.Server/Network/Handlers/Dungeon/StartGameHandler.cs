@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// START_GAME (CMD 15): opens dungeon selection — fatigue gate, return anchor, state/UDP peer packets and eligibility (07 §5 group 13).
 /// </summary>
 public sealed class StartGameHandler(
-    JsonGameStore store, WorldMapCatalog worldMapCatalog,
+    IGameStore store, WorldMapCatalog worldMapCatalog,
     GameplayDatagramService gameplayDatagram,
     ChannelSessionSenders senders) : IGameCommandHandler
 {

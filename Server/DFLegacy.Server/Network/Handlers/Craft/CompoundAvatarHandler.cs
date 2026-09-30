@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// COMPOUND_AVATAR (CMD 102): avatar compounding through the avatar table (07 §5 group 11).
 /// </summary>
-public sealed class CompoundAvatarHandler(JsonGameStore store,
+public sealed class CompoundAvatarHandler(IGameStore store,
     AvatarCompoundCatalog avatarCompoundCatalog,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler

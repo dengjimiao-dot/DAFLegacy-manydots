@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// MAILBOX_SEND (CMD 97): validates gold/attachment, persists the mail and refreshes the sender's inventory delta (07 §5 group 6).
 /// </summary>
-public sealed class MailboxSendHandler(JsonGameStore store,
+public sealed class MailboxSendHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterSessionRegistry characterSessions,
     CharacterPacketBuilders builders) : IGameCommandHandler

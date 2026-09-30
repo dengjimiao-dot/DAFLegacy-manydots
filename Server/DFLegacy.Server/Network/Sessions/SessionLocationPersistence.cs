@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 internal static class SessionLocationPersistence
 {
     public static async Task<CharacterRecord?> SaveCurrentLocationAsync(
-        JsonGameStore store,
+        IGameStore store,
         ChannelSessionState session,
         CancellationToken cancellationToken)
     {

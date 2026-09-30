@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// ACCEPT_QUEST (CMD 33): validates the three-quest slot limit, dependency-item grants and persists the acceptance transaction (07 §5 group 7).
 /// </summary>
-public sealed class AcceptQuestHandler(JsonGameStore store,
+public sealed class AcceptQuestHandler(IGameStore store,
     ItemCatalog itemCatalog,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,

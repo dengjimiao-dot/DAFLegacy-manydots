@@ -1,7 +1,7 @@
 namespace DFLegacy.Server;
 
 public sealed class FatigueResetService(
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     ILogger<FatigueResetService> logger) : BackgroundService
 {

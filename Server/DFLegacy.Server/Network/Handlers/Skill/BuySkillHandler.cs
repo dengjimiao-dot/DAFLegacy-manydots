@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// BUY_SKILL (CMD 31): learns or levels one skill through the prerequisite, cost and Premium-effective level checks (07 §5 group 8).
 /// </summary>
-public sealed class BuySkillHandler(JsonGameStore store,
+public sealed class BuySkillHandler(IGameStore store,
     SkillCatalog skillCatalog,
     PremiumBenefitCatalog premiumBenefitCatalog,
     ChannelSessionSenders senders) : IGameCommandHandler

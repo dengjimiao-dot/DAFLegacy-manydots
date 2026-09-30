@@ -13,7 +13,7 @@ namespace DFLegacy.Server;
 /// <see cref="CharacterPacketBuilders"/>.
 /// </summary>
 public sealed partial class SelectCharacterHandler(
-    JsonGameStore store,
+    IGameStore store,
     ItemCatalog itemCatalog,
     SkillCatalog skillCatalog,
     QuestCatalog questCatalog,

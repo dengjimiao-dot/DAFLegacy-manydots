@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// SET_PLAY_RESULT (CMD 49): dungeon clear settlement — experience, fatigue and rewards (07 §5 group 13).
 /// </summary>
 public sealed class SetPlayResultHandler(
-    DungeonExperienceCatalog dungeonExperienceCatalog, JsonGameStore store,
+    DungeonExperienceCatalog dungeonExperienceCatalog, IGameStore store,
     ItemCatalog itemCatalog,
     DungeonCatalog dungeonCatalog,
     CharacterExperienceCatalog experienceCatalog,

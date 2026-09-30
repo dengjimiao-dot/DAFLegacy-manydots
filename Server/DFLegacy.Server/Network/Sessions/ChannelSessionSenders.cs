@@ -1,4 +1,5 @@
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
@@ -12,9 +13,9 @@ namespace DFLegacy.Server;
 /// and the entrance content cache.
 /// </summary>
 public sealed partial class ChannelSessionSenders(
-    JsonGameStore store,
+    IGameStore store,
     ItemCatalog itemCatalog,
-    ScriptFileSystem scripts,
+    EntranceChannelDirectory channelDirectory,
     ServerOptions options,
     CharacterStatCatalog characterStatCatalog,
     CharacterSpCatalog spCatalog,
@@ -27,10 +28,9 @@ public sealed partial class ChannelSessionSenders(
     CharacterPacketBuilders builders
 )
 {
-    // Entrance content cache (migrated with LoadContent; single instance
-    // shared with the pump's entrance-port path).
-    private readonly object _contentGate = new();
-    private EntranceContent? _content;
+    /// <summary>会话频道（NOTI 1/130 频道号来源）：目录首条目或单频道回退，
+    /// M1 单监听形态下所有会话共享。</summary>
+    public EntranceSessionChannel SessionChannel => channelDirectory.Session;
 
     public GameSkillEntry[] GetCurrentGameSkills(ConnectionContext context) => context.State.Skill.Current
         .OrderBy(skill => skill.Slot)
@@ -68,42 +68,17 @@ public sealed partial class ChannelSessionSenders(
 
     internal EntranceContent LoadContent()
     {
-        if (_content is not null)
-        {
-            return _content;
-        }
-
-        lock (_contentGate)
-        {
-            if (_content is not null)
-            {
-                return _content;
-            }
-
-            byte[]? channelScript = null;
-            const string virtualPath = "etc/channel_info.etc";
-            if (scripts.FileExists(virtualPath))
-            {
-                channelScript = scripts.ReadAllBytes(virtualPath);
-            }
-            else
-            {
-                RuntimeLogger.Warn(
-                    "{VirtualPath} is missing from {Source}; protocol 9 download is disabled.",
-                    virtualPath,
-                    scripts.SourceDescription);
-            }
-
-            var channel = options.Channel;
-            var metadata = EntranceMetadata.BuildSingleLocalChannel(new EntranceChannel(
-                channel.Name,
-                channel.Host,
-                channel.Port,
-                channel.ChannelNumber,
-                channel.MaximumUsers,
-                channel.CurrentUsers));
-            _content = new EntranceContent(channelScript, metadata);
-            return _content;
-        }
+        // CurrentUsers 取在线会话数动态值：入口元数据随每次握手现建，
+        // 拥挤度（在线/容量 > 95%）随之实时变化。
+        var channel = options.Channel;
+        var defaults = new EntranceChannel(
+            channel.Host,
+            channel.Port,
+            channel.MaximumUsers,
+            characterSessions.SessionCount);
+        var metadata = channelDirectory.Catalog is { Count: > 0 } catalog
+            ? EntranceMetadata.BuildChannels(defaults, catalog)
+            : EntranceMetadata.BuildSingleLocalChannel(defaults);
+        return new EntranceContent(channelDirectory.ChannelScript, metadata);
     }
 }

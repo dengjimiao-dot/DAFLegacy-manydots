@@ -10,7 +10,7 @@ namespace DFLegacy.Server;
 public sealed class UseStackableItemHandler(
     ServerOptions options,
     RuntimeState runtime,
-    JsonGameStore store,
+    IGameStore store,
     ItemCatalog itemCatalog,
     CharacterSpCatalog spCatalog,
     CharacterExperienceCatalog experienceCatalog,

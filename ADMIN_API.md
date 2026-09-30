@@ -2,7 +2,7 @@
 
 本文档对应当前 `DFLegacy.Server` 源码，路由定义以
 [`Program.cs`](src/DFLegacy.Server/Program.cs) 为准，数据校验和持久化行为以
-[`JsonGameStore.cs`](src/DFLegacy.Server/JsonGameStore.cs) 为准。
+[`Server/DFLegacy.Server/Sqlite/SqliteGameStore.cs`](Server/DFLegacy.Server/Sqlite/SqliteGameStore.cs)（领域逻辑在同目录 `GameStoreCore.cs`，落盘为 SQLite）。
 
 ## 1. 基本约定
 

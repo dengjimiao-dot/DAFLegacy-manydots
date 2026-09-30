@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SET_QUEST_TRIGGER (CMD 35): applies the client's trigger action through the per-quest requirement policies (07 §5 group 7).
 /// </summary>
-public sealed class SetQuestTriggerHandler(JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
+public sealed class SetQuestTriggerHandler(IGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.SET_QUEST_TRIGGER;
 

@@ -1,11 +1,17 @@
 # 08 · SQLite 存储迁移（JsonGameStore → SQLite）
 
-- 状态：**草案**（2026-09-28 起草；2026-09-29 基线重构定稿：统称 **60A1**，表设计模式取自 86S4A21、功能面上限兼容早期草案，见 D7；同日审查修订：基线 SQL 移除连接 PRAGMA（D2）、澄清 user_version 互验不变量（D3）、补齐 CHECK 约束（D7）；2026-09-30 修订：删除早期草案留档文件、缺口预留表并入基线（D7/D8），账号资产默认值改为 0）
+- 状态：**已实现（M0/M1 落地；M2 只做建库与播种，§6 一次性导入取消；M3 无旧实现可删）**。2026-09-30 实施并回写本文：
+  - **D4 取舍改为「内存树 + 账号级 diff 单事务落盘」**，不逐方法行级事务——见 §4 D4 与 §10.1；
+  - **§6 一次性 `state.json` 导入整体取消**——不转换旧档，见 §10.2；
+  - **基线 schema 三处修正**（可空标量列、`characters.name` 唯一范围、`character_mail.mail_id` 取号），见 §10.3；
+  - 基线文件随模块落到 `Server/DFLegacy.Server/Sqlite/act1_schema.sql`，是全仓唯一定名来源；库默认路径 `Data/game.db`；
+  - `JsonGameStore` / `JsonStateFile` 已删除，`ServerOptions.DataPath` 已移除，随之删掉两个只为旧 JSON 存在的兼容字段（`AccountRecord.LegacyBlackDiamondExpireAt`、`CharacterRecord.LegacyIsWeakened`）与其启动迁移，`AccountRecord.Cash` 由可空改为非空默认 0。
+
 - 日期：2026-09-28
 - 上级文档：[04 · 迁移计划](04-migration-plan.md)（§5 Q6 的遗留议题）、[01 · 目标架构](01-target-architecture.md)
 - 关联文档：
   - [02 · 可移植性契约](02-portability-contracts.md)（R5 数据锚点、R7 状态完整落盘）
-  - [docs/sql/act1_schema.sql](../sql/act1_schema.sql)（**本次产出的最终基线 schema**：表设计模式取自 86S4A21，功能面上限兼容早期草案；命名统称 60A1）
+  - [Server/DFLegacy.Server/Sqlite/act1_schema.sql](../../Server/DFLegacy.Server/Sqlite/act1_schema.sql)（**基线 schema 唯一定名来源**：表设计模式取自 86S4A21，功能面上限兼容早期草案；命名统称 60A1；随发布拷到输出目录 `Sqlite/`）
   - [docs/sql/86S4A21_schema.sql](../sql/86S4A21_schema.sql)（参照项目 ServerS4A21 的 schema；**表设计模式参考基准**，仅取模式不搬功能）
   - [feature-backfill-plan-vs-s4a21](../servers4a21/feature-backfill-plan-vs-s4a21.md) §2.3（存储层结构性差异对照）
 
@@ -107,7 +113,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 - 引入 `Microsoft.Data.Sqlite`（csproj 目前零 NuGet 依赖，这是第一个包）。
 - `IGameDatabase`/`GameDatabase`：短连接 + 每连接 `busy_timeout=5000` + 连接串
   `ForeignKeys=true`；`Write<T>` 默认 IMMEDIATE 事务；`Read<T>` 裸连接委托。
-- 库路径沿用 R5 锚点：`PathResolver.Resolve("data/game.db", HomeDirectory)`，
+- 库路径沿用 R5 锚点：`PathResolver.Resolve("Data/game.db", HomeDirectory)`，
   可由 `server.json` 的 `DataPath` 覆盖（与 state.json 同锚点规则）。
 - 启动初始化一次：`PRAGMA journal_mode=WAL`（持久）。
 
@@ -137,18 +143,28 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   PRAGMA user_version`。
 - JSON 时代的「启动 9 连迁移」由 §6 的导入器承接，入库后不再需要整库重写式迁移。
 
-### D4 存取策略：同签名替换
+### D4 存取策略：同签名替换（2026-09-30 实施后修订）
 
-- 新建 `Persistence/SqliteGameStore`，**公开方法签名与 `JsonGameStore` 完全一致**
-  （Guid 入参、返回 `CharacterRecord`/`AccountRecord`）。
-- `Program.cs` 组合根把 `AddSingleton<JsonGameStore>()` 换成
-  `AddSingleton<JsonGameStore>(sp => new SqliteGameStore(...))`（或抽出共同接口，二选一，
-  实施时按改动面最小者定）；EntranceService/后台服务/Admin API 代码零改动。
-- 方法内部模式从「锁内改树 + 全量落盘」改为「**一个方法 = 一个 IMMEDIATE 事务**」：
-  读相关行 → 内存组装 record（`with`）→ 同事务写回。跨对象复合操作
-  （如仓库升级：容量 + 物品 + 邮件）天然落在同一事务，替代旧「改完内存一次落盘」。
-- 并发模型：`SemaphoreSlim(1,1)` 保留为进程内写串行化（行为与现状一致），库层另有
-  WAL + busy_timeout 兜底。后续如需多实例，再移除进程内锁、依赖库锁（不在本期）。
+- 领域逻辑集中在 `Sqlite/GameStoreCore`（原 `JsonGameStore.cs` 的全部逻辑），
+  落盘是抽象钩子 `TryLoadStateLockedAsync` / `PersistStateLockedAsync`；唯一实现
+  `Sqlite/SqliteGameStore` 提供 SQLite 落盘。公开面由 `Sqlite/IGameStore`
+  （59 个方法）声明，消费方只依赖接口。
+- `Program.cs` 组合根注册 `IGameDatabase` 与 `IGameStore → SqliteGameStore`；
+  EntranceService / 后台服务 / Admin API 只把 `JsonGameStore` 换成 `IGameStore`，
+  其余代码零改动。
+- **写入粒度**：内存 record 树与「上次已落盘」的指纹做 diff，只重写变更部分，
+  全部包在单个 IMMEDIATE 事务里；指纹取 record 的 JSON 序列化值（角色指纹排除
+  `Cash`，因为点券是账号行单源投影，见 D6）。
+  - 账号级：账号标量（用户名/密码/OICQ/预置标记/点券）+ `account_premium` 整表；
+  - 角色级：角色行删除（外键级联清空其物品、技能、任务、副本、邮件、疲劳行）
+    再整棵重插。
+  - **删除一律排在插入之前**：换角色（`ReplaceAllCharactersAsync`）会让新旧角色
+    短暂同名并存，而 `characters.name`（账号内唯一）与 `(account_id, slot_index)`
+    都是唯一约束。
+- 并发模型：`GameStoreCore` 保留 `SemaphoreSlim(1,1)` 作为进程内写串行化（行为与
+  原 JSON 实现一致），库层另有 WAL + busy_timeout 兜底。
+- 相比原「锁内改树 + 全量落盘」：单次操作不再整库重写，复合变更落在同一事务，
+  崩溃要么全成要么全不成。
 
 ### D5 标识与主键
 
@@ -163,10 +179,12 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   `character_items.item_uid INTEGER PRIMARY KEY AUTOINCREMENT` +
   `UNIQUE(character_id, list_type, slot_index)`。内部操作（邮件附件领取、管理定位）
   可按 `item_uid` 直接落到物理行；`instance_id`（Guid）继续作 Admin API 外部标识。
-- JSON 根部的三个计数器（`NextCharacterNo` 等）由「导入时推进到已导入最大值 +
-  AUTOINCREMENT 防复用」取代，不再单独建表存计数器。
-- 邮件 Id：JSON 是全库随机分配的 uint，入库改为 `AUTOINCREMENT` 全局自增
-  （重编号安全性见 §8 K2）。
+- 计数器（`NextCharacterNo` / `NextNormalAccountUid` / `NextTestAccountUid`）不单独建表：
+  载入时按库内已存在的最大值推进（与 `MigrateIdentityLocked` 的推进规则一致），
+  `AUTOINCREMENT` 仅防删除后复用。
+- 邮件 Id **由存储层显式分配**（`GameStoreCore.AllocateMailIdLocked` 随机取号，
+  docs/design/06 §4.1 登记的唯一性分配例外），`character_mail.mail_id` 因此是
+  `INTEGER PRIMARY KEY` 而非 `AUTOINCREMENT`。理由见 §10.3。
 
 ### D6 货币与字段语义修正
 
@@ -189,7 +207,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   hex）、单字段更新变成整包重写。60 物品 16 个字段少且稳定，扁平列 + PacketDumper
   golden 测试在协议层守护字节级行为，职责不混。
 
-### D7 最终 schema：以 docs/sql/act1_schema.sql 为基线
+### D7 最终 schema：以 Sqlite/act1_schema.sql 为基线
 
 23 张表：`schema_metadata`、`server_settings`、`monster_base_exp`、`accounts`、
 `account_premium`、`characters`、`character_items`、`character_skills`、`character_quests`、
@@ -297,78 +315,137 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 | 组队（Game/Party，60A1 客户端 4 人队） | **会话态，不落盘**：成员绑定 SessionId，下线即散，无任何 store 调用 | 无表（设计如此） |
 | 全服喇叭广播 | 瞬时广播，不落盘 | 无表（设计如此） |
 
-## 6. 一次性数据导入（state.json → SQLite）
+## 6. 旧档转换（2026-09-30 取消）
 
-### 6.1 触发与安全
+原计划的「一次性 `state.json` → SQLite 导入」**不实现**。取消理由与替代行为：
 
-- 启动初始化时：目标库不存在（或无 `schema_metadata` 行）且 `state.json` 存在 → 进入导入。
-- 导入在**单个 IMMEDIATE 事务**内完成：先执行基线 DDL，再搬数据，最后写 `schema_metadata`。
-  任一步失败整体回滚，`state.json` 原样不动（§8 K6）。
-- 成功后将 `state.json` 改名为 `state.json.imported-<yyyyMMddHHmmss>` 保留作备份
-  （**不删除**；含密码哈希，处置同现状）。此后库为真源，同名 `state.json` 再出现仅告警不导入。
-- 种子产物：`tools/export_state_sql.py`（Python，随 tools/ 既有工具惯例）把 `state.json`
-  转换为**数据种子 SQL** —— 只保留 `test` 账号数据（其余账号一律不进入产物），产出
-  `docs/sql/data_schema.sql`（全新库先执行 60A1 基线 schema 再应用本文件）；
-  生成时先在内存库回放产物 SQL 并与源 JSON 逐字段校验，不过不落盘。不再生成二进制
-  样例库。M2 的服务端内导入器（运行期导入本地**完整** `state.json`）以同一规则用 C# 落地。
+- 转换需要一份与 `state.json` 同形的 JSON 解析器常驻服务端，而 JSON 存储本身已被
+  移除——留下它只是为了迁完旧档，得不偿失。
+- 转换是**有损且高风险**的一次性动作：邮件 Id、计数器、可空集合等语义要在两个
+  模型之间人工对齐（本次实施中已经为此改了三处基线，见 §10.3），转换器等于把这些
+  风险复制一遍。
+- 需要保留旧档的用户继续用旧版本服务端即可；新库从空库起步，由启动流程播种
+  `test/test` 账号与预置角色。
 
-### 6.2 搬运规则
+因此服务端**不做任何数据搬运**：库文件不存在时按基线建空库并播种，已存在时直接
+使用、不重建（`SqliteDatabaseBootstrap` + `SqliteGameStore.TryLoadStateLockedAsync`）。
 
-| JSON | 规则 |
-|---|---|
-| `AccountRecord.Id` / `CharacterRecord.Id` / 物品 `InstanceId` | 原样入 `*_uid` / `instance_id`（TEXT） |
-| `AccountUid` / `CharacterNo` | 非 0 直接作主键；为 0（早期数据）按 `AccountUidRules` 现场分配；全部导完后把「下一个可分配 id」推进到已导入最大值之上 |
-| `AccountRecord.Cash` | 入 `accounts.cash`（null → 0，与基线默认一致）。角色镜像与账号值由 `MigrateAccountCashLocked` 保证相等，以账号值为准 |
-| `PremiumServices` / 兼容字段 `PremiumExpireAt` | 归并进 `account_premium`（执行旧 `MigratePremiumServicesLocked` 的归并逻辑后再清源字段） |
-| 五个物品列表 | `Inventory/Equipment/Warehouse/AvatarInventory/CreatureInventory` → `character_items` container = 0/3/2/1/7 |
-| `Quests` / `CompletedQuestIds` / `RewardedQuestIds` | 前者入 `character_quests`；后两者合入 `character_completed_quests`，领过奖的行带 `rewarded_at`（导完即跑一次 `MigrateLegacyQuestRewards` 逻辑补发遗留奖励）。JSON 无完成/领奖时间源，`completed_at`/`rewarded_at` 一律戳导入时刻，二者仅作「是否领过奖」的 NULL 判别，不作时间语义使用 |
-| `UnlockedDungeonIds` / `DungeonProgress` | 各入对应表（后者若为 null，执行登录期同款「按解锁推导难度 1」的旧迁移） |
-| 邮件 `Id` | 弃用随机 uint，按 `AUTOINCREMENT` 重新编号；`SentAt/ExpiresAt/IsNew/State` 原样入列 |
-| `UsedFatigue` + 根部 `FatigueDayKey` | `consumed` 原样；`last_reset_at` = 导入时刻最近的一个「上午 6 点」边界（Unix 秒），今日配额延续、明日照常滚动（全局日键由每角色边界列取代） |
-| `MigrateIdentityLocked` / `MigrateItemInstanceIdsLocked` 等启动迁移 | 语义并入导入器（id 补齐、InstanceId 回填）；导入完成后启动流程不再对 SQLite 执行整库重写式迁移 |
-| `NormalizeCharacterExperience` / `SettleWarehouseUpgradeItems` / 预置角色刷新 | **保留在启动流程**（依赖 PVF 目录/代码进度表，非存储迁移）：导入器只搬数，规范化照旧在服务端启动时走正常保存路径 |
-| 位置 `(474, 234)` | 视为旧版错误落点（Elvengard `[gate]` 回归点，越出区域 1 可移动矩形），入库时一次性修正为 `(474, 336)`——即 早期草案 建库 UPDATE 的语义，移到导入器执行（基线零业务语句） |
-| 物品行 | `item_uid` 由 AUTOINCREMENT 分配；`instance_id` 原样入库；预留列 `lock_state` 恒 0 |
-| 任务行 | `hunt_trigger_format` 预留列恒 0 |
-| `test/test` 默认账号 + 预置角色 | 仅当「无库且无 state.json」时播种，行为与现状一致 |
+## 7. 实施里程碑（2026-09-30 结项状态）
 
-## 7. 实施里程碑
-
-- **M0 基础设施**：引入 `Microsoft.Data.Sqlite`；`IGameDatabase/GameDatabase/
-  SqliteDatabaseBootstrap/SqliteMigrations`；基线 SQL（60A1）随发布拷贝到输出目录；
-  SelfTests：新建库 / 重复初始化 / 坏基线拒绝 / 迁移版本连续性。
-- **M1 SqliteGameStore**：同签名实现全部约 70 个方法（一个方法一个事务）；
-  现有 4 个 SelfTests 冒烟在 JSON/SQLite 两实现上对跑，结果一致才放行。
-- **M2 导入与切换**：§6 导入器 + 组合根切换 + 默认播种；Admin API 手工回归
-  （账号/角色/邮件/疲劳/充值/难度六组接口）。
-- **M3 收尾**：观察一个稳定版本后删除 `JsonGameStore`；`ADMIN_API.md` 头部
-  「持久化以 JsonGameStore.cs 为准」改为 SqliteGameStore；04·Q6 关闭。
+| 里程碑 | 状态 | 说明 |
+|---|---|---|
+| M0 基础设施 | **已完成** | `Microsoft.Data.Sqlite` + `SQLitePCLRaw.bundle_e_sqlite3`；`Sqlite/{IGameDatabase,GameDatabase,SqliteDatabaseBootstrap,SqliteMigrations,SqlitePaths}`；基线 SQL 随发布拷到输出目录；SelfTests 新增 `sqlite-infrastructure` 套件（新建库/重复初始化去重/异构基线拒绝/版本双写互验/失败删三件套/存取往返） |
+| M1 SqliteGameStore | **已完成** | 领域逻辑入 `Sqlite/GameStoreCore`，落盘为 `Sqlite/SqliteGameStore`；写入粒度见 §4 D4 |
+| M2 建库与播种 | **已完成（范围缩小）** | 只做「无库则按基线建库并播种、有库直接用」；§6 的导入器取消 |
+| M3 收尾 | **不适用** | 无 `JsonGameStore` 可删（已随本次改造移除）；`ADMIN_API.md` 头部已改为 `SqliteGameStore` |
+| 真机回归 | **未做** | 见 `PENDING.md` P-08 |
 
 ## 8. 风险登记
 
 - **K1 备份/运维方式变化**：WAL 模式下热备份不能只拷 `.db`（需连同 `.db-wal/.db-shm`，
   或用 `VACUUM INTO` / backup API）。实施时在 README/运维说明补充，提供 `--backup-db` 之类的
   便捷命令（待定）。
-- **K2 邮件重编号**：导入后 mail_id 变化。客户端对邮件 Id 无跨会话引用（每次登录全量拉取），
-  安全；但若存在导入前后按邮件 Id 引用的 Admin 脚本，需注意重编号。
-- **K3 mentor 悬空**：`MentorCharacterId` 在 JSON 是无约束 Guid；导入时解析不到目标角色置 0
-  （加成随之失效，语义即「无师父」）。
+- **K2 邮件 Id 稳定性（已消解）**：原风险是「导入后 mail_id 重编号，客户端与 Admin 脚本
+  手里的 Id 失效」。实施中确认该风险真实存在——角色子树每次重写都会重新取号，
+  而客户端的 MAILBOXEXTRACT(98) 会带上先前 NOTI 给的 mail_id。改为存储层显式写入
+  `mail_id` 后，Id 在重写前后保持不变，风险消解（见 §10.3）。
+- **K3 mentor 悬空（已实现）**：`mentor_character_id` 以整数列存放；载入时按
+  `character_id → Guid` 映射还原，解析不到目标角色置 NULL（加成随之失效，语义即「无师父」）。
+  写入时按全服 Guid→CharacterNo 映射解析，解析不到落 0。
 - **K4 行为差异**：账号名/角色名大小写已对齐（代码 `OrdinalIgnoreCase` ↔ 列 `COLLATE NOCASE`；
   边界：NOCASE 仅折叠 ASCII 大小写，`OrdinalIgnoreCase` 是全 Unicode 折叠——对 ASCII 与
   CJK 名称两者等价，带变音符号的拉丁字母存在判别差异，本服名称字符集不触及该边界）；
   并发写从「文件锁全量串行」变为「库锁行级串行」，只松不紧。
-- **K5 导入器回归**：导入正确性靠「导入后 `GET /api/accounts` 全量导出与 state.json 逐字段比对」
-  的 SelfTest 断言兜底（M2 验收项）。
-- **K6 导入中断**：单事务 + 库文件失败即删三件套，最坏情况回到「无库 + 原始 state.json」，
-  可重复导入。
+- **K5 存取回归**：无导入器，改由既有 SelfTests 承载——原 JSON 夹具改写为 C# record
+  字面量直接播种数据库，`program-inline` 等套件在 SQLite 上原样跑通（含跨 store
+  重开的往返断言）；`sqlite-infrastructure` 另覆盖基础设施不变量。
+- **K6 建库中断（已实现）**：基线建库在单事务内完成，失败即删 `.db/.db-wal/.db-shm`
+  三件套再抛出，不留半初始化的库；`sqlite-infrastructure` 断言该行为。
+- **K7 备份方式（未做）**：WAL 模式下热备份需连 `-wal/-shm`，或用 `VACUUM INTO`。
+  本次未提供 `--backup-db` 之类便捷命令，见 `PENDING.md`。
 
 ## 9. 待决问题
 
 - **Q1 Admin API 标识形态**：继续用 Guid（`account_uid`/`character_uid`），还是切到整数 id？
   建议：本次不动（G3），待有跨服/联运需求再议。
-- **Q2 组合根形态**：`AddSingleton<JsonGameStore>` 直接换成返回 `SqliteGameStore` 的工厂
-  （零接口抽象，最快），还是抽 `IGameStore` 接口（为 M1 双实现对跑方便）？建议：抽接口，
-  M3 删旧实现后可保留接口不删。
-- **Q3 `server_settings` / `monster_base_exp`**：本次只建表 + 播种默认值，GM 倍率网页与
-  怪物经验表的功能实现另行排期；是否随 M2 顺带做最小读写（读一次启动倍率）？建议：不做，
-  保持本次改动面收敛。
+- **Q2 组合根形态（已定）**：抽 `IGameStore` 接口（59 个方法），组合根注册
+  `IGameStore → SqliteGameStore`。旧实现删除后接口保留：它是消费方与存储形态之间的
+  唯一接缝，也是自检注入夹具库的入口。
+- **Q3 `server_settings` / `monster_base_exp`（部分已定）**：`server_settings` 已定为**倍率与
+  掉落开关的唯一真源**并完成接线（2026-09-30），原 server.json 的 `Drop` / `Experience` 两段与
+  `Channel.MaximumUsers` / `CurrentUsers` 全部删除，见 §10.5。`monster_base_exp` 仍只建表不接线：
+  怪物经验当前直接取自 PVF 的 `CharacterExperienceCatalog`，该表待官方
+  `monster_reward_ref` 数据源确认后再启用。
+- **Q4 GM 改参数的入口**：`server_settings` 现在可直接改库生效（重启后读），但尚无 GM 网页或
+  Admin API 写入接口，改值需手工 SQL。是否补一个最小读写接口，见 `PENDING.md`。
+
+## 10. 实施偏离记录（2026-09-30）
+
+本节登记实施中偏离本文原定方案的三处取舍及其判据。偏离均为「原方案在具体代码上
+不可行或代价过高」，不是遗漏。
+
+### 10.1 D4 由「逐方法行级事务」改为「内存树 + 账号级 diff 单事务落盘」
+
+- **原方案**：约 60 个方法各自重写为行级读写，返回的 `CharacterRecord` 从库中现场拼装。
+- **改为**：内存 record 树仍是读路径（与 §1.1 表格「游戏读路径：内存」一致），
+  `SaveLockedAsync` 只做「与上次落盘指纹 diff → 单个 IMMEDIATE 事务增量写」。
+- **判据**：
+  1. 内存树的跨账号/跨角色逻辑（点券单源化、预置角色刷新、仓库升级结算、经验归一）
+     在逐方法行级化后会产生大量跨表拼接，且这些路径无真机可验证，正确性无法保证；
+  2. 文档 §1.1 已把「单次写 O(全库) → O(变更行)」列为决策依据，该目标由 diff 落盘
+     达成，写入粒度停在「账号标量 + 单个角色子树」不影响增长曲线；
+  3. 事务边界这一真正要解决的问题（复合变更要么全成要么全不成）已由「一次操作一个
+     事务」达成。
+- **未获得的能力**：单字段更新仍会重写该角色的全部子行；跨进程多写者的行级合并
+  （靠库锁，不靠字段 diff）。
+
+### 10.2 取消 §6 一次性 `state.json` 导入
+
+见 §6。要点：不保留 JSON 解析器、不做有损转换；无库即播种空库并起 `test/test`。
+副作用见 §10.3 第一条（可空语义）与下文 `PENDING.md` 的真机回归项。
+
+### 10.3 基线 schema 三处修正
+
+| # | 原设计 | 修正 | 判据 |
+|---|---|---|---|
+| 1 | `character_items` 与 `character_mail` 的 `avatar_*` / `creature_*` / `equipment_quality_seed` 为 `NOT NULL DEFAULT 0` | 改为**可空** | 这些字段在内存模型里本就三态（null / 0 / 值），消费侧一律写成回退值（`EquipmentQualitySeed ?? CountOrValue`、`AvatarAbilityIndex ?? Durability`、`CreatureStomach ?? 100`）。按 0 落库会把回退值改成 0，直接改变下发字节。 |
+| 2 | `characters.name` 全局 `UNIQUE` | 改为 `UNIQUE (account_id, name)` | 预置角色名（`GameStoreCore.PresetCharacterName`）与换档角色名册（`MaximumTransferRoster.Archetypes` 的固定档位名）按设计在每个账号下各建一份，跨账号同名是被允许的；玩家自助建角另有全服判重（`GameStoreCore.CreateCharacterLocked` 比对全部账号），比该约束更严。本文 §5 原写的落点是「角色基础 + 槽位唯一」，全局唯一属基线过度约束。 |
+| 3 | `character_mail.mail_id` 用 `AUTOINCREMENT` 全局自增 | 改为 `INTEGER PRIMARY KEY`，由存储层显式分配 | 角色子树每次重写都删旧行再重插，若让库自行取号，客户端 `MAILBOXEXTRACT(98)` 与 Admin API 手里的 mail_id 会在任意一次保存后失效。显式写入使 Id 在重写前后不变。取号仍沿用 `GameStoreCore.AllocateMailIdLocked`（docs/design/06 §4.1 登记的唯一性分配例外），不是自增。 |
+
+### 10.4 随本次改造一并收敛的 JSON 时代残留
+
+| 残留 | 处置 | 判据 |
+|---|---|---|
+| `AccountRecord.LegacyBlackDiamondExpireAt`（`PremiumExpireAt` 兼容字段） | 删除 | 只在旧 JSON 中出现过；`MigratePremiumServicesLocked` 的归并分支随之删除（17→霸王契约号、同号取最大到期值、按号排序的归一保留） |
+| `CharacterRecord.LegacyIsWeakened`（`IsWeakened` 布尔兼容字段） | 删除，连带 `MigrateWeaknessRecoveryLocked` 整条启动迁移 | 同上；恢复进度已是 `characters.weakness_recovery` 真源列（0..100，CHECK 约束），旧布尔字段无生产路径可产生 |
+| `AccountRecord.Cash`（`int?`） | 改为非空、默认 0 | `null` 只在旧 JSON 中表示「未设置、启动时从首个角色推导」。`accounts.cash` 是 `NOT NULL DEFAULT 0`，null 无法往返；点券改为显式单源字段（`MigrateAccountCashLocked` 退化为「负值收敛 + 同步角色镜像」） |
+| 可空集合（五个容器、`Quests`、`Mailbox` 等）的 null 语义 | 载入时归一为非 null 空表 | JSON 里 null 表示「尚未规范化」，内核与登录流程见到 null 会重写一次（`SelectCharacterHandler` 的容器/技能/任务/副本判空门控）。SQLite 每次落盘都写规范化后的集合，该门控永不触发 |
+| record 上的 `JsonPropertyName` / `JsonIgnore` 特性 | 删除 | 无 JSON 消费者；`SqliteStateMapper` 的变更指纹仍借用 `System.Text.Json` 序列化 record，但只比对序列化值，与属性名无关 |
+
+### 10.5 倍率与掉落开关迁入 server_settings（原 server.json 字段删除）
+
+- **迁入**：`server.json` 的 `Drop`（`Enabled` / `RatePercent` / `EconomicRate` /
+  `ForceDrops`）、`Experience`（`MonsterMultiplier` / `ClearMultiplier` /
+  `BlackDiamondClearBonusRate` / `ClearEventBonusRate` / `ClearEventStartsAt` /
+  `ClearEventEndsAt`）两段，以及 `Channel.MaximumUsers` / `CurrentUsers`，全部删除；
+  `ServerOptions` 中的 `DropOptions` 与 `ExperienceOptions` 两个类型随之删除。
+  对应列全部并入 `server_settings`，启动时读一次并打印（`ServerSettings.Describe()`），
+  之后读路径一律用这份不可变快照——掉落与经验判定每只怪、每次通关都触发，不能每次查库。
+- **留在 server.json 的**：端口与监听地址、`Channel.Host` / `Port` / `ServerNumber` 与容量
+  `Channel.MaximumUsers`（默认 10；`Channel.Name` / `ChannelNumber` 与 `Channel.CurrentUsers`
+  已于 2026-09-30 多频道化时删除——显示名/频道号改由 PVF 频道目录提供，当前人数为在线会话
+  动态值）、`DatabasePath` / `ScriptPvfPath` / `SkillScriptPath`（部署锚点）、
+  `MaximumPacketLength` / `RejectBadCrc32` / `EnablePacketTracing` / `HexDumpLimit`（传输与诊断）。
+- **基线默认按官方行为取值**：
+  - `hell_drop_roll_times` 由 3 改为 **1**——基线注释原文即「1 = 官方行为（每只怪最多 1 件）」，
+    原 3 是本服的可调上限，不是官方值；
+  - `hell_recipe_rate` 由 0.05 改为 **0**——深渊不掉首饰设计图才是官方行为，0.05 是本服加的；
+  - 其余倍率一律 1.0，开关为 `drop_enabled=1` / `drop_rate_percent=100` /
+    `drop_economic_rate=1` / `drop_force=0`，活动加成为 0 且不设窗口。
+  - `clear_bonus_black_diamond_rate` 保留 0.05：它是既有实现的行为（黑钻会员经验加成），
+    非倍率类开关，按「不改既有可观察行为」处理。
+- **接线点**：`DropCatalog`（DungeonDropGenerator）、`ObjectDropCatalog`
+  （ObjectDropGenerator）、`MonsterChampionDropCatalog`、`DungeonExperienceCatalog`、
+  `DieMonsterHandler`、`ChannelSessionSenders`（频道容量上报）改注入 `ServerSettings`。
+  `EntranceService` 新增该依赖并透传。自检里原先靠改 `options.Drop.ForceDrops` 切换档位的
+  用例，改为各档位各造一个 `ServerSettings` 快照与对应 Catalog。

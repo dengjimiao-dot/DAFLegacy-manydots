@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// GIVEUP_QUEST (CMD 34): removes a giveup-able quest and refreshes the acceptable list (07 §5 group 7).
 /// </summary>
-public sealed class GiveupQuestHandler(JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
+public sealed class GiveupQuestHandler(IGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.GIVEUP_QUEST;
 

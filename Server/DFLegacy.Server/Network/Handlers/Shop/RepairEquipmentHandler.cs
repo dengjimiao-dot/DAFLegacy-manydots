@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// REPAIR_EQUIPMENT (CMD 25): repair quote and settlement for worn equipment (07 §5 group 10).
 /// </summary>
-public sealed class RepairEquipmentHandler(JsonGameStore store,
+public sealed class RepairEquipmentHandler(IGameStore store,
     ItemCatalog itemCatalog
     ) : IGameCommandHandler
 {

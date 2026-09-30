@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SET_USER_AREA (CMD 38): commits the area transition — persists the position, rebuilds USER_AREA/AREA_USERS projections and restores stamina silently (07 §5 group 14).
 /// </summary>
-public sealed class SetUserAreaHandler(JsonGameStore store,
+public sealed class SetUserAreaHandler(IGameStore store,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
 

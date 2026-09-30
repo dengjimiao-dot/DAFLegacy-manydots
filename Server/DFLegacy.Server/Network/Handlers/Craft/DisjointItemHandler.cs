@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// DISJOINT_ITEM (CMD 28): item disassembly into the disjoint table (07 §5 group 11).
 /// </summary>
-public sealed class DisjointItemHandler(JsonGameStore store,
+public sealed class DisjointItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     DisjointCatalog disjointCatalog,
     CharacterPacketBuilders builders,

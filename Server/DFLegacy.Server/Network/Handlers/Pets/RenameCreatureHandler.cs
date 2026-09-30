@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// RENAME_CREATURE (CMD 103): applies the rename card to the equipped Creature and refreshes the creature list (07 §5 group 12).
 /// </summary>
-public sealed class RenameCreatureHandler(JsonGameStore store,
+public sealed class RenameCreatureHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {

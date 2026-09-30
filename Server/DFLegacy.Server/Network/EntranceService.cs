@@ -1,13 +1,15 @@
 using System.Net;
 using System.Net.Sockets;
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
 public sealed class EntranceService(
     ServerOptions options,
+    ServerSettings settings,
     RuntimeState runtime,
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     PartyCoordinator partyCoordinator,
     SkillCatalog skillCatalog,
@@ -34,7 +36,7 @@ public sealed class EntranceService(
     HellDropCatalog hellDropCatalog,
     ClearRewardGenerator clearRewardGenerator,
     GameplayDatagramService gameplayDatagram,
-    ScriptFileSystem scripts,
+    EntranceChannelDirectory channelDirectory,
     ILoggerFactory loggerFactory
 ) : BackgroundService
 {
@@ -59,7 +61,7 @@ public sealed class EntranceService(
         RuntimeLogger.Configure(loggerFactory);
         var registry = new GameCommandRegistry();
         // 连接有效性检查 CMD 0 (0x00) ENUM_CMDPACKET_CHECK_CONNECTION
-        registry.Register("session.connection", new CheckConnectionHandler(options));
+        registry.Register("session.connection", new CheckConnectionHandler(options, channelDirectory));
         // 客户端退出通知 CMD 3 (0x03) ENUM_CMDPACKET_EXIT
         registry.Register("session.connection", new ExitHandler());
         // 反外挂探测上报 CMD 161 (0xA1) ENUM_CMDPACKET_ANTIBOT
@@ -190,7 +192,7 @@ public sealed class EntranceService(
             dungeonExperienceCatalog: dungeonExperienceCatalog,
             hellDropCatalog: hellDropCatalog,
             monsterChampionDrops: monsterChampionDrops,
-            options: options,
+            settings: settings,
             itemCatalog: itemCatalog,
             store: store,
             dungeonCatalog: dungeonCatalog,
@@ -369,7 +371,6 @@ public sealed class EntranceService(
             store,
             characterSessions,
             partyCoordinator,
-            options,
             _characterPacketBuilders,
             _sessionSenders));
         // 精灵聊天消息 CMD 124 (0x7C) ENUM_CMDPACKET_CREATURE_SEND_MESSAGE
@@ -417,7 +418,7 @@ public sealed class EntranceService(
         _sessionSenders = new ChannelSessionSenders(
             store,
             itemCatalog,
-            scripts,
+            channelDirectory,
             options,
             characterStatCatalog,
             spCatalog,

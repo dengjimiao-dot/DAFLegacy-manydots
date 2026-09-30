@@ -5,7 +5,9 @@ using System.Text;
 using System.Text.Json;
 using DFLegacy.Protocol;
 using DFLegacy.Server;
+using DFLegacy.Server.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
+using DFLegacy.Server.SelfTests.Sqlite;
 
 var failures = new List<string>();
 
@@ -68,6 +70,11 @@ RegisterSelfTest("megaphone", () =>
     return Task.CompletedTask;
 });
 RegisterSelfTest("protocol-golden", () => ProtocolGoldenSmokeTests.RunAsync(Check));
+RegisterSelfTest("entrance-channel-catalog", () =>
+{
+    EntranceChannelCatalogSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
 RegisterSelfTest("file-logger", () => FileLoggerSmokeTests.RunAsync(Check));
 RegisterSelfTest("party", () =>
 {
@@ -99,6 +106,11 @@ RegisterSelfTest("pvf-script", () =>
 RegisterSelfTest("path-resolver", () =>
 {
     PathResolverSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("sqlite-infrastructure", () =>
+{
+    SqliteInfrastructureSmokeTests.Run(Check);
     return Task.CompletedTask;
 });
 
@@ -536,7 +548,7 @@ async Task RunProgramInlineSuite()
         "compressed encrypted script round-trip");
 
     var metadata = EntranceMetadata.BuildSingleLocalChannel(
-        new EntranceChannel("Local Channel", "127.0.0.1", 7001));
+        new EntranceChannel("127.0.0.1", 7001, 100, 1));
     Check(metadata.Length == 652, "nine-group channel metadata length");
     Check(BinaryPrimitives.ReadInt32LittleEndian(metadata) == 9, "channel metadata group count");
     Check(Encoding.ASCII.GetString(metadata, 4, 4) == "cain", "first channel group name");
@@ -1320,11 +1332,10 @@ async Task RunProgramInlineSuite()
     {
         var warehouseSettlementOptions = new ServerOptions
         {
-            DataPath = Path.Combine(warehouseSettlementRoot, "state.json")
+            DatabasePath = Path.Combine(warehouseSettlementRoot, "state.db")
         };
-        var warehouseSettlementStore = new JsonGameStore(
-            warehouseSettlementOptions,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(warehouseSettlementOptions);
+        var warehouseSettlementStore = TestGameStore.Create(warehouseSettlementOptions);
         await warehouseSettlementStore.InitializeAsync();
         var warehouseSettlementCharacter =
             (await warehouseSettlementStore.GetCharactersAsync("test"))[0];
@@ -1361,9 +1372,7 @@ async Task RunProgramInlineSuite()
                 warehouseSettlementCharacter.Equipment ?? [],
                 [new CharacterItemRecord(3, 50, 1)])
             ?? warehouseSettlementCharacter;
-        var reloadedWarehouseSettlementStore = new JsonGameStore(
-            warehouseSettlementOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedWarehouseSettlementStore = TestGameStore.Create(warehouseSettlementOptions);
         await reloadedWarehouseSettlementStore.InitializeAsync();
         var reloadedWarehouseSettlementCharacter =
             (await reloadedWarehouseSettlementStore.GetCharactersAsync("test"))[0];
@@ -3642,13 +3651,12 @@ async Task RunProgramInlineSuite()
                 seriaQuest) == 45,
             "level-one non-repeatable quest experience uses the DFLegacy threshold table");
 
-        var experienceStore = new JsonGameStore(
-            new ServerOptions
+        var experienceOptions = new ServerOptions
             {
-                DataPath = Path.Combine(questFixtureRoot, "experience-state.json")
-            },
-            NullLogger<JsonGameStore>.Instance,
-            experienceCatalog);
+                DatabasePath = Path.Combine(questFixtureRoot, "experience-state.db")
+            };
+        TestGameStore.SeedDefaultTestAccount(experienceOptions);
+        var experienceStore = TestGameStore.Create(experienceOptions, experienceCatalog);
         await experienceStore.InitializeAsync();
         var thresholdCharacterCreation = await experienceStore.CreateCharacterAsync(
             "test",
@@ -3664,12 +3672,8 @@ async Task RunProgramInlineSuite()
                 level: 4,
                 experience: 1_964,
                 skillPoints: thresholdCharacter.Sp);
-            var normalizedExperienceStore = new JsonGameStore(
-                new ServerOptions
-                {
-                    DataPath = Path.Combine(questFixtureRoot, "experience-state.json")
-                },
-                NullLogger<JsonGameStore>.Instance,
+            var normalizedExperienceStore = TestGameStore.Create(
+                experienceOptions,
                 experienceCatalog);
             await normalizedExperienceStore.InitializeAsync();
             var normalizedThresholdCharacter =
@@ -3709,13 +3713,10 @@ async Task RunProgramInlineSuite()
                     experienceAmount: 100,
                     experienceCatalog,
                     spCatalog);
-            var reloadedExperienceBookStore = new JsonGameStore(
-                new ServerOptions
+            var reloadedExperienceBookStore = TestGameStore.Create(new ServerOptions
                 {
-                    DataPath = Path.Combine(questFixtureRoot, "experience-state.json")
-                },
-                NullLogger<JsonGameStore>.Instance,
-                experienceCatalog);
+                    DatabasePath = Path.Combine(questFixtureRoot, "experience-state.db")
+                }, experienceCatalog);
             await reloadedExperienceBookStore.InitializeAsync();
             var reloadedExperienceBookCharacter =
                 (await reloadedExperienceBookStore.GetCharactersAsync("test"))
@@ -3801,19 +3802,17 @@ async Task RunProgramInlineSuite()
 
         var storeOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "state.json")
+            DatabasePath = Path.Combine(questFixtureRoot, "state.db")
         };
-        var questStore = new JsonGameStore(
-            storeOptions,
-            NullLogger<JsonGameStore>.Instance,
-            experienceCatalog);
+        TestGameStore.SeedDefaultTestAccount(storeOptions);
+        var questStore = TestGameStore.Create(storeOptions, experienceCatalog);
         await questStore.InitializeAsync();
         var storedCharacter = (await questStore.GetCharactersAsync("test"))[0];
-        Check(storedCharacter.Name == JsonGameStore.PresetCharacterName
-            && storedCharacter.Job == JsonGameStore.PresetCharacterJob
-            && storedCharacter.GrowType == JsonGameStore.PresetCharacterGrowType
+        Check(storedCharacter.Name == GameStoreCore.PresetCharacterName
+            && storedCharacter.Job == GameStoreCore.PresetCharacterJob
+            && storedCharacter.GrowType == GameStoreCore.PresetCharacterGrowType
             && storedCharacter.Level == CharacterExperienceCatalog.MaximumLevel
-            && storedCharacter.Experience == JsonGameStore.PresetCharacterExperience
+            && storedCharacter.Experience == GameStoreCore.PresetCharacterExperience
             && storedCharacter.Experience == 270_812_393,
             "preset level-sixty Berserker starts with the DFLegacy cumulative experience");
         var initialSp = storedCharacter.Sp;
@@ -3861,9 +3860,7 @@ async Task RunProgramInlineSuite()
             sourceSlot: 45,
             expectedItemId: 1_031,
             new IncreaseStatusEffect(IncreaseStatusType.SkillPoints, 5));
-        var reloadedSpStore = new JsonGameStore(
-            storeOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedSpStore = TestGameStore.Create(storeOptions);
         await reloadedSpStore.InitializeAsync();
         var reloadedSpCharacter = (await reloadedSpStore.GetCharactersAsync("test"))[0];
         Check(preparedPermanentStatusCharacter is not null
@@ -3934,9 +3931,7 @@ async Task RunProgramInlineSuite()
             expectedItemId: 28,
             accumulatedLevelSkillPoints,
             resetSkillLayout);
-        var skillResetReloadStore = new JsonGameStore(
-            storeOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var skillResetReloadStore = TestGameStore.Create(storeOptions);
         await skillResetReloadStore.InitializeAsync();
         var skillResetCharacter = (await skillResetReloadStore.GetCharactersAsync("test"))[0];
         Check(characterWithSkillResetItem is not null
@@ -4122,11 +4117,10 @@ async Task RunProgramInlineSuite()
 
         var identityStoreOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "identity-state.json")
+            DatabasePath = Path.Combine(questFixtureRoot, "identity-state.db")
         };
-        var identityStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(identityStoreOptions);
+        var identityStore = TestGameStore.Create(identityStoreOptions);
         await identityStore.InitializeAsync();
         var defaultAccount = (await identityStore.GetAccountsAsync()).Single();
         var defaultCharacter = (await identityStore.GetCharactersAsync(defaultAccount.AccountUid)).Single();
@@ -4141,9 +4135,7 @@ async Task RunProgramInlineSuite()
         var fatigueUpdate = await identityStore.SetCharacterUsedFatigueAsync(
             defaultCharacter.Id,
             usedFatigue: 88);
-        var fatigueReloadStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var fatigueReloadStore = TestGameStore.Create(identityStoreOptions);
         await fatigueReloadStore.InitializeAsync();
         var reloadedFatigueCharacter = (await fatigueReloadStore.GetCharactersAsync(
             defaultAccount.AccountUid)).Single(character => character.Id == defaultCharacter.Id);
@@ -4158,9 +4150,7 @@ async Task RunProgramInlineSuite()
             await identityStore.ConsumeDungeonRoomFatigueAsync(
                 defaultCharacter.Id,
                 maximumFatigue: 89);
-        var roomFatigueReloadStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var roomFatigueReloadStore = TestGameStore.Create(identityStoreOptions);
         await roomFatigueReloadStore.InitializeAsync();
         var reloadedRoomFatigueCharacter =
             (await roomFatigueReloadStore.GetCharactersAsync(defaultAccount.AccountUid))
@@ -4207,9 +4197,7 @@ async Task RunProgramInlineSuite()
             maximumFatigue: GameProtocolConstants.BlackDiamondMaximumFatigue,
             maximumRemainingFatigue: 126,
             recoveryAmount: 30);
-        var fatiguePotionReloadStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var fatiguePotionReloadStore = TestGameStore.Create(identityStoreOptions);
         await fatiguePotionReloadStore.InitializeAsync();
         var reloadedFatiguePotionCharacter = (await fatiguePotionReloadStore.GetCharactersAsync(
             defaultAccount.AccountUid)).Single(character => character.Id == defaultCharacter.Id);
@@ -4241,9 +4229,7 @@ async Task RunProgramInlineSuite()
             maximumFatigue: GameProtocolConstants.BlackDiamondMaximumFatigue,
             maximumRemainingFatigue: 126,
             recoveryAmount: 30);
-        var fatigueThresholdReloadStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var fatigueThresholdReloadStore = TestGameStore.Create(identityStoreOptions);
         await fatigueThresholdReloadStore.InitializeAsync();
         var reloadedFatigueThresholdCharacter =
             (await fatigueThresholdReloadStore.GetCharactersAsync(defaultAccount.AccountUid))
@@ -4277,9 +4263,9 @@ async Task RunProgramInlineSuite()
             && nextFatigueDay.NewFatigueDay
             && nextFatigueDay.ResetCharacterCount == 1
             && nextFatigueDay.CharacterIds.SequenceEqual([defaultCharacter.Id])
-            && JsonGameStore.GetFatigueDayKey(new DateTimeOffset(
+            && GameStoreCore.GetFatigueDayKey(new DateTimeOffset(
                 2026, 8, 10, 5, 59, 59, TimeSpan.FromHours(8))) == 20260809
-            && JsonGameStore.GetFatigueDayKey(new DateTimeOffset(
+            && GameStoreCore.GetFatigueDayKey(new DateTimeOffset(
                 2026, 8, 10, 6, 0, 0, TimeSpan.FromHours(8))) == 20260810,
             "the local fatigue day changes at 06:00 and resets persisted character usage once");
         Check(AccountUidRules.IsTest(10_000_000)
@@ -4333,9 +4319,7 @@ async Task RunProgramInlineSuite()
             "normal-identity",
             normalCharacter.Character.Id,
             new CharacterQuestRecord(QuestCatalog.TutorialCompletionQuestId, Trigger: 0));
-        var tutorialReloadStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var tutorialReloadStore = TestGameStore.Create(identityStoreOptions);
         await tutorialReloadStore.InitializeAsync();
         var reloadedTutorialCharacter = (await tutorialReloadStore.GetCharactersAsync(
                 normalAccountUid))
@@ -4402,9 +4386,7 @@ async Task RunProgramInlineSuite()
         var weaknessRecovery = await identityStore.RecoverCharacterWeaknessAsync(
             testCharacter.Character.Id,
             recoveryCost: 505);
-        var weaknessReloadStore = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var weaknessReloadStore = TestGameStore.Create(identityStoreOptions);
         await weaknessReloadStore.InitializeAsync();
         var reloadedWeaknessCharacter =
             (await weaknessReloadStore.GetCharactersAsync(testAccountUid))
@@ -4499,9 +4481,7 @@ async Task RunProgramInlineSuite()
             "the persisted CharacterNo sequence does not reuse the deleted highest value after reload-free deletion");
 
         var deletedPreset = await identityStore.DeleteCharacterAsync(testAccountUid, 0);
-        var identityReload = new JsonGameStore(
-            identityStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var identityReload = TestGameStore.Create(identityStoreOptions);
         await identityReload.InitializeAsync();
         var reloadedTestCharacters = await identityReload.GetCharactersAsync(testAccountUid);
         Check(deletedPreset.Deleted
@@ -4512,11 +4492,10 @@ async Task RunProgramInlineSuite()
 
         var mailStoreOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "mail-state.json")
+            DatabasePath = Path.Combine(questFixtureRoot, "mail-state.db")
         };
-        var mailStore = new JsonGameStore(
-            mailStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(mailStoreOptions);
+        var mailStore = TestGameStore.Create(mailStoreOptions);
         await mailStore.InitializeAsync();
         var mailSender = (await mailStore.GetCharactersAsync("test"))[0];
         var recipientCreation = await mailStore.CreateCharacterAsync(
@@ -4595,9 +4574,7 @@ async Task RunProgramInlineSuite()
                 3)
             && (await mailStore.GetCharacterMailsAsync(mailRecipient.Id)) is [{ State: 3 }],
             "mail archive state survives a fresh mailbox read");
-        mailStore = new JsonGameStore(
-            mailStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        mailStore = TestGameStore.Create(mailStoreOptions);
         await mailStore.InitializeAsync();
         Check((await mailStore.GetCharacterMailsAsync(mailRecipient.Id)) is
             [
@@ -4698,9 +4675,7 @@ async Task RunProgramInlineSuite()
             plannedSenderInventory,
             mailSender.Equipment ?? [],
             CancellationToken.None);
-        var reloadedMailStore = new JsonGameStore(
-            mailStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedMailStore = TestGameStore.Create(mailStoreOptions);
         await reloadedMailStore.InitializeAsync();
         var reloadedMailSender = (await reloadedMailStore.GetCharactersAsync("test"))
             .Single(character => character.Id == mailSender.Id);
@@ -4721,17 +4696,6 @@ async Task RunProgramInlineSuite()
             CountOrValue: 1,
             AvatarRemainingSeconds: 0,
             AvatarAbilityIndex: 0);
-        var avatarCompatibilityJson = JsonSerializer.Serialize(avatarInventoryItem);
-        var reloadedAvatarCompatibilityItem =
-            JsonSerializer.Deserialize<CharacterItemRecord>(avatarCompatibilityJson);
-        Check(avatarCompatibilityJson.Contains(
-                "\"AvatarExpireAt\":0",
-                StringComparison.Ordinal)
-            && !avatarCompatibilityJson.Contains(
-                "AvatarRemainingSeconds",
-                StringComparison.Ordinal)
-            && reloadedAvatarCompatibilityItem?.AvatarRemainingSeconds == 0,
-            "Avatar remaining seconds retain the legacy JSON key without exposing expiration-timestamp semantics in code");
         var creatureInventoryItem = new CharacterItemRecord(
             Slot: CharacterCreatureInventoryLayout.EquippedCreatureSlot,
             ItemId: 50_000,
@@ -4761,56 +4725,55 @@ async Task RunProgramInlineSuite()
 
         var presetRefreshOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "preset-refresh-state.json")
+            DatabasePath = Path.Combine(questFixtureRoot, "preset-refresh-state.db")
         };
         var preservedAccessory = new CharacterItemRecord(
             Slot: 16,
             ItemId: 20093,
             CountOrValue: 1,
             Durability: 1_000);
-        await File.WriteAllTextAsync(
-            presetRefreshOptions.DataPath,
-            JsonSerializer.Serialize(
-            new AccountRecord[]
-            {
-            new AccountRecord(
-                Guid.NewGuid(),
-                "test",
-                "test-hash",
-                [
-                    new CharacterRecord(
-                        Guid.NewGuid(),
-                        "测试角色",
-                        0,
-                        2,
-                        55,
-                        500,
-                        12_345,
-                        Equipment:
-                        [
-                            new CharacterItemRecord(
-                                Slot: 11,
-                                ItemId: 10874,
-                                CountOrValue: 1,
-                                Durability: 1_000),
-                            preservedAccessory
-                        ],
-                        Skills: [new CharacterSkillRecord(0, 5, 20)]),
-                    new CharacterRecord(
-                        Guid.NewGuid(),
-                        JsonGameStore.PresetCharacterName,
-                        JsonGameStore.PresetCharacterJob,
-                        JsonGameStore.PresetCharacterGrowType,
-                        55,
-                        500,
-                        99_999,
-                        Equipment: [preservedAccessory],
-                        Skills: [new CharacterSkillRecord(0, 5, 20)])
-                ])
-            }));
-        var presetRefreshStore = new JsonGameStore(
+        TestGameStore.Seed(
             presetRefreshOptions,
-            NullLogger<JsonGameStore>.Instance);
+            [
+                new AccountRecord(
+                    Guid.NewGuid(),
+                    "test",
+                    "test-hash",
+                    [
+                        new CharacterRecord(
+                            Guid.NewGuid(),
+                            "测试角色",
+                            0,
+                            2,
+                            55,
+                            500,
+                            12_345,
+                            Equipment:
+                            [
+                                new CharacterItemRecord(
+                                    Slot: 11,
+                                    ItemId: 10874,
+                                    CountOrValue: 1,
+                                    Durability: 1_000),
+                                preservedAccessory
+                            ],
+                            Skills: [new CharacterSkillRecord(0, 5, 20)]),
+                        new CharacterRecord(
+                            Guid.NewGuid(),
+                            GameStoreCore.PresetCharacterName,
+                            GameStoreCore.PresetCharacterJob,
+                            GameStoreCore.PresetCharacterGrowType,
+                            55,
+                            500,
+                            99_999,
+                            Equipment: [preservedAccessory],
+                            Skills: [new CharacterSkillRecord(0, 5, 20)])
+                    ],
+                    // 账号共享点券钱包是单源；旧档无此字段时曾由 slot 零角色推导，
+                    // 现在必须显式给出。
+                    Cash: 12_345)
+            ]);
+        var presetRefreshStore = TestGameStore.Create(presetRefreshOptions);
         await presetRefreshStore.InitializeAsync();
         var refreshedCharacters = await presetRefreshStore.GetCharactersAsync("test");
         var historicalNamedCharacter = refreshedCharacters[0];
@@ -4827,15 +4790,15 @@ async Task RunProgramInlineSuite()
             && historicalNamedCharacter.Skills?.Count == 1,
             "historical preset names no longer trigger character migration");
         var stalePreset = refreshedCharacters[1];
-        Check(stalePreset.Name == JsonGameStore.PresetCharacterName
+        Check(stalePreset.Name == GameStoreCore.PresetCharacterName
             && stalePreset.CharacterNo == 2
             && stalePreset.AccountUid == 1
             && stalePreset.Slot == 1
-            && stalePreset.Job == JsonGameStore.PresetCharacterJob
-            && stalePreset.GrowType == JsonGameStore.PresetCharacterGrowType
+            && stalePreset.Job == GameStoreCore.PresetCharacterJob
+            && stalePreset.GrowType == GameStoreCore.PresetCharacterGrowType
              && stalePreset.Level == CharacterExperienceCatalog.MaximumLevel
              && stalePreset.Cash == 12_345
-            && stalePreset.Experience == JsonGameStore.PresetCharacterExperience
+            && stalePreset.Experience == GameStoreCore.PresetCharacterExperience
             && stalePreset.Equipment?.Count == 1
             && stalePreset.Equipment.Single() == preservedAccessory
             && expectedPresetAvatarItemIds.All(itemId =>
@@ -4850,12 +4813,10 @@ async Task RunProgramInlineSuite()
             CharacterExperienceCatalog.MaximumLevel,
             0,
             stalePreset.Sp);
-        var reloadedPresetRefreshStore = new JsonGameStore(
-            presetRefreshOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedPresetRefreshStore = TestGameStore.Create(presetRefreshOptions);
         await reloadedPresetRefreshStore.InitializeAsync();
         Check((await reloadedPresetRefreshStore.GetCharactersAsync("test"))[1].Experience
-              == JsonGameStore.PresetCharacterExperience,
+              == GameStoreCore.PresetCharacterExperience,
             "existing preset character refreshes to the correct cumulative experience");
 
         var persistedQuestDropInventory = (storedCharacter.Inventory ?? [])
@@ -4971,9 +4932,7 @@ async Task RunProgramInlineSuite()
             x: 612,
             y: 287,
             direction: 2);
-        var reloadedStore = new JsonGameStore(
-            storeOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedStore = TestGameStore.Create(storeOptions);
         await reloadedStore.InitializeAsync();
         var reloadedCharacter = (await reloadedStore.GetCharactersAsync("test"))[0];
         Check(completedCharacter is not null
@@ -5030,9 +4989,7 @@ async Task RunProgramInlineSuite()
             recovery: 37);
         var accountCeraGrant = await reloadedStore.GrantCeraToAccountAsync("test", 200);
         var accountDiamondGrant = await reloadedStore.GrantDiamondToAccountAsync("test", 30);
-        var reloadedPremiumStore = new JsonGameStore(
-            storeOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedPremiumStore = TestGameStore.Create(storeOptions);
         await reloadedPremiumStore.InitializeAsync();
         var reloadedPremiumCharacter = (await reloadedPremiumStore.GetCharactersAsync("test"))[0];
         var premiumState = await reloadedPremiumStore.GetPremiumServiceAsync("test");
@@ -5121,9 +5078,7 @@ async Task RunProgramInlineSuite()
                 "test",
                 GameProtocolConstants.MasterContractServiceType,
                 30);
-        var reloadedPremiumServicesStore = new JsonGameStore(
-            storeOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedPremiumServicesStore = TestGameStore.Create(storeOptions);
         await reloadedPremiumServicesStore.InitializeAsync();
         var premiumServices = await reloadedPremiumServicesStore.GetPremiumServicesAsync("test");
         Check(overlordContractGrant.Success
@@ -5139,54 +5094,49 @@ async Task RunProgramInlineSuite()
             "霸王 and 达人 contracts persist independent Premium expiries");
         var legacyContractOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "legacy-contract-state.json")
+            DatabasePath = Path.Combine(questFixtureRoot, "legacy-contract-state.db")
         };
         var legacyContractExpiry = checked(
             (uint)DateTimeOffset.UtcNow.AddDays(15).ToUnixTimeSeconds());
         var legacyDiamondExpiry = checked(
             (uint)DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds());
-        await File.WriteAllTextAsync(
-            legacyContractOptions.DataPath,
-            JsonSerializer.Serialize(
-            new[]
-            {
-            new
-            {
-                Id = Guid.NewGuid(),
-                UserName = "legacy-contract",
-                PasswordHash = "hash",
-                Characters = new[]
-                {
-                    new
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = "legacy",
-                        Job = 0,
-                        GrowType = 0,
-                        Level = 50,
-                        Sp = 0,
-                        Cash = 0,
-                        IsWeakened = true,
-                        IsPremium = true,
-                        PremiumExpireAt = legacyDiamondExpiry
-                    }
-                },
-                PremiumExpireAt = legacyDiamondExpiry,
-                PremiumServices = new[]
-                {
-                    new AccountPremiumServiceRecord(17, legacyContractExpiry)
-                }
-            }
-            }));
-        var legacyContractStore = new JsonGameStore(
+        TestGameStore.Seed(
             legacyContractOptions,
-            NullLogger<JsonGameStore>.Instance);
+            [
+                new AccountRecord(
+                    Guid.NewGuid(),
+                    "legacy-contract",
+                    "hash",
+                    [
+                        new CharacterRecord(
+                            Guid.NewGuid(),
+                            "legacy",
+                            Job: 0,
+                            GrowType: 0,
+                            Level: 50,
+                            Sp: 0,
+                            Cash: 0,
+                            // 低于满值即虚弱；曾由旧 JSON 的 IsWeakened 布尔字段表达，
+                            // 现以真源列 weakness_recovery 直接表达。
+                            WeaknessRecovery: DungeonWeaknessPolicy.InitialRecovery)
+                    ],
+                    PremiumServices:
+                    [
+                        // 服务 17 是霸王契约的历史号，启动归一到 OverlordContract。
+                        new AccountPremiumServiceRecord(
+                            17,
+                            legacyContractExpiry),
+                        new AccountPremiumServiceRecord(
+                            GameProtocolConstants.BlackDiamondServiceType,
+                            legacyDiamondExpiry)
+                    ])
+            ]);
+        var legacyContractStore = TestGameStore.Create(legacyContractOptions);
         await legacyContractStore.InitializeAsync();
         var migratedContractServices =
             await legacyContractStore.GetPremiumServicesAsync("legacy-contract");
         var migratedLegacyWeakness =
             (await legacyContractStore.GetCharactersAsync("legacy-contract")).Single();
-        var migratedPremiumJson = await File.ReadAllTextAsync(legacyContractOptions.DataPath);
         Check(migratedContractServices.Any(service =>
                 service.ServiceType == GameProtocolConstants.BlackDiamondServiceType
                 && service.Active
@@ -5197,29 +5147,23 @@ async Task RunProgramInlineSuite()
                 && service.ExpiresAt == legacyContractExpiry)
             && migratedLegacyWeakness.WeaknessRecovery
                 == DungeonWeaknessPolicy.InitialRecovery
-            && migratedLegacyWeakness.IsWeakened
-            && !migratedPremiumJson.Contains("\"IsWeakened\"", StringComparison.Ordinal)
-            && !migratedPremiumJson.Contains("\"IsPremium\"", StringComparison.Ordinal)
-            && !migratedPremiumJson.Contains("\"PremiumExpireAt\"", StringComparison.Ordinal),
-            "legacy account black-diamond expiry and Overlord service 17 migrate into the normalized account Premium-service table");
+            && migratedLegacyWeakness.IsWeakened,
+            "Overlord service 17 migrates to the normalized OverlordContract number and the weakened character keeps its recovery value");
         var unsupportedDiamondGrant = await reloadedPremiumStore.GrantDiamondToAccountAsync("test", 15);
         Check(!unsupportedDiamondGrant.Success,
             "account black-diamond grant rejects disabled service durations");
 
         var rosterStoreOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "roster-state.json")
+            DatabasePath = Path.Combine(questFixtureRoot, "roster-state.db")
         };
-        var rosterStore = new JsonGameStore(
-            rosterStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(rosterStoreOptions);
+        var rosterStore = TestGameStore.Create(rosterStoreOptions);
         await rosterStore.InitializeAsync();
         var rosterReplacement = await rosterStore.ReplaceAllCharactersAsync(
             "test",
             MaximumTransferRoster.Create());
-        var reloadedRosterStore = new JsonGameStore(
-            rosterStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedRosterStore = TestGameStore.Create(rosterStoreOptions);
         await reloadedRosterStore.InitializeAsync();
         var reloadedRoster = await reloadedRosterStore.GetCharactersAsync("test");
         Check(rosterReplacement.Replaced
@@ -5237,9 +5181,7 @@ async Task RunProgramInlineSuite()
         var deletedCharacterId = reloadedRoster[7].Id;
         var characterAfterDeletedSlotId = reloadedRoster[8].Id;
         var deletedRosterEntry = await reloadedRosterStore.DeleteCharacterAsync("test", 7);
-        var deleteReloadStore = new JsonGameStore(
-            rosterStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        var deleteReloadStore = TestGameStore.Create(rosterStoreOptions);
         await deleteReloadStore.InitializeAsync();
         var rosterAfterDelete = await deleteReloadStore.GetCharactersAsync("test");
         Check(deletedRosterEntry.Deleted
@@ -5252,32 +5194,30 @@ async Task RunProgramInlineSuite()
         Check(!invalidDelete.Deleted && rosterAfterDelete.Length == 19,
             "deleting an empty character slot is rejected without changing the roster");
 
-        var legacyLocationPath = Path.Combine(questFixtureRoot, "locationless-state.json");
-        File.WriteAllText(
-            legacyLocationPath,
-            """
-        [
-          {
-            "Id": "11111111-1111-1111-1111-111111111111",
-            "UserName": "test",
-            "PasswordHash": "legacy",
-            "Characters": [
-              {
-                "Id": "22222222-2222-2222-2222-222222222222",
-                "Name": "Legacy",
-                "Job": 0,
-                "GrowType": 0,
-                "Level": 1,
-                "Sp": 0,
-                "Cash": 0
-              }
-            ]
-          }
-        ]
-        """);
-        var locationlessStore = new JsonGameStore(
-            new ServerOptions { DataPath = legacyLocationPath },
-            NullLogger<JsonGameStore>.Instance);
+        // 旧档缺位置的账号：Town/Area/X/Y/Direction/TutorialStarted 全部取默认值。
+        var legacyLocationOptions = new ServerOptions
+        {
+            DatabasePath = Path.Combine(questFixtureRoot, "locationless-state.db")
+        };
+        TestGameStore.Seed(
+            legacyLocationOptions,
+            [
+                new AccountRecord(
+                    Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    "test",
+                    "legacy",
+                    [
+                        new CharacterRecord(
+                            Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                            "Legacy",
+                            Job: 0,
+                            GrowType: 0,
+                            Level: 1,
+                            Sp: 0,
+                            Cash: 0)
+                    ])
+            ]);
+        var locationlessStore = TestGameStore.Create(legacyLocationOptions);
         await locationlessStore.InitializeAsync();
         var locationlessCharacter = (await locationlessStore.GetCharactersAsync("test"))[0];
         Check(locationlessCharacter.TownId == 1
@@ -5293,12 +5233,11 @@ async Task RunProgramInlineSuite()
 
         var legacyStoreOptions = new ServerOptions
         {
-            DataPath = Path.Combine(questFixtureRoot, "legacy-state.json"),
+            DatabasePath = Path.Combine(questFixtureRoot, "legacy-state.db"),
             SkillScriptPath = questFixtureRoot
         };
-        var legacyStore = new JsonGameStore(
-            legacyStoreOptions,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(legacyStoreOptions);
+        var legacyStore = TestGameStore.Create(legacyStoreOptions);
         await legacyStore.InitializeAsync();
         var legacyCharacter = (await legacyStore.GetCharactersAsync("test"))[0];
         legacyCharacter = await legacyStore.SaveCharacterProgressionAsync(
@@ -5331,44 +5270,37 @@ async Task RunProgramInlineSuite()
                 CreateItems(questScripts)) == 0,
             "legacy reward migration is idempotent across restarts");
 
-        var legacyGrowthPath = Path.Combine(
-            questFixtureRoot,
-            "legacy-growth-state.json");
-        File.WriteAllText(
-            legacyGrowthPath,
-            """
-        [
-          {
-            "Id": "33333333-3333-3333-3333-333333333333",
-            "UserName": "growth",
-            "PasswordHash": "legacy",
-            "Characters": [
-              {
-                "Id": "44444444-4444-4444-4444-444444444444",
-                "Name": "GrowthLegacy",
-                "Job": 0,
-                "GrowType": 0,
-                "Level": 18,
-                "Sp": 100,
-                "Cash": 0,
-                "CompletedQuestIds": [1025],
-                "RewardedQuestIds": [1025],
-                "Skills": [
-                  { "Slot": 6, "SkillId": 1, "Level": 5 },
-                  { "Slot": 48, "SkillId": 2, "Level": 1 }
-                ]
-              }
-            ]
-          }
-        ]
-        """);
-        var legacyGrowthStore = new JsonGameStore(
-            new ServerOptions
-            {
-                DataPath = legacyGrowthPath,
-                SkillScriptPath = questFixtureRoot
-            },
-            NullLogger<JsonGameStore>.Instance);
+        var legacyGrowthOptions = new ServerOptions
+        {
+            DatabasePath = Path.Combine(questFixtureRoot, "legacy-growth-state.db"),
+            SkillScriptPath = questFixtureRoot
+        };
+        TestGameStore.Seed(
+            legacyGrowthOptions,
+            [
+                new AccountRecord(
+                    Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                    "growth",
+                    "legacy",
+                    [
+                        new CharacterRecord(
+                            Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                            "GrowthLegacy",
+                            Job: 0,
+                            GrowType: 0,
+                            Level: 18,
+                            Sp: 100,
+                            Cash: 0,
+                            CompletedQuestIds: [1025],
+                            RewardedQuestIds: [1025],
+                            Skills:
+                            [
+                                new CharacterSkillRecord(6, 1, 5),
+                                new CharacterSkillRecord(48, 2, 1)
+                            ])
+                    ])
+            ]);
+        var legacyGrowthStore = TestGameStore.Create(legacyGrowthOptions);
         await legacyGrowthStore.InitializeAsync();
         var legacyGrowthSkillCatalog = new SkillCatalog(
             questScripts,
@@ -7534,8 +7466,9 @@ async Task RunProgramInlineSuite()
             ScriptPvfPath = "",
             SkillScriptPath = championDropFixtureRoot
         };
+        var championDropSettings = new ServerSettings();
         var championDropCatalog = new MonsterChampionDropCatalog(
-            championDropOptions,
+            championDropSettings,
             CreateScripts(championDropOptions),
             NullLogger<MonsterChampionDropCatalog>.Instance);
         Check(championDropCatalog.DefinitionCount == 2
@@ -7598,16 +7531,17 @@ async Task RunProgramInlineSuite()
                     .SequenceEqual(new ushort[] { 3_001 }),
             "all monster types independently roll MOB item rows while boss/champion and super-champion types append their existing specific tables");
 
-        championDropOptions.Drop.ForceDrops = true;
-        var forcedChampionDrops = championDropCatalog.Roll(
-            200,
-            GameDungeonMonsterTypes.SuperChampion,
-            new SequenceDropRandomSource());
-        championDropOptions.Drop.Enabled = false;
-        var disabledChampionDrops = championDropCatalog.Roll(
-            200,
-            GameDungeonMonsterTypes.SuperChampion,
-            new ZeroDropRandomSource());
+        // 掉落开关来自 server_settings（不可变快照），故各档位各造一个 Catalog。
+        var forcedChampionDrops = new MonsterChampionDropCatalog(
+                championDropSettings with { DropForce = true },
+                CreateScripts(championDropOptions),
+                NullLogger<MonsterChampionDropCatalog>.Instance)
+            .Roll(200, GameDungeonMonsterTypes.SuperChampion, new SequenceDropRandomSource());
+        var disabledChampionDrops = new MonsterChampionDropCatalog(
+                championDropSettings with { DropEnabled = false },
+                CreateScripts(championDropOptions),
+                NullLogger<MonsterChampionDropCatalog>.Instance)
+            .Roll(200, GameDungeonMonsterTypes.SuperChampion, new ZeroDropRandomSource());
         Check(forcedChampionDrops.Select(drop => drop.ItemId).SequenceEqual(
                     new ushort[] { 3_001, 3_002, 3_171, 3_166 })
                 && disabledChampionDrops.Count == 0,
@@ -8119,16 +8053,22 @@ async Task RunProgramInlineSuite()
         Check(generatedClearReward.FreeGoldAmount == 388,
                 "clear-reward uses the DFLegacy common level table and 0.5/1/2 monster weights for the local party member");
         var pvfObjectDropGenerator = new ObjectDropGenerator(
-            new ServerOptions(),
+            new ServerSettings(),
             pvfObjectDrops,
             pvfGoldDrops);
         var pvfDungeonCatalog = new DungeonCatalog(
             pvfScripts,
             pvfObjectDropGenerator,
             NullLogger<DungeonCatalog>.Instance);
+        var pvfDungeonOptions = new ServerOptions();
         var pvfDungeonExperience = new DungeonExperienceCatalog(
-            new ServerOptions(),
+            pvfDungeonOptions,
+            new ServerSettings(),
             pvfScripts,
+            new EntranceChannelDirectory(
+                pvfScripts,
+                pvfDungeonOptions,
+                NullLogger<EntranceChannelDirectory>.Instance),
             NullLogger<DungeonExperienceCatalog>.Instance);
         Check(pvfDungeonCatalog.DungeonIds.Count == 43,
             "all DFLegacy dungeon definitions are parsed directly from Script.pvf");
@@ -8614,16 +8554,15 @@ async Task RunProgramInlineSuite()
             resultCode: 55,
             totalKilledMonsterCount: 10,
             partyMemberCount: 2);
+        var scaledDungeonOptions = new ServerOptions();
         var scaledDungeonExperience = new DungeonExperienceCatalog(
-            new ServerOptions
-            {
-                Experience = new ExperienceOptions
-                {
-                    MonsterMultiplier = 2,
-                    ClearMultiplier = 2
-                }
-            },
+            scaledDungeonOptions,
+            new ServerSettings { ExperienceMultiplier = 2, ClearMultiplier = 2 },
             pvfScripts,
+            new EntranceChannelDirectory(
+                pvfScripts,
+                scaledDungeonOptions,
+                NullLogger<EntranceChannelDirectory>.Instance),
             NullLogger<DungeonExperienceCatalog>.Instance);
         Check(lorienNormalExperience == 30
                 && lorienBossExperience == 120
@@ -9157,7 +9096,7 @@ async Task RunProgramInlineSuite()
             pvfItemCatalog,
             NullLogger<MonsterDropCatalog>.Instance);
         var pvfChampionDrops = new MonsterChampionDropCatalog(
-            new ServerOptions(),
+            new ServerSettings(),
             pvfScripts,
             NullLogger<MonsterChampionDropCatalog>.Instance);
         Check(pvfChampionDrops.DefinitionCount > 0
@@ -9452,10 +9391,7 @@ async Task RunProgramInlineSuite()
                 && pvfObjectDrops.EquipmentCandidateCount > 0,
             "DFLegacy object-drop probabilities, grade window and weighted equipment candidates are parsed");
         var forcedObjectDropGenerator = new ObjectDropGenerator(
-            new ServerOptions
-            {
-                Drop = new DropOptions { ForceDrops = true }
-            },
+            new ServerSettings { DropForce = true },
             pvfObjectDrops,
             pvfGoldDrops);
         var forcedObjectDrops = forcedObjectDropGenerator.Generate(
@@ -9467,7 +9403,7 @@ async Task RunProgramInlineSuite()
             "a forced DFLegacy object draw independently generates gold and a valid weighted equipment item");
 
         var normalDropGenerator = new DungeonDropGenerator(
-            new ServerOptions(),
+            new ServerSettings(),
             pvfWorldDrops,
             pvfGoldDrops,
             pvfMonsterDrops);
@@ -9582,10 +9518,7 @@ async Task RunProgramInlineSuite()
             "level 55 normal-monster equipment boundary is exactly 32 out of 10000");
 
         var forcedDropGenerator = new DungeonDropGenerator(
-            new ServerOptions
-            {
-                Drop = new DropOptions { ForceDrops = true }
-            },
+            new ServerSettings { DropForce = true },
             pvfWorldDrops,
             pvfGoldDrops,
             pvfMonsterDrops);
@@ -9682,7 +9615,7 @@ foreach (var selectedSuite in selectedSuites)
             selectedSuite.Name,
             false,
             failures.Count - failureBaseline,
-            $"{exception.GetType().Name}: {exception.Message}"));
+            $"{exception.GetType().Name}: {exception.Message}\n{exception.StackTrace}"));
     }
 }
 

@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// ITEMTRADE_STATE (CMD 26): the NPC item-trade lock state used by shops (07 §5 group 10).
 /// </summary>
-public sealed class ItemTradeStateHandler(JsonGameStore store,
+public sealed class ItemTradeStateHandler(IGameStore store,
     ItemCatalog itemCatalog
     ) : IGameCommandHandler
 {

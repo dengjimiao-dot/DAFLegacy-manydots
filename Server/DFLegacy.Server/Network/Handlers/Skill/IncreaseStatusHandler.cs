@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// INCREASE_STATUS (CMD 32): consumes skill-reset items (River Lethe), experience books and permanent-status items through the persisted use transactions (07 §5 group 8).
 /// </summary>
-public sealed class IncreaseStatusHandler(JsonGameStore store,
+public sealed class IncreaseStatusHandler(IGameStore store,
     ItemCatalog itemCatalog,
     SkillCatalog skillCatalog,
     CharacterSpCatalog spCatalog,

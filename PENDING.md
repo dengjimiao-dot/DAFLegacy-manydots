@@ -56,6 +56,13 @@
 - **来源**：`CHANGELOG.md` ADD-13。
 - **判据**：副本内攻击怪物，分别以关闭/开启该选项各打一次暴击与一次普通命中，对比画面是否缩放；该步同时可判定 P-15。
 
+### P-14 SQLite 存储的真机回归
+
+- **来源**：`docs/design/08-sqlite-storage.md`（状态行与 §7 结项表）。
+- **现状**：离线验证已完成——SelfTests 23 套件全绿（含新增 `sqlite-infrastructure`：新建库、重复初始化去重、异构基线拒绝启动、`user_version` 与 `schema_metadata` 双写互验、失败删三件套、存取往返）；另做过一次真实启动核对：空库按基线建库 → 播种 `test/test` → 23 张表齐备 → 重启复用同一库、账号 uid 与角色 `CharacterNo` 稳定、`GET /api/accounts` 正常返回。
+- **未做**：真客户端全流程冒烟。存档从 JSON 换成 SQLite 后，下列行为虽被离线断言覆盖，但未经真机字节对照：登录→选角→进城、背包/仓库/时装/宠物移动与整理、合成升级与分解、金库扩容、邮件收发与附件提取、技能加点与洗点、任务接取/完成/领奖、副本解锁与难度推进、疲劳消耗与跨日重置、虚弱恢复与黑钻充值、点券充值与商城购买。
+- **判据**：按 `docs/design/07-protocol-layer-refactor.md` §7.4 清单逐项走查，逐协议比对下行字节与业务结果；重点核对两类易错面——① 物品线路字段（`EquipmentQualitySeed`、`AvatarRemainingSeconds`、`CreatureStomach` 的 null 与 0 语义，见 08 §10.3 第一条）；② 邮件 Id 在多次保存后仍可用于 `MAILBOXEXTRACT(98)`。
+
 ## 待实施与待补工程项
 
 ### P-10 R6 定时器收编（唯一未完成的机制项）
@@ -72,6 +79,18 @@
 
 - **来源**：`CHANGELOG.md` ADD-06 / ADD-10；复核结论见 `docs/protocol/packet-detail-party-60cn.md`「第二轮复核补记」。
 - **现状**：队友对端对象的唯一创建源是 NOTI 2 mode 3（本服当前不发），跨区域队友聊天行的名字同样取自该快照；数据面与聊天行两项都卡在该前置缺口上。补齐前须按 D1（IDA + 抓包）定字节，不猜测应答。
+
+### P-16 server_settings 的改值入口
+
+- **来源**：`docs/design/08-sqlite-storage.md` §8 Q4 与 §10.5。
+- **现状**：倍率与掉落开关（经验/金币/普通与深渊爆率/世界掉落/通关每怪/深渊次数与配方率/黑钻与活动加成/频道容量）已是 `server_settings` 表的唯一真源，`server.json` 中对应字段已删除；服务端启动读一次并打印全量生效值。**但改值只能手工写 SQL**，无 GM 网页与 Admin API 写入接口，改完需重启。
+- **待做**：补一个最小读写接口（读回当前值 + 写入并校验 CHECK 约束），写后是否热生效（当前读路径持启动快照，热生效需要额外的刷新广播）一并定。
+
+### P-15 SQLite 备份与运维方式
+
+- **来源**：`docs/design/08-sqlite-storage.md` §8 K7（本次登记的风险项）。
+- **现状**：库默认落在 `<home>/Data/game.db`（WAL 模式），旁边可能有 `-wal` / `-shm` 两个边车文件。热备份不能只拷 `.db`。
+- **待做**：提供 `--backup-db <path>` 之类的便捷命令（内部走 `VACUUM INTO` 或 backup API，产出单文件），并在 `README.md` 运维说明里写清「停服后直接拷三件套 / 不停服走备份命令」两条路径。当前只能手工停服拷贝，属运维缺口。
 
 ### P-13 未实现的协议面与频道
 
@@ -143,3 +162,10 @@
 - **当前实现**（`Game/Inventory/CharacterInventorySorter.cs`，本服自定，非官方还原）：四个分区各自独立排序、不跨区；装备区按品级（PVF `[rarity]`，未知按 9999 殿后）升序 → 物品 ID → 原槽位；其余分区按物品 ID → 原槽位。
 - **待决策**：是否对齐参考项目默认序。参考实现（`InventorySortService.cs`）CMD 20 请求体多 `category`/`condition` 两字段（60CN 协议不带）；条件→算法含槽位/品级/等级/部位/堆叠类型/有效期等；品级排序为显式条件且为降序（史诗优先），默认序（condition=槽位）不按品级，实际顺序为 类别 → 物品 ID → 原槽位；另有 `SortLockFlag=1` 槽位固定（参考服专属 0x02CA/0x02CB，60CN 无）。
 - **与当前实现差异**：① 装备区默认按品级升序，参考实现默认为不按品级；② 其余分区两者实质一致；③ 参考实现支持条件参数与整理锁，60CN 协议不带。规则取向属服务端策略，保持现规则或对齐参考实现均可，客户端零改动。
+
+### P-24 多频道生成（M1）待真机复测
+
+- **来源**：回填方案 `docs/servers4a21/feature-backfill-plan-vs-s4a21.md` §4.3（M1 目录+元数据）；60A1 协议面依据 `docs/protocol/60a4-handshake-protocol.md` §11（IDA 逐 case：元数据解析 `sub_894B10`、组名命中内置 109 项表、显示名数字提取 `sub_8929C0`、拥挤阈值 100×在线/容量>95）。
+- **现状**：已实现 `Network/Protocol/ChannelCatalog.cs`（PVF `etc/channel_info.etc` 组 1 解析，显示名经 `etc/etc.chn.str` 名称引用解析、未解析行丢弃；server.json 不提供频道目录配置，`Channel` 节收缩为 Host/Port/ServerNumber/MaximumUsers（默认 10））与 `GameWorld/EntranceChannelDirectory.cs`（启动期一次解析并打印频道列表；会话频道=目录首条目，供 NOTI 1 `displayName/channelNumber`、NOTI 130 频道字段与经验加成键消费）及 `EntranceMetadata.BuildChannels`（组 0 承载目录频道、其余 8 组回落单频道默认记录；`CurrentUsers` 取 `CharacterSessionRegistry.SessionCount` 在线动态值，元数据随每次握手现建）；SelfTests 套件 `entrance-channel-catalog` 覆盖两种行形态解析、名称解析、元数据字节布局、约束拒绝与单频道回归，`--selftest-all` 全绿。
+- **待真机确认**：①选频 UI 是否按组 0 目录显示 N 频道并按拥挤阈值（>95%）表现；②`_ChannelTest` 触发的 `ChannelInfo.txt` dump 与服务端元数据逐字节对照；③客户端（组,频道号）合法性（`sub_71FE80`）对 etc 频道号的接受度——其频道表注册源未逆向（`Etc/channel_info.etc` 消费函数悬置，见 60a4 分册 §11.5）；④PVF 无有效 etc 行时单频道回退字节不变。
+- **判据**：真机登录 → 入口选频界面逐组核对；`_ChannelTest` dump 比对；进游戏后 NOTI 130 频道号与所选一致。复测通过后按 D1 补记 `CHANGELOG.md` 并从本表移除。

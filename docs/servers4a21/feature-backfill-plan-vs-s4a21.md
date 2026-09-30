@@ -160,6 +160,23 @@
 - **注意**:60A1 客户端错误码表与 A21 是否同值需实测(建角失败弹窗逐码验证);DELETE_CHARACter 的"请求带名+4B ACK+禁补名册"是 A21 客户端约束,**60A1 下保持 DFL 现有 2B ACK+补名册不变**(对比文档 §3.7 结论),只细分错误码数值。
 - **验收**:重名/非法名/槽满三 case 客户端弹正确提示。
 
+### 4.3 多频道生成与频道目录(P1)
+
+- **目标**:DFL 现为单频道(server.json `Channel` 节 → `EntranceMetadata.BuildSingleLocalChannel` 固定 9 组×1 频道,`Network/Sessions/ChannelSessionSenders.cs:71` LoadContent);参考 A21 频道生成链路(PVF 频道脚本 → 目录 → 按频道监听 → 列表下发)回填为目录驱动的多频道。对应对比文档差距项 10 的前半(频道目录/生成);频道准入/顶号编排放 M2。
+- **A21 参考链路**(出处均为 A21 `Server/DfoServer`):
+  1. 真源:PVF 内 `etc/channel_info.etc`(`GameWorld/PvfArchiveAccessor.cs:23-44`,大小写两路径+名称兜底检索),提取为运行目录文件(`Infrastructure/ServerPaths.cs:25`)。
+  2. 解析:`Network/Protocol/ChannelProtocolHandler.cs:300-382` ParseScriptChannels——`[server]` 节组 1,频道行=频道号(0..255)+反引号名+类型+第 4 列组名;组名 `[raid]` 但类型非攻坚(0x17)的坏行与 A21 客户端一致丢弃。
+  3. 目录:`Network/Core/GameNetworkConfig.cs` ConfigureChannelCatalog 按频道号去重;端口=10000+频道号(:77);类型→环境(普通 0x01/PvP 8,24/自由决斗 0x0D/攻坚 0x17,:24-26);无目录回落基线三频道 11/100/200(:82-138)。
+  4. 下发:`Network/Protocol/ChannelProtocolHandler.cs:158-186` 明文=2B 组号+4B 条目数+每条 48B(20B 名+4B 容量+4B 在线+16B IP+4B 端口),AES 密钥=当天日期串+"000006"(:20);容量抓包标定 ch20/21=150、攻坚=250、其余 100(:394-407);下发名 `#ch.{id}`(客户端显示名来自其解析的脚本,非列表)。
+- **60A1 协议面**(IDA 逐 case,详见 [60a4-handshake-protocol.md](../protocol/60a4-handshake-protocol.md) §11,函数登记 [client-function-register-60cn.md](../protocol/client-function-register-60cn.md) §10):入口元数据(协议 1/3)布局=u32 组数+每组[20B 组名+u32 频道数+N×48B 记录(20B 显示名+u32 容量+u32 在线+16B 主机+u32 端口)](`sub_894B10`);组名必须命中客户端内置 109 项表(前 9 项与 `EntranceMetadata.ServerGroups` 同序同集);显示名内全部数字字符拼接 atol=频道号(`sub_8929C0`,即现"前缀不含数字"约束的客户端依据);拥挤=100×在线/容量>95;调试文件 `_ChannelTest` 存在时客户端把收到的元数据 dump 到 `ChannelInfo.txt`(真机校准判据)。
+- **号位错位警示**:A21 频道层 11/12=频道表请求、5/6=脚本版本、0xB/0xC=CONNECT 密钥;60A1 入口 11/12=密钥交换、5/6=缓存判定、9/10=脚本下载、1/3=元数据。语义族对应、号位不同,严禁按号直译(沿用 §2.2 结论)。
+- **设计**(两期):
+  - M1 目录+元数据(零监听改动,已实现):频道目录唯一真源=PVF 内 `etc/channel_info.etc`(与协议 9 下发脚本同文件),显示名经 `etc/etc.chn.str` 名称引用解析(`ChannelCatalog.TryParseChannelStringTable`,未解析行丢弃);server.json 不提供频道目录配置,`Channel` 节收缩为协议面身份 Host/Port/ServerNumber + 容量 `MaximumUsers`(默认 10)。`Network/Protocol/ChannelCatalog.cs` 解析 `[server]` 组 1 频道行(只取组 1,与参考项目一致),`GameWorld/EntranceChannelDirectory.cs` 启动期一次解析并打印频道列表,`EntranceMetadata.BuildChannels` 组 0 承载目录频道(记录名 CP936 写入)、其余 8 组回落单频道默认记录(回退名常量 `Local Channel 1`,沿用真机验证字节);各频道 host:port 统一指向现游戏监听,会话频道=目录首条目(NOTI 1 `displayName/channelNumber`、NOTI 130 频道字段与经验加成键同源,既有先例 [packet-detail-connection-60cn.md](../protocol/packet-detail-connection-60cn.md));`CurrentUsers` 改为在线会话数动态值(`CharacterSessionRegistry.SessionCount`),元数据随每次握手现建;PVF 无有效 etc 行时回退现行单频道元数据,字节不变。
+  - M2 按频道监听+准入(对齐 A21 完整形态):每频道独立游戏监听(端口规划不必照搬 10000+号,60A1 端口由元数据下发,客户端无固定约定);频道准入/顶号编排接 `CharacterSessionLifecycleCoordinator`(对比文档差距项 10 后半)。
+- **改动面**:`Network/Protocol/EntranceMetadata.cs`(BuildChannels)、`Network/Sessions/ChannelSessionSenders.cs`(LoadContent 目录化)、`Infrastructure/ServerOptions.cs`(Channel→Channels)、组合根监听编排(仅 M2)、SelfTests 元数据字节断言。
+- **风险**:①组名表 109 项中 DFL 只验证前 9 名,目录引入新组名必须先真机验证命中;②A21 容量标定(150/250/100)为 A21 抓包结论,60A1 无对应标定,容量值不照搬、按配置;③同端口多频道的会话归属(M1 形态)依赖 NOTI 1 `channelNumber` 的会话内一致性,需与 NOTI 130 频道字段联动复核([packet-detail-chat-60cn.md](../protocol/packet-detail-chat-60cn.md));④显示名取全部数字拼接为频道号,组名/显示名含数字即错号(客户端 atol 语义,现构造期约束已覆盖,新目录校验须保留)。
+- **验收**:SelfTests 多组多频道元数据字节断言(布局/约束拒绝/单频道回归不变);真机:`_ChannelTest` dump 与元数据逐字节对照、选频 UI 显示 N 频道并按拥挤阈值表现、进游戏后 NOTI 130 频道号与所选一致。
+
 ## 5. P2 / 暂不清单(评估结论)
 
 | 功能 | 结论 | 理由 |
@@ -184,6 +201,7 @@
 | 3.5 聊天路由 | Network/ChatRouter.cs(集中路由) | ES:3331-3370、338-369 |
 | 4.1 交易 | Game/Trading/(Session/Eligibility/Commit);GPE NOTI 15-18 builder(13B 条目) | ES CMD 10/11 新分支、MOVE 劫持、CMD 26 重写;SelfTests |
 | 4.2 错误码 | — | ES:12187-12220 |
+| 4.3 多频道 | Network/Protocol/ChannelCatalog.cs(etc 组 1 + etc.chn.str 解析);EntranceMetadata.BuildChannels;GameWorld/EntranceChannelDirectory.cs;SelfTests | ChannelSessionSenders.LoadContent(元数据现建,去缓存);ServerSettings(移除频道容量两字段);组合根监听编排(仅 M2) |
 
 ## 7. 风险清单
 

@@ -10,7 +10,7 @@ namespace DFLegacy.Server;
 /// tutorial are refused with error 4, exactly as the legacy branch did.
 /// </summary>
 public sealed class ReturnSelectCharacterHandler(
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     PartyCoordinator partyCoordinator
     ) : IGameCommandHandler

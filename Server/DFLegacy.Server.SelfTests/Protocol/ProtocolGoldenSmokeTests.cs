@@ -86,12 +86,18 @@ internal static class ProtocolGoldenSmokeTests
             "EXIT(CMD 3) reply bytes match the legacy chain output through the new pipeline");
 
         // CHECK_CONNECTION 端到端 golden:seed 逐次现取,先读出实际 seed,
-        // 再以同 seed 重建期望载荷做全字节对比。
+        // 再以同 seed 重建期望载荷做全字节对比。目录用空脚本源构造,
+        // 回退单频道「Local Channel 1」(与真机验证过的默认字节一致)。
+        var channelOptions = new ServerOptions();
+        var channelDirectory = new EntranceChannelDirectory(
+            new ScriptFileSystem(channelOptions, NullLogger<ScriptFileSystem>.Instance),
+            channelOptions,
+            NullLogger<EntranceChannelDirectory>.Instance);
         var (channelContext, channelStream) = CreateTestContext(isChannelPort: true);
         check(await dispatcher.TryDispatchAsync(
                 channelContext,
                 checkConnectionFrame,
-                new CheckConnectionHandler(new ServerOptions()),
+                new CheckConnectionHandler(channelOptions, channelDirectory),
                 CancellationToken.None),
             "CHECK_CONNECTION dispatches through the new pipeline");
         var channelInfo = PacketByteSamples.DecodeServerPacket(channelStream.ToArray());

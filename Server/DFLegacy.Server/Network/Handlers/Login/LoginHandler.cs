@@ -11,7 +11,7 @@ namespace DFLegacy.Server;
 /// which selects the normal character-list path in this client build.
 /// </summary>
 public sealed class LoginHandler(
-    JsonGameStore store
+    IGameStore store
     ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.LOGIN;

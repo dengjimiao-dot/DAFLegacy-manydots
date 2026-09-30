@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SELL_ITEM (CMD 24): NPC shop sales with the sell-price table (07 §5 group 10).
 /// </summary>
-public sealed class SellItemHandler(JsonGameStore store,
+public sealed class SellItemHandler(IGameStore store,
     ItemCatalog itemCatalog
     ) : IGameCommandHandler
 {

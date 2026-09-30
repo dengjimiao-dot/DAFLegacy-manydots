@@ -14,13 +14,17 @@ public sealed class ServerOptions
     public ListenerOptions CharacterDatagram { get; set; } = new() { Host = "127.0.0.1", Port = 2311 };
     public GameplayDatagramOptions GameplayDatagram { get; set; } = new();
     public ListenerOptions GameProbe { get; set; } = new() { Port = 7001, Enabled = false };
-    public string DataPath { get; set; } = "data/state.json";
+
+    // 持久化库文件（R5 数据锚点）：相对路径以 HomeDirectory 为基准，默认落在
+    // Data/game.db，与基线 schema（Sqlite/act1_schema.sql）分属「运行期数据」与
+    // 「代码资产」两个目录。库不存在时按基线建空库，已存在时直接使用、不重建
+    // （docs/design/08-sqlite-storage.md D1/D2）。
+    public string DatabasePath { get; set; } = "Data/game.db";
+
     public string ScriptPvfPath { get; set; } = "data/Script.pvf";
     public string SkillScriptPath { get; set; } = "";
     public string OriginalSkillScriptPath { get; set; } = "";
     public ChannelOptions Channel { get; set; } = new();
-    public DropOptions Drop { get; set; } = new();
-    public ExperienceOptions Experience { get; set; } = new();
     public int MaximumPacketLength { get; set; } = 4 * 1024 * 1024;
     public bool RejectBadCrc32 { get; set; } = false;
     public bool EnablePacketTracing { get; set; } = false;
@@ -37,33 +41,20 @@ public sealed class GameplayDatagramOptions
     public byte SenderPartyIndex { get; set; } = 0;
 }
 
-public sealed class DropOptions
-{
-    public bool Enabled { get; set; } = true;
-    public double RatePercent { get; set; } = 100;
-    public double EconomicRate { get; set; } = 1;
-    public bool ForceDrops { get; set; }
-}
-
-public sealed class ExperienceOptions
-{
-    public double MonsterMultiplier { get; set; } = 1;
-    public double ClearMultiplier { get; set; } = 1;
-    public double BlackDiamondClearBonusRate { get; set; } = 0.05;
-    public double ClearEventBonusRate { get; set; }
-    public DateTimeOffset? ClearEventStartsAt { get; set; }
-    public DateTimeOffset? ClearEventEndsAt { get; set; }
-}
-
+/// <summary>
+/// 频道监听端点（协议面身份，留在 server.json）。频道目录不在本节——唯一真源是
+/// PVF 内 etc/channel_info.etc（显示名经 etc/etc.chn.str 解析，见
+/// EntranceChannelDirectory）；<c>CurrentUsers</c> 为在线会话数动态值，
+/// <c>MaximumUsers</c> 是容量上报值（客户端以在线/容量 &gt;95% 判拥挤）。
+/// </summary>
 public sealed class ChannelOptions
 {
     public int ServerNumber { get; set; } = 1;
-    public string Name { get; set; } = "Local Channel";
     public string Host { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 7001;
-    public int ChannelNumber { get; set; } = 1;
-    public int MaximumUsers { get; set; } = 100;
-    public int CurrentUsers { get; set; } = 1;
+
+    /// <summary>频道容量上报值（元数据 max 字段）。</summary>
+    public int MaximumUsers { get; set; } = 10;
 }
 
 public sealed class AdminOptions

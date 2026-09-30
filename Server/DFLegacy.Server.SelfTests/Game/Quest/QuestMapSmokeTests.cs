@@ -1,3 +1,4 @@
+using DFLegacy.Server.Sqlite;
 using System.Buffers.Binary;
 using DFLegacy.Protocol;
 using DFLegacy.Server;
@@ -37,7 +38,7 @@ internal static class QuestMapSmokeTests
             var scripts = new ScriptFileSystem(options, NullLogger<ScriptFileSystem>.Instance);
             var quests = new QuestCatalog(scripts, NullLogger<QuestCatalog>.Instance);
             var catalog = new DungeonCatalog(scripts,
-                new ObjectDropGenerator(options,
+                new ObjectDropGenerator(new ServerSettings(),
                     new ObjectDropCatalog(scripts, NullLogger<ObjectDropCatalog>.Instance),
                     new GoldDropCatalog(scripts, NullLogger<GoldDropCatalog>.Instance)),
                 NullLogger<DungeonCatalog>.Instance);

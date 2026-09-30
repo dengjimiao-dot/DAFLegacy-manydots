@@ -19,24 +19,14 @@
       "SenderPartyIndex": 0
     },
     "GameProbe": { "Enabled": false, "Host": "127.0.0.1", "Port": 7001 },
-    "DataPath": "data/state.json",
+    "DatabasePath": "Data/game.db",
     "ScriptPvfPath": "../Script.pvf",
     "SkillScriptPath": "",
     "Channel": {
-      "Name": "Local Channel",
       "Host": "127.0.0.1",
       "Port": 7001,
-      "ChannelNumber": 1,
-      "MaximumUsers": 100,
-      "CurrentUsers": 1
+      "MaximumUsers": 10
     },
-    "Drop": {
-      "Enabled": true,
-      "RatePercent": 100.0,
-      "EconomicRate": 1.0,
-      "ForceDrops": false
-    },
-    "Experience": { "MonsterMultiplier": 1.0, "ClearMultiplier": 1.0 },
     "MaximumPacketLength": 4194304,
     "RejectBadCrc32": false,
     "EnablePacketTracing": true,

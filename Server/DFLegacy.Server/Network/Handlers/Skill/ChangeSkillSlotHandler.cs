@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// CHANGE_SKILLSLOT (CMD 30): swaps quick slots, including the adjacent-command compound move the client sends as two back-to-back frames (07 §5 group 8).
 /// </summary>
-public sealed class ChangeSkillSlotHandler(JsonGameStore store,
+public sealed class ChangeSkillSlotHandler(IGameStore store,
     SkillCatalog skillCatalog
     ) : IGameCommandHandler
 {

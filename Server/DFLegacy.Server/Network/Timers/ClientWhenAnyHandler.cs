@@ -13,7 +13,7 @@ namespace DFLegacy.Server;
 public sealed class ClientWhenAnyHandler(
     ServerOptions options,
     RuntimeState runtime,
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     PartyCoordinator partyCoordinator,
     GameplayDatagramService gameplayDatagram,
@@ -489,8 +489,7 @@ public sealed class ClientWhenAnyHandler(
                                 {
                                     session.Character.Active = session.Character.Active with
                                     {
-                                        WeaknessRecovery = (byte)connectionEvent.Value,
-                                        LegacyIsWeakened = null
+                                        WeaknessRecovery = (byte)connectionEvent.Value
                                     };
                                 }
 

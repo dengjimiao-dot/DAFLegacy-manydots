@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// COMPOUND_ITEM (CMD 27): item compounding with the request-replay cache (07 §5 group 11).
 /// </summary>
-public sealed class CompoundItemHandler(JsonGameStore store,
+public sealed class CompoundItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CompoundCatalog compoundCatalog,
     CharacterPacketBuilders builders,

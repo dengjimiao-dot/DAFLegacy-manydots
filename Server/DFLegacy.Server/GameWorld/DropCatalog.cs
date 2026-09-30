@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
@@ -672,7 +673,7 @@ public sealed record DungeonGeneratedDrop(
     uint CountOrValue);
 
 public sealed class DungeonDropGenerator(
-    ServerOptions options,
+    ServerSettings settings,
     WorldDropCatalog worldDrops,
     GoldDropCatalog goldDrops,
     MonsterDropCatalog monsterDrops)
@@ -685,7 +686,7 @@ public sealed class DungeonDropGenerator(
         MonsterDropKind.Artifact
     ];
 
-    public bool Enabled => options.Drop.Enabled;
+    public bool Enabled => settings.DropEnabled;
 
     public IReadOnlyList<DungeonGeneratedDrop> Generate(
         byte monsterLevel,
@@ -707,7 +708,7 @@ public sealed class DungeonDropGenerator(
         int partyMemberCount = 1,
         IDropRandomSource? random = null)
     {
-        if (!options.Drop.Enabled)
+        if (!settings.DropEnabled)
         {
             return [];
         }
@@ -774,10 +775,10 @@ public sealed class DungeonDropGenerator(
 
         if (worldDrops.TryGetLevel(monsterLevel, out var world)
             && world.TotalWeight > 0
-            && (options.Drop.ForceDrops
+            && (settings.DropForce
                 || random.Next(100_000) < Math.Clamp(
                     (int)Math.Floor(
-                        world.TotalWeight * options.Drop.RatePercent / 100.0),
+                        world.TotalWeight * settings.DropRatePercent / 100.0),
                     0,
                     100_000)))
         {
@@ -814,7 +815,7 @@ public sealed class DungeonDropGenerator(
             return false;
         }
 
-        if (options.Drop.ForceDrops)
+        if (settings.DropForce)
         {
             return true;
         }
@@ -828,9 +829,9 @@ public sealed class DungeonDropGenerator(
             (int)Math.Floor(
                 probability
                 * multiplier
-                * options.Drop.RatePercent
+                * settings.DropRatePercent
                 / 100.0
-                * options.Drop.EconomicRate),
+                * settings.DropEconomicRate),
             0,
             10_000);
         return random.Next(10_000) < threshold;

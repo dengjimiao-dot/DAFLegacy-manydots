@@ -10,7 +10,7 @@ namespace DFLegacy.Server;
 /// follows the acknowledgement.
 /// </summary>
 public sealed class CreateCharacterHandler(
-    JsonGameStore store,
+    IGameStore store,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();

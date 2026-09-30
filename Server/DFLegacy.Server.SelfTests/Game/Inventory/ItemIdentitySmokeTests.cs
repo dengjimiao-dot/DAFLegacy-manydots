@@ -1,6 +1,6 @@
-using System.Text.Json;
 using DFLegacy.Server;
 using Microsoft.Extensions.Logging.Abstractions;
+using DFLegacy.Server.SelfTests.Sqlite;
 
 internal static class ItemIdentitySmokeTests
 {
@@ -126,7 +126,7 @@ internal static class ItemIdentitySmokeTests
         Directory.CreateDirectory(root);
         try
         {
-            var statePath = Path.Combine(root, "state.json");
+            var statePath = Path.Combine(root, "state.db");
             var accountUid = AccountUidRules.NormalUidStart;
             var characterId = Guid.NewGuid();
             var duplicateId = CharacterItemIdentity.CreateInstanceId();
@@ -178,22 +178,10 @@ internal static class ItemIdentitySmokeTests
                 "unused",
                 [character],
                 accountUid);
-            await File.WriteAllTextAsync(
-                statePath,
-                JsonSerializer.Serialize(new
-                {
-                    Accounts = new[] { account },
-                    NextCharacterNo = 2u,
-                    NextNormalAccountUid = accountUid + 1,
-                    NextTestAccountUid = 1u,
-                    FatigueDayKey = 0
-                }));
+            var options = new ServerOptions { DatabasePath = statePath };
+            TestGameStore.Seed(options, [account]);
 
-            var options = new ServerOptions { DataPath = statePath };
-            var store = new JsonGameStore(
-                options,
-                NullLogger<JsonGameStore>.Instance,
-                itemCatalog: catalog);
+            var store = TestGameStore.Create(options, itemCatalog: catalog);
             await store.InitializeAsync();
             var migrated = (await store.GetCharactersAsync("identity-test")).Single();
             var migratedIds = CollectEquipmentIds(migrated, catalog);
@@ -204,10 +192,7 @@ internal static class ItemIdentitySmokeTests
                     == Guid.Empty,
                 "startup migration assigns unique ids across inventory, equipment, warehouse, Avatar, Creature and mail while leaving stacks unchanged");
 
-            var reloadedStore = new JsonGameStore(
-                options,
-                NullLogger<JsonGameStore>.Instance,
-                itemCatalog: catalog);
+            var reloadedStore = TestGameStore.Create(options, itemCatalog: catalog);
             await reloadedStore.InitializeAsync();
             var reloaded = (await reloadedStore.GetCharactersAsync("identity-test")).Single();
             check(CollectEquipmentIds(reloaded, catalog).SequenceEqual(migratedIds),

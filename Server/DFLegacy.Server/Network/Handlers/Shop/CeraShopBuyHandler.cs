@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// CERA_SHOP_BUY (CMD 67): Cera-shop purchases with attribute selection and cash accounting (07 §5 group 10).
 /// </summary>
-public sealed class CeraShopBuyHandler(JsonGameStore store,
+public sealed class CeraShopBuyHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CeraShopCatalog ceraShopCatalog,
     ServerOptions options,

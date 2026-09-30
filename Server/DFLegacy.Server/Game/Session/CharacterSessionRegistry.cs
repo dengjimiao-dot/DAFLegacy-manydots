@@ -20,6 +20,9 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
     // channels detach when the connection's read loop finally block runs.
     private readonly ConcurrentDictionary<Guid, Action<GameServerPacket>> _packetChannels = new();
 
+    /// <summary>当前在册角色会话数（频道 CurrentUsers 动态上报源，拥挤度按在线/容量判定）。</summary>
+    public int SessionCount => _activeCharacters.Count;
+
     /// <summary>Registers this connection's serialized write delegate so other
     /// sessions can deliver packets to it.</summary>
     public void AttachPacketChannel(Guid sessionId, Action<GameServerPacket> channel)

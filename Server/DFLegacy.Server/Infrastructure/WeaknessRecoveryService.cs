@@ -1,7 +1,7 @@
 namespace DFLegacy.Server;
 
 public sealed class WeaknessRecoveryService(
-    JsonGameStore store,
+    IGameStore store,
     CharacterSessionRegistry characterSessions,
     ILogger<WeaknessRecoveryService> logger) : BackgroundService
 {

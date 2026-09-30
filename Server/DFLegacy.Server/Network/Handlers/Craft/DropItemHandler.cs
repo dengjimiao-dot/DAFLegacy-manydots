@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// DROP_ITEM (CMD 50): world-drop placement for the current map (07 §5 group 11).
 /// </summary>
-public sealed class DropItemHandler(JsonGameStore store,
+public sealed class DropItemHandler(IGameStore store,
     ItemCatalog itemCatalog
     ) : IGameCommandHandler
 {

@@ -1,6 +1,7 @@
 using DFLegacy.Protocol;
 using DFLegacy.Server;
 using Microsoft.Extensions.Logging.Abstractions;
+using DFLegacy.Server.SelfTests.Sqlite;
 
 internal static class CompoundItemSmokeTests
 {
@@ -336,11 +337,10 @@ internal static class CompoundItemSmokeTests
     {
         var options = new ServerOptions
         {
-            DataPath = Path.Combine(fixtureRoot, "compound-state.json")
+            DatabasePath = Path.Combine(fixtureRoot, "compound-state.db")
         };
-        var store = new JsonGameStore(
-            options,
-            NullLogger<JsonGameStore>.Instance);
+        TestGameStore.SeedDefaultTestAccount(options);
+        var store = TestGameStore.Create(options);
         await store.InitializeAsync();
         var character = (await store.GetCharactersAsync("test"))[0];
         var expectedInventory = new CharacterItemRecord[]
@@ -377,9 +377,7 @@ internal static class CompoundItemSmokeTests
             remainingGold: 0,
             Array.Empty<CharacterItemRecord>());
 
-        var reloadedStore = new JsonGameStore(
-            options,
-            NullLogger<JsonGameStore>.Instance);
+        var reloadedStore = TestGameStore.Create(options);
         await reloadedStore.InitializeAsync();
         var reloaded = (await reloadedStore.GetCharactersAsync("test"))[0];
         check(committed is not null

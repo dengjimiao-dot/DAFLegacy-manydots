@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// RESET_ITEM_ATTRIBUTE (CMD 84): reseal/attribute reset for the equipment (07 §5 group 11).
 /// </summary>
-public sealed class ResetItemAttributeHandler(JsonGameStore store,
+public sealed class ResetItemAttributeHandler(IGameStore store,
     ItemCatalog itemCatalog,
     ResealCatalog resealCatalog,
     CharacterPacketBuilders builders,

@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// MOVE_ITEM_SPACE (CMD 19): moves stacks between main/avatar/warehouse/creature spaces, including creature-space swaps and the compound equip flows (07 §5 group 9).
 /// </summary>
-public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
+public sealed partial class MoveItemSpaceHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders,

@@ -23,7 +23,7 @@
 | 05 | [RandomNative 跨平台化提案](05-randomnative-crossplatform.md) | 原生随机模块跨平台化提案 | **已作废** | 后继方案 06,仅留档 |
 | 06 | [随机源降级为纯托管实现](06-random-source-managed.md) | 服务端随机源托管化(`Infrastructure/`,原 `Random/` 已并入),与 RandomNative 解耦(模块保留至 Client 层) | **已实现** | 同上 |
 | 07 | [协议层重构:收发包管线与分发架构](07-protocol-layer-refactor.md) | 把 `HandleClientAsync`(约 12,654 行、71 协议号巨链)重构为「注册表分发 + 通用管线(状态门槛/出站计账)+ 6 大类 15 组 handler(组名对齐 ServerS4A21,另预留组 16–20)+ 出站 Channel 单写者 + 统一定时器」架构 | **草案(待实施)** | 2026-09-28 复核;2026-09-29 复审刷新实测、增补 4.8 大类划分、命名规范与预留组 |
-| 08 | [SQLite 存储迁移(JsonGameStore → SQLite)](08-sqlite-storage.md) | 以同签名 `SqliteGameStore` 替换全量重写 JSON 的 `JsonGameStore`:增量写、事务边界、基线+增量迁移、一次性数据导入 | **草案** | 2026-09-28 起草;2026-09-29 基线重构定稿(统称 60A1) |
+| 08 | [SQLite 存储迁移(已落地)](08-sqlite-storage.md) | `JsonGameStore` 已整体移除，改为 SQLite 增量写 + 事务边界 + 基线/增量迁移 | **已实现** | 2026-09-28 起草;2026-09-29 基线重构定稿(统称 60A1);2026-09-30 实施结项(取舍与偏离见该文 §10) |
 | 09 | [DAF-MCP 总网关(一):协议包实时监听](09-mcp-packet-tap.md) | 服务端内置标准 MCP 服务器(默认关闭),`packet_watch` 游标长轮询实时暴露收发包(报文名+明文富化),供智能体边抓边分析协议 | **已实现** | 2026-09 定稿;2026-09-29 随 commit `7e12da7` 落地 |
 
 ## 各文档要点与代码落点
@@ -35,12 +35,13 @@
 - 硬约束:字节级行为冻结(golden 测试先行,旧实现产出即标准);协议核心层与领域层零改动。
 - 代码现状:未动工(`GameCommandRegistry`/`ConnectionContext`/出站泵均不存在)。
 
-### 08 · SQLite 存储迁移(草案)
+### 08 · SQLite 存储迁移(已实现)
 
-- 现状唯一持久化入口 `Persistence/JsonGameStore.cs`(约 5,600 行):单文件 `state.json` 全量重写、无事务边界。
-- 方案:`SqliteGameStore` 同签名替换(公开签名不变,Admin API/EntranceService 零改动);基线 + 增量两段式迁移;`state.json` 单事务一次性导入,失败即回滚删库、原文件保留。里程碑 M0–M3。
-- schema 基线:[docs/sql/act1_schema.sql](../sql/act1_schema.sql)(统称 60A1,23 张表,其中 7 张为未实现功能的预留表,见该文档 D8;**表设计模式取自 [86S4A21](../sql/86S4A21_schema.sql)、功能面上限兼容已移除的早期草案**;`lock_state`/`hunt_trigger_format`/`account_dungeon_progress`/`character_exp_boost` 为草案兼容预留;不采纳 86 的 item_core BLOB,物品走扁平列 + item_uid 代理主键)。
-- 代码现状:未动工(无 `SqliteGameStore`/`Microsoft.Data.Sqlite` 引用;`docs/sql/data_schema.sql` 为 `tools/export_state_sql.py` 导出的 **test 账号数据种子 SQL**,不再生成二进制样例库)。
+- 原现状:唯一持久化入口 `Persistence/JsonGameStore.cs`(约 5,600 行):单文件 `state.json` 全量重写、无事务边界。**该实现已整体移除**。
+- 落地形态:领域逻辑集中在 `Server/DFLegacy.Server/Sqlite/GameStoreCore.cs`(公开面 `IGameStore`,消费方只依赖接口),落盘为同目录 `SqliteGameStore.cs` + `SqliteStateStore.cs`;写入粒度为「内存树 diff → 单个 IMMEDIATE 事务增量写」,不再整库重写。基础设施 `GameDatabase` / `SqliteDatabaseBootstrap` / `SqliteMigrations` 参照 ServerS4A21 的短连接 + 基线/增量两段式迁移形态。
+- 旧档不转换:无库则按基线建空库并播种 `test/test`,有库直接用。取舍与三处基线修正见该文 §10。
+- schema 基线:[Server/DFLegacy.Server/Sqlite/act1_schema.sql](../../Server/DFLegacy.Server/Sqlite/act1_schema.sql)(统称 60A1,23 张表,其中 7 张为未实现功能的预留表,见该文档 D8;**表设计模式取自 [86S4A21](../sql/86S4A21_schema.sql)、功能面上限兼容已移除的早期草案**;`lock_state`/`hunt_trigger_format`/`account_dungeon_progress`/`character_exp_boost` 为草案兼容预留;不采纳 86 的 item_core BLOB,物品走扁平列 + item_uid 代理主键)。
+- 验证:SelfTests 23 套件全绿,其中 `sqlite-infrastructure` 覆盖新建库/重复初始化去重/异构基线拒绝/版本双写互验/失败删三件套/存取往返;真机回归未做,见 `PENDING.md` P-08。
 
 ### 09 · DAF-MCP 协议包实时监听(已实现)
 

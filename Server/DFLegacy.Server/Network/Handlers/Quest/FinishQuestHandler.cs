@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// FINISH_QUEST (CMD 36): settles quest rewards, experience and growth-skill changes, then refreshes inventory and skill panels (07 §5 group 7).
 /// </summary>
 public sealed class FinishQuestHandler(
-    CharacterSessionRegistry characterSessions, JsonGameStore store,
+    CharacterSessionRegistry characterSessions, IGameStore store,
     ItemCatalog itemCatalog,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,

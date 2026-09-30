@@ -1,7 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using DFLegacy.Protocol;
 
 namespace DFLegacy.Server;
@@ -19,7 +17,6 @@ public sealed record CharacterItemRecord(
     byte SealState = 0,
     // Compatibility key only: DF2008 consumes this as a remaining-seconds
     // value. Zero means unlimited; it is never a Unix expiration timestamp.
-    [property: JsonPropertyName("AvatarExpireAt")]
     uint? AvatarRemainingSeconds = null,
     ushort? AvatarAbilityIndex = null,
     byte? CreatureStomach = null,
@@ -32,7 +29,6 @@ public sealed record CharacterItemRecord(
     // separate preserves CountOrValue as the local instance count.
     uint? EquipmentQualitySeed = null,
     // Server-only identity. DF2008's item wire format has no GUID field.
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     Guid InstanceId = default);
 
 public sealed record CharacterSkillRecord(
@@ -50,11 +46,9 @@ public sealed record CharacterMailAttachmentRecord(
     byte State = 0,
     ushort Durability = 0,
     byte SealState = 0,
-    [property: JsonPropertyName("AvatarExpireAt")]
     uint? AvatarRemainingSeconds = null,
     ushort? AvatarAbilityIndex = null,
     uint? EquipmentQualitySeed = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     Guid InstanceId = default);
 
 public sealed record CharacterMailRecord(
@@ -249,9 +243,6 @@ public sealed record CharacterRecord(
     ushort WarehouseCapacity = CharacterWarehouseProgression.InitialCapacity,
     bool TutorialStarted = true,
     byte WeaknessRecovery = DungeonWeaknessPolicy.FullStamina,
-    [property: JsonPropertyName("IsWeakened")]
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    bool? LegacyIsWeakened = null,
     // Persisted fields mirror the legacy pvp_result row. PvpGrade is the
     // PVF-derived rank sent in NOTI 48; the counters are updated atomically
     // with the three legacy PvP experience books.
@@ -267,7 +258,6 @@ public sealed record CharacterRecord(
     Guid? MentorCharacterId = null,
     byte MentorExperienceBonusPercent = 0)
 {
-    [JsonIgnore]
     public bool IsWeakened => WeaknessRecovery < DungeonWeaknessPolicy.FullStamina;
 }
 
@@ -278,13 +268,10 @@ public sealed record AccountRecord(
     List<CharacterRecord> Characters,
     uint AccountUid = 0,
     bool PresetCharactersInitialized = false,
-    // Compatibility input for states written before every Premium service was
-    // normalized into PremiumServices. Initialization migrates and clears it.
-    [property: JsonPropertyName("PremiumExpireAt")]
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    uint? LegacyBlackDiamondExpireAt = null,
     List<AccountPremiumServiceRecord>? PremiumServices = null,
-    int? Cash = null,
+    // 账号共享点券钱包，单一真源（libaccounts.cash，NOT NULL）；角色表不落镜像列，
+    // 组装 CharacterRecord 时从账号行投影。角色侧 Cash 是同步镜像。
+    int Cash = 0,
     string? OicqCode = null);
 
 public sealed record ClientCeraTopUpRequest(string Account, int Amount);
@@ -386,11 +373,17 @@ public sealed record FatigueResetResult(
     IReadOnlyList<Guid> CharacterIds,
     int FatigueDayKey);
 
-public sealed class JsonGameStore(
-    ServerOptions options,
-    ILogger<JsonGameStore> logger,
+/// <summary>
+/// 持久化内核（docs/design/08-sqlite-storage.md D4）：持有全部游戏状态与约 60 个
+/// 公开方法的领域逻辑，只把「怎么落盘」交给派生类——<c>TryLoadStateLockedAsync</c>
+/// 与 <c>PersistStateLockedAsync</c>。内存 record 树是读路径（游戏读路径不变，见
+/// 该文档 §1.1），落盘粒度由实现决定：当前唯一实现
+/// <see cref="Sqlite.SqliteGameStore"/> 按账号 diff 在单个 IMMEDIATE 事务内增量写。
+/// </summary>
+public abstract class GameStoreCore(
+    ILogger<GameStoreCore> logger,
     CharacterExperienceCatalog? experienceCatalog = null,
-    ItemCatalog? itemCatalog = null)
+    ItemCatalog? itemCatalog = null) : IGameStore
 {
     private const byte LegacyOverlordContractServiceType = 17;
     private const int DefaultAccountCash = 0;
@@ -502,56 +495,67 @@ public sealed class JsonGameStore(
     private uint _nextTestAccountUid = 1;
     private int _fatigueDayKey;
 
-    private sealed class JsonGameStoreState
+    // 落盘实现与内核之间的全部交换面：派生类只需读回这五个字段并整体写回，
+    // 领域逻辑一律不感知存储形态。计数器不从库中单独取号，而是由派生实现
+    // 在载入时按已导入最大值推进（docs/design/08-sqlite-storage.md D5）。
+    protected List<AccountRecord> Accounts
     {
-        public List<AccountRecord> Accounts { get; set; } = [];
-        public uint NextCharacterNo { get; set; } = 1;
-        public uint NextNormalAccountUid { get; set; } = AccountUidRules.NormalUidStart;
-        public uint NextTestAccountUid { get; set; } = 1;
-        public int FatigueDayKey { get; set; }
+        get => _accounts;
+        set => _accounts = value;
     }
 
-    private string StorePath => PathResolver.Resolve(options.DataPath, options.HomeDirectory);
+    protected uint NextCharacterNo
+    {
+        get => _nextCharacterNo;
+        set => _nextCharacterNo = value;
+    }
+
+    protected uint NextNormalAccountUid
+    {
+        get => _nextNormalAccountUid;
+        set => _nextNormalAccountUid = value;
+    }
+
+    protected uint NextTestAccountUid
+    {
+        get => _nextTestAccountUid;
+        set => _nextTestAccountUid = value;
+    }
+
+    protected int FatigueDayKey
+    {
+        get => _fatigueDayKey;
+        set => _fatigueDayKey = value;
+    }
+
+    /// <summary>落盘实现写日志用；与内核共用同一实例，派生类不再重复捕获。</summary>
+    protected ILogger<GameStoreCore> Logger => logger;
+
+    /// <summary>
+    /// 载入既有持久化状态到内存字段。返回 false 表示无可载入状态（库/文件不存在
+    /// 或为空），调用方随即播种默认账号。读失败必须抛出，不得静默回落到播种：
+    /// 播种会覆盖既有数据。
+    /// </summary>
+    protected abstract Task<bool> TryLoadStateLockedAsync(
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 把当前内存字段落盘。调用前 <see cref="SaveLockedAsync"/> 已完成仓库升级结算，
+    /// 实现只需负责持久化（进程内写串行化由基类的 _gate 提供）。
+    /// </summary>
+    protected abstract Task PersistStateLockedAsync(
+        CancellationToken cancellationToken);
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (File.Exists(StorePath))
+            if (await TryLoadStateLockedAsync(cancellationToken))
             {
-                var json = await File.ReadAllTextAsync(StorePath, cancellationToken);
-                using var document = JsonDocument.Parse(json);
                 var stateChanged = false;
-                if (document.RootElement.ValueKind == JsonValueKind.Array)
-                {
-                    _accounts = JsonSerializer.Deserialize<List<AccountRecord>>(json) ?? [];
-                    _nextCharacterNo = 1;
-                    _nextNormalAccountUid = AccountUidRules.NormalUidStart;
-                    _nextTestAccountUid = 1;
-                    _fatigueDayKey = 0;
-                    stateChanged = true;
-                }
-                else
-                {
-                    var state = JsonSerializer.Deserialize<JsonGameStoreState>(json)
-                        ?? new JsonGameStoreState();
-                    _accounts = state.Accounts ?? [];
-                    _nextCharacterNo = state.NextCharacterNo == 0
-                        ? 1
-                        : state.NextCharacterNo;
-                    _nextNormalAccountUid = state.NextNormalAccountUid < AccountUidRules.NormalUidStart
-                        ? AccountUidRules.NormalUidStart
-                        : state.NextNormalAccountUid;
-                    _nextTestAccountUid = state.NextTestAccountUid == 0
-                        ? 1
-                        : state.NextTestAccountUid;
-                    _fatigueDayKey = state.FatigueDayKey;
-                }
-
                 stateChanged |= MigrateIdentityLocked();
                 stateChanged |= MigratePremiumServicesLocked();
-                stateChanged |= MigrateWeaknessRecoveryLocked();
                 stateChanged |= InitializeTestAccountPresetsLocked();
                 stateChanged |= RefreshPresetCharactersLocked();
                 stateChanged |= MigrateAccountCashLocked();
@@ -576,26 +580,13 @@ public sealed class JsonGameStore(
                 return;
             }
 
+            // 无既有持久化状态时不播种任何数据：空库保持为空，账号与角色一律
+            // 经 Admin API 或客户端流程显式创建（docs/design/08-sqlite-storage.md §6）。
             _nextCharacterNo = 1;
             _nextNormalAccountUid = AccountUidRules.NormalUidStart;
             _nextTestAccountUid = 1;
             _fatigueDayKey = GetFatigueDayKey(DateTimeOffset.Now);
-            const uint defaultTestAccountUid = 1;
-            var preset = CreatePresetCharacterLocked(defaultTestAccountUid, slot: 0);
-            _accounts =
-            [
-                new AccountRecord(
-                    Guid.NewGuid(),
-                    "test",
-                    HashPassword("test"),
-                    [preset],
-                    defaultTestAccountUid,
-                    PresetCharactersInitialized: true,
-                    Cash: preset.Cash)
-            ];
-            _nextTestAccountUid = 2;
-            _ = MigrateItemInstanceIdsLocked();
-            await SaveLockedAsync(cancellationToken);
+            _accounts = [];
         }
         finally
         {
@@ -1011,21 +1002,18 @@ public sealed class JsonGameStore(
         return changed;
     }
 
+    /// <summary>
+    /// Premium 服务归一：契约服务 17 归到霸王契约号、同号多行取最大到期值、按号排序。
+    /// 库侧 <c>account_premium</c> 以 (account_id, premium_type) 为主键，读回本已
+    /// 归一，此处保留为写入路径的兜底。
+    /// </summary>
     private bool MigratePremiumServicesLocked()
     {
         var changed = false;
         for (var accountIndex = 0; accountIndex < _accounts.Count; accountIndex++)
         {
             var account = _accounts[accountIndex];
-            var sourceServices = (account.PremiumServices ?? []).ToList();
-            if (account.LegacyBlackDiamondExpireAt is { } legacyBlackDiamondExpiry)
-            {
-                sourceServices.Add(new AccountPremiumServiceRecord(
-                    GameProtocolConstants.BlackDiamondServiceType,
-                    legacyBlackDiamondExpiry));
-            }
-
-            var normalizedServices = sourceServices
+            var normalizedServices = (account.PremiumServices ?? [])
                 .Select(service => service.ServiceType == LegacyOverlordContractServiceType
                     ? service with
                     {
@@ -1044,22 +1032,15 @@ public sealed class JsonGameStore(
                             : null))
                 .OrderBy(service => service.ServiceType)
                 .ToList();
-            var storedServices = account.PremiumServices ?? [];
-            var accountChanged = account.LegacyBlackDiamondExpireAt is not null
-                || !storedServices.SequenceEqual(normalizedServices);
-            if (!accountChanged)
+            if ((account.PremiumServices ?? []).SequenceEqual(normalizedServices))
             {
                 continue;
             }
 
-            _accounts[accountIndex] = account with
-            {
-                LegacyBlackDiamondExpireAt = null,
-                PremiumServices = normalizedServices
-            };
+            _accounts[accountIndex] = account with { PremiumServices = normalizedServices };
             changed = true;
             logger.LogInformation(
-                "Normalized {ServiceCount} account Premium service(s) for account {Account}; legacy black-diamond and service-17 fields were migrated when present.",
+                "Normalized {ServiceCount} Premium service(s) for account {Account}.",
                 normalizedServices.Count,
                 account.UserName);
         }
@@ -1067,76 +1048,24 @@ public sealed class JsonGameStore(
         return changed;
     }
 
-    private bool MigrateWeaknessRecoveryLocked()
-    {
-        var changed = false;
-        foreach (var account in _accounts)
-        {
-            for (var characterIndex = 0;
-                 characterIndex < account.Characters.Count;
-                 characterIndex++)
-            {
-                var character = account.Characters[characterIndex];
-                var recovery = character.LegacyIsWeakened switch
-                {
-                    true => DungeonWeaknessPolicy.InitialRecovery,
-                    false => DungeonWeaknessPolicy.FullStamina,
-                    null => (byte)Math.Clamp(
-                        character.WeaknessRecovery,
-                        DungeonWeaknessPolicy.MinimumRecovery,
-                        DungeonWeaknessPolicy.FullStamina)
-                };
-                if (character.LegacyIsWeakened is null
-                    && character.WeaknessRecovery == recovery)
-                {
-                    continue;
-                }
-
-                account.Characters[characterIndex] = character with
-                {
-                    WeaknessRecovery = recovery,
-                    LegacyIsWeakened = null
-                };
-                changed = true;
-            }
-        }
-
-        if (changed)
-        {
-            logger.LogInformation(
-                "Migrated legacy weakness flags and normalized persisted weakness recovery values to the 0-100 range.");
-        }
-
-        return changed;
-    }
-
+    /// <summary>
+    /// 负值收敛到 0，并把账号钱包同步到每个角色的镜像字段。钱包是单源，角色侧
+    /// CharacterRecord.Cash 只在组装时投影，写路径不依赖它。
+    /// </summary>
     private bool MigrateAccountCashLocked()
     {
         var changed = false;
         for (var accountIndex = 0; accountIndex < _accounts.Count; accountIndex++)
         {
             var account = _accounts[accountIndex];
-            var cash = Math.Max(
-                0,
-                account.Cash
-                    ?? account.Characters
-                        .OrderBy(character => character.Slot)
-                        .Select(character => (int?)character.Cash)
-                        .FirstOrDefault()
-                    ?? DefaultAccountCash);
-            if (account.Cash == cash
-                && account.Characters.All(character => character.Cash == cash))
+            if (account.Cash >= 0
+                && account.Characters.All(character => character.Cash == account.Cash))
             {
                 continue;
             }
 
-            _accounts[accountIndex] = SetAccountCash(account, cash);
+            _accounts[accountIndex] = SetAccountCash(account, account.Cash);
             changed = true;
-            logger.LogInformation(
-                "Migrated account {Account} to the shared Cera wallet {Cash}; synchronized {CharacterCount} character mirror(s).",
-                account.UserName,
-                cash,
-                account.Characters.Count);
         }
 
         return changed;
@@ -1604,7 +1533,7 @@ public sealed class JsonGameStore(
             request.GrowType,
             request.Level,
             Sp: 0,
-            Cash: Math.Max(0, account.Cash ?? DefaultAccountCash),
+            Cash: Math.Max(0, account.Cash),
             Experience: experienceCatalog?.GetMinimumCumulativeExperience(request.Level) ?? 0,
             CharacterNo: AllocateCharacterNoLocked(),
             AccountUid: account.AccountUid,
@@ -1912,7 +1841,7 @@ public sealed class JsonGameStore(
                     AccountUid = targetAccount.AccountUid,
                     Slot = checked((byte)index),
                     IsPreset = false,
-                    Cash = Math.Max(0, targetAccount.Cash ?? DefaultAccountCash)
+                    Cash = Math.Max(0, targetAccount.Cash)
                 });
             }
 
@@ -1945,7 +1874,7 @@ public sealed class JsonGameStore(
             for (var accountIndex = 0; accountIndex < _accounts.Count; accountIndex++)
             {
                 var account = _accounts[accountIndex];
-                var currentCash = Math.Max(0, account.Cash ?? DefaultAccountCash);
+                var currentCash = Math.Max(0, account.Cash);
                 var nextCash = currentCash > int.MaxValue - amount
                     ? int.MaxValue
                     : currentCash + amount;
@@ -2050,7 +1979,7 @@ public sealed class JsonGameStore(
                 return new(false, "账号没有可充值的角色。", account.UserName, amount, 0);
             }
 
-            var currentCash = Math.Max(0, account.Cash ?? DefaultAccountCash);
+            var currentCash = Math.Max(0, account.Cash);
             var nextCash = currentCash > int.MaxValue - amount
                 ? int.MaxValue
                 : currentCash + amount;
@@ -2189,7 +2118,6 @@ public sealed class JsonGameStore(
                             return character with
                             {
                                 WeaknessRecovery = DungeonWeaknessPolicy.FullStamina,
-                                LegacyIsWeakened = null
                             };
                         })
                         .ToList()
@@ -3128,7 +3056,7 @@ public sealed class JsonGameStore(
                 return null;
             }
 
-            var accountCash = Math.Max(0, account.Cash ?? DefaultAccountCash);
+            var accountCash = Math.Max(0, account.Cash);
             if (expectedCash.HasValue && expectedCash.Value != accountCash)
             {
                 logger.LogWarning(
@@ -4624,7 +4552,6 @@ public sealed class JsonGameStore(
                 var updated = account.Characters[characterIndex] with
                 {
                     WeaknessRecovery = recovery,
-                    LegacyIsWeakened = null
                 };
                 account.Characters[characterIndex] = updated;
                 await SaveLockedAsync(cancellationToken);
@@ -4677,7 +4604,6 @@ public sealed class JsonGameStore(
                     var updated = character with
                     {
                         WeaknessRecovery = recovery,
-                        LegacyIsWeakened = null
                     };
                     account.Characters[characterIndex] = updated;
                     updates.Add(new CharacterWeaknessRecoveryUpdate(
@@ -4744,7 +4670,6 @@ public sealed class JsonGameStore(
                 {
                     Gold = character.Gold - recoveryCost,
                     WeaknessRecovery = DungeonWeaknessPolicy.FullStamina,
-                    LegacyIsWeakened = null
                 };
                 account.Characters[characterIndex] = updated;
                 await SaveLockedAsync(cancellationToken);
@@ -5385,26 +5310,7 @@ public sealed class JsonGameStore(
     private async Task SaveLockedAsync(CancellationToken cancellationToken)
     {
         _ = SettleWarehouseUpgradeItemsLocked();
-        Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
-        var temporary = StorePath + ".tmp";
-        await using (var output = File.Create(temporary))
-        {
-            await JsonSerializer.SerializeAsync(
-                output,
-                new JsonGameStoreState
-                {
-                    Accounts = _accounts,
-                    NextCharacterNo = _nextCharacterNo,
-                    NextNormalAccountUid = _nextNormalAccountUid,
-                    NextTestAccountUid = _nextTestAccountUid,
-                    FatigueDayKey = _fatigueDayKey
-                },
-                new JsonSerializerOptions { WriteIndented = true },
-                cancellationToken);
-        }
-
-        File.Move(temporary, StorePath, overwrite: true);
-        logger.LogInformation("Saved emulator state to {Path}", StorePath);
+        await PersistStateLockedAsync(cancellationToken);
     }
 
     private bool ResetFatigueForNewDayLocked(
@@ -5584,7 +5490,7 @@ public sealed class JsonGameStore(
             account.Characters,
             account.AccountUid,
             AccountUidRules.Classify(account.AccountUid),
-            Math.Max(0, account.Cash ?? DefaultAccountCash));
+            Math.Max(0, account.Cash));
 
     private static AuthenticatedAccount ToAuthenticatedAccount(AccountRecord account) =>
         new(account.AccountUid, account.UserName, AccountUidRules.Classify(account.AccountUid));

@@ -1,6 +1,7 @@
 -- ============================================================================
 -- DFLegacy SQLite 存储基线（统称 60A1）。设计决议与迁移机制见
--- docs/design/08-sqlite-storage.md。
+-- docs/design/08-sqlite-storage.md。本文件是全仓唯一的基线定义；增量步见
+-- Server/DFLegacy.Server/Sqlite/SqliteMigrations.cs。
 --
 --   * schema_metadata.baseline_id = 100（恒定，异构库检测）；
 --     schema_metadata.schema_version 与 PRAGMA user_version 同值双写互验，
@@ -30,12 +31,14 @@ CREATE TABLE IF NOT EXISTS schema_metadata (
 -- PRAGMA user_version == schema_metadata.schema_version（随迁移推进）。
 PRAGMA user_version = 100;
 
--- 全局倍率设置（GM 可改）。
+-- 全局倍率与掉落开关（GM 可改，运行时唯一真源）。server.json 不再承载这些值：
+-- 服务端启动时读一次本表并打印，读路径全程用内存快照，改值需重启或走 GM 接口。
 CREATE TABLE IF NOT EXISTS server_settings (
-    settings_id INTEGER PRIMARY KEY CHECK(settings_id = 1),
+    settings_id INTEGER PRIMARY KEY CHECK (settings_id = 1),
     -- 下面这些都是**在国服基准之上的倍数**（基准写死在服务端奖励率常量里：
     -- 经验 0.928 / 通关每怪 0.75 / 世界掉落 10000-十万分制）。1.0 = 原汁原味国服。
-    experience_multiplier REAL NOT NULL DEFAULT 1.0,
+    experience_multiplier REAL NOT NULL DEFAULT 1.0,      -- 怪物经验倍率（原 Experience.MonsterMultiplier）
+    clear_multiplier REAL NOT NULL DEFAULT 1.0,            -- 通关经验倍率（原 Experience.ClearMultiplier）
     gold_multiplier REAL NOT NULL DEFAULT 1.0,
     -- 爆率系数，乘在 PVF 原值上；1.0 = 完全按 PVF。
     normal_drop_multiplier REAL NOT NULL DEFAULT 1.0,
@@ -46,16 +49,41 @@ CREATE TABLE IF NOT EXISTS server_settings (
     -- 通关经验每怪系数的倍数（乘在基准 0.75 上）。官方公式：击杀数 × 基数 ÷ 2 × 生效系数。
     clear_exp_per_kill REAL NOT NULL DEFAULT 1.0,
     -- 深渊掉落次数（独立 roll 次数）：拿 PVF 那个千分制命中率独立掷 N 次，
-    -- 命中几次就产几件。1 = 官方行为（每只怪最多 1 件），默认 3，上限 5。
-    hell_drop_roll_times INTEGER NOT NULL DEFAULT 3,
-    -- 深渊怪掉「首饰设计图」的总命中率(0..1)。默认 0.05 = 5%,0 = 不掉。
-    -- 和狗眼那 100% 互不挤占(逐档独立判定)。
-    hell_recipe_rate REAL NOT NULL DEFAULT 0.05,
+    -- 命中几次就产几件。**官方行为 = 1（每只怪最多 1 件）**，基线按官方取 1；
+    -- 上限 5 是本服可调上限，需要多件掉落时由 GM 改本行。
+    hell_drop_roll_times INTEGER NOT NULL DEFAULT 1 CHECK (hell_drop_roll_times BETWEEN 1 AND 5),
+    -- 深渊怪掉「首饰设计图」的总命中率(0..1)。与狗眼那 100% 互不挤占
+    -- （逐档独立判定）。**官方行为 = 0（深渊不掉配方）**，基线按官方取 0；
+    -- 想要额外配方掉落时由 GM 改本行。
+    hell_recipe_rate REAL NOT NULL DEFAULT 0.0 CHECK (hell_recipe_rate BETWEEN 0.0 AND 1.0),
+
+    -- 掉落总开关与两个全局系数（原 server.json 的 Drop 段）。
+    drop_enabled INTEGER NOT NULL DEFAULT 1 CHECK (drop_enabled IN (0, 1)),
+    -- 爆率百分比：100.0 = 全量掉落，0 = 全不掉。乘在所有掉率判定的阈值上。
+    drop_rate_percent REAL NOT NULL DEFAULT 100.0 CHECK (drop_rate_percent >= 0.0),
+    -- 金币经济系数：只作用于金币掉落判定，1.0 = 按 PVF 原值。
+    drop_economic_rate REAL NOT NULL DEFAULT 1.0 CHECK (drop_economic_rate >= 0.0),
+    -- 强制掉落：命中判定的概率分支被短路，只用于自检与排障，不作正常运营配置。
+    drop_force INTEGER NOT NULL DEFAULT 0 CHECK (drop_force IN (0, 1)),
+
+    -- 通关经验加成：黑钻恒定加成与限时活动加成。
+    clear_bonus_black_diamond_rate REAL NOT NULL DEFAULT 0.05 CHECK (clear_bonus_black_diamond_rate BETWEEN 0.0 AND 1.0),
+    clear_bonus_event_rate REAL NOT NULL DEFAULT 0.0 CHECK (clear_bonus_event_rate BETWEEN 0.0 AND 1.0),
+    -- 活动加成生效窗口（ISO-8601 文本，NULL = 不限；两端都 NULL 时活动加成不生效）。
+    clear_bonus_event_starts_at TEXT,
+    clear_bonus_event_ends_at TEXT,
+
+    -- 频道容量上报值（NOTI 13 / EntranceMetadata 用；非倍率，属服务器运行参数）。
+    channel_maximum_users INTEGER NOT NULL DEFAULT 100 CHECK (channel_maximum_users >= 0),
+    channel_current_users INTEGER NOT NULL DEFAULT 1 CHECK (channel_current_users >= 0),
+
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT OR IGNORE INTO server_settings(settings_id, experience_multiplier, gold_multiplier)
-VALUES(1, 1.0, 1.0);
+-- 基线播种：全 1.0/默认位，即「原汁原味国服 + 全量掉落 + 无活动加成」。
+-- 服务端启动时读本行并打印；此后由 GM 直接改本表。
+INSERT OR IGNORE INTO server_settings(settings_id)
+VALUES(1);
 
 -- 怪物基础经验（按等级），对应官方数据库表 monster_reward_ref（不在 PVF 内）；
 -- 首次启动由服务端播种代码默认表，此后直接改本表。
@@ -103,7 +131,12 @@ CREATE TABLE IF NOT EXISTS characters (
     character_uid TEXT NOT NULL UNIQUE,             -- = JSON CharacterRecord.Id（Guid），Admin API 标识
     account_id INTEGER NOT NULL,
     slot_index INTEGER NOT NULL CHECK (slot_index >= 0),
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    -- 角色名唯一范围是「账号内」而非全服：预置角色名（PresetCharacterName）与
+    -- 换档角色名册（MaximumTransferRoster.Archetypes 的固定档位名）按设计在每个
+    -- 测试账号下各建一份，跨账号同名是被允许的。玩家自助建角另有全服判重
+    -- （GameStoreCore.CreateCharacterLocked 比对全部账号），比本约束更严——
+    -- 约束只保证单个账号名册内不出现重名。
+    name TEXT NOT NULL COLLATE NOCASE,
     job INTEGER NOT NULL,
     grow_type INTEGER NOT NULL DEFAULT 0,
     awakening_type INTEGER NOT NULL DEFAULT 0,      -- 登录时与 PVF 校验取 Max(awakening, grow_type>>4)
@@ -182,20 +215,24 @@ CREATE TABLE IF NOT EXISTS character_items (
     seal_state INTEGER NOT NULL DEFAULT 0,
     -- 预留：物品上锁状态，当前代码不读写。
     lock_state INTEGER NOT NULL DEFAULT 0,
+    -- 以下九列可空，对应 CharacterItemRecord 的九个可空标量：null 与 0 在线路
+    -- 上不等价（消费侧一律写成 `?? 回退值`，如 EquipmentQualitySeed 回退
+    -- CountOrValue、AvatarAbilityIndex 回退 Durability、CreatureStomach 回退
+    -- 100），按 0 落库会改变下发字节，故必须保留 null。
     -- 时装/宠物卡剩余秒数，0 = 永久。DF2008 线路按剩余秒数消费，
     -- 是「剩余秒数」而非绝对到期时刻，勿改名成 expires_at。
-    avatar_remaining_seconds INTEGER NOT NULL DEFAULT 0,
-    avatar_ability_index INTEGER NOT NULL DEFAULT 0,
-    -- 宠物五件套 + 饱食度余数（仅 list_type=7 使用，其余容器恒 0）。
-    creature_stomach INTEGER NOT NULL DEFAULT 0,
-    creature_experience INTEGER NOT NULL DEFAULT 0,
-    creature_level INTEGER NOT NULL DEFAULT 0,
-    creature_name TEXT NOT NULL DEFAULT '',
-    creature_no_charge INTEGER NOT NULL DEFAULT 0,
-    creature_stomach_remainder_seconds INTEGER NOT NULL DEFAULT 0,
+    avatar_remaining_seconds INTEGER,
+    avatar_ability_index INTEGER,
+    -- 宠物五件套 + 饱食度余数（仅 list_type=7 使用，其余容器恒 NULL）。
+    creature_stomach INTEGER,
+    creature_experience INTEGER,
+    creature_level INTEGER,
+    creature_name TEXT,
+    creature_no_charge INTEGER,
+    creature_stomach_remainder_seconds INTEGER,
     -- 装备品质 32 位种子（DF2008 品质放在 add_info 种子上），与堆叠数分列；
     -- NPC 商店每日统一品级种子由代码按日期派生（06:00 重置），不入库。
-    equipment_quality_seed INTEGER NOT NULL DEFAULT 0,
+    equipment_quality_seed INTEGER,
     -- 服务端物品唯一标识（Guid，可为空串）；DF2008 物品线路格式无 GUID。
     instance_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -276,8 +313,13 @@ CREATE TABLE IF NOT EXISTS account_dungeon_progress (
 -- 单收件人、单附件模型（60A1 邮箱一封一个附件，客户端 NOTI 97 原样喂进
 -- sub_559D60）。上限 255 封、30 天有效期由存储层维护，不在 schema 约束。
 -- 服务端可直接往这里插一条，玩家开邮箱就能领。
+--
+-- mail_id 由存储层显式分配（GameStoreCore.AllocateMailIdLocked 随机取号，
+-- docs/design/06 §4.1 登记的唯一性分配例外），**不是** AUTOINCREMENT：角色子树
+-- 每次重写都会删旧行再整棵重插，若让库自行取号，客户端与 Admin API 手里的邮件
+-- Id 会在任意一次保存后失效。显式写入使 Id 在重写前后保持不变。
 CREATE TABLE IF NOT EXISTS character_mail (
-    mail_id INTEGER PRIMARY KEY AUTOINCREMENT,      -- JSON 里是随机分配 uint，入库改全局自增
+    mail_id INTEGER PRIMARY KEY,                     -- 存储层显式分配，全库唯一
     character_id INTEGER NOT NULL,
     sender TEXT NOT NULL DEFAULT '',
     text TEXT NOT NULL DEFAULT '',
@@ -288,9 +330,10 @@ CREATE TABLE IF NOT EXISTS character_mail (
     item_state INTEGER NOT NULL DEFAULT 0,
     durability INTEGER NOT NULL DEFAULT 0,
     seal_state INTEGER NOT NULL DEFAULT 0,
-    avatar_remaining_seconds INTEGER NOT NULL DEFAULT 0,
-    avatar_ability_index INTEGER NOT NULL DEFAULT 0,
-    equipment_quality_seed INTEGER NOT NULL DEFAULT 0,
+    -- 附件的三个可空标量，语义同 character_items 的同名列（null ≠ 0）。
+    avatar_remaining_seconds INTEGER,
+    avatar_ability_index INTEGER,
+    equipment_quality_seed INTEGER,
     instance_id TEXT NOT NULL DEFAULT '',
     -- 状态机：1=新(未读)，2=已读进保管箱，3=已处理（尚有金币/附件时拒绝置 3）。
     is_new INTEGER NOT NULL DEFAULT 1,

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 using DFLegacy.Server;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -15,6 +16,7 @@ internal static class DungeonClearExperienceSmokeTests
                 [party user number exp bonusrate] 1 1.5 2 2.5
                 [clear rank exp bonusrate] 0.05 0.1 0.15 0.2 0.3
                 """);
+            File.WriteAllText(Path.Combine(root, "etc/etc.chn.str"), "channel_name_999>Channel A\n");
             File.WriteAllText(Path.Combine(root, "etc/channel_info.etc"), """
                 [dungeon]
                 `[test_area]`
@@ -37,17 +39,28 @@ internal static class DungeonClearExperienceSmokeTests
             {
                 ScriptPvfPath = string.Empty,
                 SkillScriptPath = root,
-                Channel = new ChannelOptions { ServerNumber = 1, ChannelNumber = 15 },
-                Experience = new ExperienceOptions
-                {
-                    BlackDiamondClearBonusRate = 0.05,
-                    ClearEventBonusRate = 0.5,
-                    ClearEventStartsAt = starts,
-                    ClearEventEndsAt = starts.AddDays(1)
-                }
+                Channel = new ChannelOptions { ServerNumber = 1 }
+            };
+            // 通关经验加成来自 server_settings（server.json 不再承载）。
+            var settings = new ServerSettings
+            {
+                ClearBonusBlackDiamondRate = 0.05,
+                ClearBonusEventRate = 0.5,
+                ClearBonusEventStartsAt = starts,
+                ClearBonusEventEndsAt = starts.AddDays(1)
             };
             var scripts = new ScriptFileSystem(options, NullLogger<ScriptFileSystem>.Instance);
-            var catalog = new DungeonExperienceCatalog(options, scripts, NullLogger<DungeonExperienceCatalog>.Instance);
+            // 会话频道取目录首条目(fixture 组 1 的频道 15),经验加成按 (大区,频道) 键读表。
+            var channelDirectory = new EntranceChannelDirectory(
+                scripts,
+                options,
+                NullLogger<EntranceChannelDirectory>.Instance);
+            var catalog = new DungeonExperienceCatalog(
+                options,
+                settings,
+                scripts,
+                channelDirectory,
+                NullLogger<DungeonExperienceCatalog>.Instance);
             var dungeon = new DungeonDefinition(1, 1, 1, 1, 1, 0, 0, 0, 0, "B");
             check(catalog.GetChannelBonusRate(1) == 0.1 && catalog.GetChannelBonusRate(2) == 0.1
                 && catalog.GetChannelBonusRate(3) == 0 && catalog.GetChannelBonusRate(999) == 0,

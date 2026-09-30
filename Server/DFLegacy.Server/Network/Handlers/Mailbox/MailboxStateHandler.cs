@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// CHANGE_LETTER_STAT (CMD 144): deletes a mail or moves it between read/unread, synchronised with the session's known-id cache (07 §5 group 6).
 /// </summary>
-public sealed class MailboxStateHandler(JsonGameStore store) : IGameCommandHandler
+public sealed class MailboxStateHandler(IGameStore store) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.CHANGE_LETTER_STAT;
 

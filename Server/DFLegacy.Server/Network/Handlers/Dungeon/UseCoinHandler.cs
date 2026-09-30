@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// USE_COIN (CMD 44): revival coin consumption inside the dungeon (07 §5 group 13).
 /// </summary>
-public sealed class UseCoinHandler(JsonGameStore store
+public sealed class UseCoinHandler(IGameStore store
     ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.USE_COIN;

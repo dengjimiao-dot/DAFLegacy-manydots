@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 public sealed class DeleteItemHandler(
     ServerOptions options,
     RuntimeState runtime,
-    JsonGameStore store,
+    IGameStore store,
     ItemCatalog itemCatalog
     ) : IGameCommandHandler
 {

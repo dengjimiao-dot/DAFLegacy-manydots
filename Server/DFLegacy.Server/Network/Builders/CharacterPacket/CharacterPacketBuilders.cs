@@ -12,7 +12,7 @@ namespace DFLegacy.Server;
 /// projection helpers.
 /// </summary>
 public sealed partial class CharacterPacketBuilders(
-    JsonGameStore store,
+    IGameStore store,
     ItemCatalog itemCatalog,
     PvpExperienceCatalog pvpExperienceCatalog,
     CeraShopCatalog ceraShopCatalog)

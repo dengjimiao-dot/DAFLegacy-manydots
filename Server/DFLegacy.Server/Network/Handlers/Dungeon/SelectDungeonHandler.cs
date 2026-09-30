@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SELECT_DUNGEON (CMD 16): enters the chosen dungeon map and streams the room bootstrap (07 §5 group 13).
 /// </summary>
-public sealed class SelectDungeonHandler(JsonGameStore store,
+public sealed class SelectDungeonHandler(IGameStore store,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
     CharacterPacketBuilders builders,

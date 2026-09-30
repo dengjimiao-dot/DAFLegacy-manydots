@@ -6,10 +6,9 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SEND_MESSAGE (CMD 17): megaphone broadcasts, whispers and map chat (07 §5 group 5).
 /// </summary>
-public sealed class SendMessageHandler(JsonGameStore store,
+public sealed class SendMessageHandler(IGameStore store,
     CharacterSessionRegistry characterSessions,
     PartyCoordinator partyCoordinator,
-    ServerOptions options,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -124,7 +123,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
             var megaphoneRecipients =
                 characterSessions.NotifyMegaphoneAll(
                     (GameMessageType)messageRequest.MessageType,
-                    checked((byte)options.Channel.ChannelNumber),
+                    checked((byte)senders.SessionChannel.Number),
                     session.Character.LocalUserId,
                     ClientEncoding.GetBytes(session.Character.Active.Name),
                     messageRequest.MessageBytes);

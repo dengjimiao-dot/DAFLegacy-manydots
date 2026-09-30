@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using DFLegacy.Protocol;
+using DFLegacy.Server.Sqlite;
 
 namespace DFLegacy.Server;
 
@@ -10,8 +11,8 @@ public sealed class DieMonsterHandler(
     DungeonExperienceCatalog dungeonExperienceCatalog,
     HellDropCatalog hellDropCatalog,
     MonsterChampionDropCatalog monsterChampionDrops,
-    ServerOptions options,
-    ItemCatalog itemCatalog, JsonGameStore store,
+    ServerSettings settings,
+    ItemCatalog itemCatalog, IGameStore store,
     DungeonCatalog dungeonCatalog,
     CharacterExperienceCatalog experienceCatalog,
     DungeonDropGenerator dropGenerator,
@@ -174,8 +175,8 @@ public sealed class DieMonsterHandler(
                         hellPartyMode,
                         GameRandomSource.Shared,
                         out var hellItemId,
-                        options.Drop.RatePercent / 100.0 * options.Drop.EconomicRate,
-                        options.Drop.ForceDrops);
+                        settings.DropRatePercent / 100.0 * settings.DropEconomicRate,
+                        settings.DropForce);
                     RuntimeLogger.Info(
                         "Hell drop result for character {CharacterId}, dungeon {DungeonId}, monster {MonsterIndex}/{UniqueId}: hit={Hit}, item={ItemId}.",
                         session.Character.Active?.Id, session.Dungeon.CurrentDungeonId, defeatedMonster.MonsterIndex,

@@ -9,7 +9,9 @@ namespace DFLegacy.Server;
 /// ordinal, seed and datagram endpoints — the same bytes the legacy inline
 /// branch produced (EntranceService fall-through, 07 §5 group 1).
 /// </summary>
-public sealed class CheckConnectionHandler(ServerOptions options) : IGameCommandHandler
+public sealed class CheckConnectionHandler(
+    ServerOptions options,
+    EntranceChannelDirectory channelDirectory) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -29,11 +31,11 @@ public sealed class CheckConnectionHandler(ServerOptions options) : IGameCommand
         CancellationToken cancellationToken)
     {
         var reply = ConnectionPacketBuilders.CreateChannelInfo(
-            ClientEncoding.GetBytes($"{options.Channel.Name} {options.Channel.ChannelNumber}"),
+            ClientEncoding.GetBytes(channelDirectory.Session.DisplayName),
             channelType: 1,
             result: 1,
             serverId: 1,
-            channelNumber: checked((byte)options.Channel.ChannelNumber),
+            channelNumber: checked((byte)channelDirectory.Session.Number),
             seed: checked((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
             [Encoding.ASCII.GetBytes(options.GameplayDatagram.Host)],
             port1: checked((uint)options.GameplayDatagram.PrimaryPort),

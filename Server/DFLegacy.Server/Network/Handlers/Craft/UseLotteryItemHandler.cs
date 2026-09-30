@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// USE_LOTTERY_ITEM (CMD 29): lottery box draws with the reward tables (07 §5 group 11).
 /// </summary>
-public sealed class UseLotteryItemHandler(JsonGameStore store,
+public sealed class UseLotteryItemHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler

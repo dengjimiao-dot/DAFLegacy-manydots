@@ -400,7 +400,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 
 ## 7. 测试与验收
 
-1. **Golden bytes(核心手段)**:每协议准备 `请求帧样例 → 期望回包字节序列` 断言,样本来源:runtime tracing 现网抓取 + 手工构造;落 `SelfTests/Protocol/<组>GoldenTests.cs`,复用现有 `Check` 模式。R0 起随每阶段补齐,**旧实现产出的字节就是黄金样本**(先记录后切换)。
+1. **Golden bytes(核心手段)**:每协议准备 `请求帧样例 → 期望回包字节序列` 断言,样本来源:runtime tracing 现网抓取 + 手工构造;落 `SelfTests/Network/Protocol/<组>GoldenTests.cs`(2026-09-30 目录对齐后的落点,见 §11.5 末条),复用现有 `Check` 模式。R0 起随每阶段补齐,**旧实现产出的字节就是黄金样本**(先记录后切换)。
 2. **密码学回环**:移植 `tools/crypto_roundtrip_test.py` 的断言到 SelfTests(种子收敛、CRC、NOTI ROR(x^0xB5,6) 互逆)。
 3. **不变量测试**:FIFO 顺序、并发入站出站的单写者、坏帧断连、CRC 拒绝、种子恢复失败路径;状态门槛拒绝路径(未登录发聊天、无角色操作背包等,按 4.8.1 迁移登记表逐协议断言)。
 4. **真机冒烟清单**(每阶段必跑):登录 → 选角 → 进城 → 聊天 → 买卖/修理 → 接交任务 → 学技能 → 进副本全程 → 结算翻牌 → 回城 → 收发邮件。
@@ -608,6 +608,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
   | `ConnectionContext.Outbound` 属性 | `ConnectionContext.Queue` |
 
   全量重建 0 错误 0 告警,SelfTests 21 套件全绿。
+- **SelfTests 目录对齐主项目同构形态**(2026-09-30,回归 01 §4.3 既定形态):自测项目随套件生长出的六个顶层目录(`Core/`、`Hosting/`、`Mcp/`、`Protocol/`、`Random/`、`Tap/`)与主项目目录不对应,偏离「目录与主项目同构」;本轮 9 个文件按「被测代码在主项目的位置」归位——`Core/FileLoggerSmokeTests` → `Network/Core/`(被测对象为日志与逐包捕获管线)、`Protocol/` 三件(golden 框架、入口频道目录与 `PacketByteSamples` 夹具) → `Network/Protocol/`、`Hosting/MegaphoneSmokeTests` → `Network/Builders/Chat/`(主动能为 NOTI 130 构建,循 01 §4.3「按被测的主动能归位」)、`Hosting/PathResolverSmokeTests` / `Mcp/McpModuleLoaderSmokeTests` / `Random/RandomSourceSmokeTests` / `Tap/PacketTapFunnelSmokeTests` → `Infrastructure/`(被测对象分别为 `PathResolver`、`McpModuleLoader`、随机源与 `RuntimeState` 的 Tap 漏斗),六个空目录移除;`Game/<域>`、`GameWorld/`、`PvfScript/`、`Sqlite/` 四处本就同构,不动。目录名全部沿用主项目既有注册名(4.8.3 组名表与基建目录登记),不自造新名。命名空间不变(测试类仍为全局命名空间,`Sqlite/` 例外),`Program.cs` 注册表零改动;全量重建 0 错误 0 告警,SelfTests 23 套件全绿。
 
 ### 11.4 遗留项
 

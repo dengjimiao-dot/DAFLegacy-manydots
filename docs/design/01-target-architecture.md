@@ -549,13 +549,20 @@ M0 实施时按此执行，**归类不再逐个讨论**：
 DAFLegacy.Server.SelfTests/
 ├── DAFLegacy.Server.SelfTests.csproj
 ├── Program.cs                                   用例注册 + 退出码
-├── Protocol/                                    协议用例
-├── PvfScript/                                   [新 M3] 合成 PVF 夹具、CP936/CP949 往返、路径归一、
-│                                                         目录回退大小写、归档边界用例
-├── Random/                                      [新 M2] 三类随机边界（密码学一类不得被替换）
+├── Game/<业务域>/                               与主项目同构的域子目录
 ├── GameWorld/                                   WorldMapSmokeTests
-└── Game/<业务域>/                               与主项目同构的域子目录
+├── Infrastructure/                              与主项目 Infrastructure/ 同构（PathResolver、
+│                                                McpModuleLoader、随机源、Tap 漏斗用例）
+├── Network/                                     与主项目 Network/ 同构的子目录
+│   ├── Builders/Chat/                           喇叭通知构建用例
+│   ├── Core/                                    日志与逐包捕获管线用例
+│   └── Protocol/                                协议用例（golden 框架、入口频道目录）
+├── PvfScript/                                   合成 PVF 夹具、CP936/CP949 往返、路径归一、
+│                                                目录回退大小写、归档边界用例
+└── Sqlite/                                      存储基建用例与 TestGameStore 夹具
 ```
+
+> 2026-09-30 修订：目录图与对应表按主项目协议层重组（07 §11）后的形态刷新。此前随套件生长出的 `Protocol/`、`Core/`、`Hosting/`、`Mcp/`、`Random/`、`Tap/` 六个异名顶层目录已移除，9 个文件按「被测代码在主项目的位置」归位；实施记录见 [07 · 11.5](07-protocol-layer-refactor.md)。
 
 #### 现有 11 个用例的域归属
 
@@ -584,11 +591,12 @@ M0 迁移时**按下表直接归位，不需要重新分析**。依据是每个�
 
 | 主项目 | 自测项目 |
 | --- | --- |
-| `GameWorld/`（25 个静态定义） | `GameWorld/` |
-| `Game/<域>/`（10 个域，运行时规则） | `Game/<域>/`，只建有用例的域 |
-| `Protocol/`、`PvfScript/`、`Random/` | 同名目录 |
-| `Network/`、`Persistence/`、`Hosting/`、`Services/` | 无独立用例；相关覆盖在主项目自测入口内 |
-| 其余 30 个目录 | 自测不必与主项目一一对应，**只建有用例的目录** |
+| `GameWorld/`（静态定义目录） | `GameWorld/` |
+| `Game/<域>/`（运行时规则） | `Game/<域>/`，只建有用例的域 |
+| `Network/Protocol/`、`Network/Core/`、`Network/Builders/<组>/` | 同名目录（golden 框架与入口频道目录、日志与逐包捕获管线、喇叭构建） |
+| `Infrastructure/` | 同名目录（PathResolver、McpModuleLoader、随机源、Tap 漏斗） |
+| `PvfScript/`、`Sqlite/` | 同名目录 |
+| `Network/` 其余子目录（Handlers/Parsers/Dispatch/Sessions/Timers）、`Properties/`、`wwwroot/` | 自测不必与主项目一一对应，**只建有用例的目录** |
 
 **为什么测试独立成项目而不是放进主项目**（与参照项目的有意偏离）：[9.3](#93-与参照项目的两处有意偏离) 说明。
 

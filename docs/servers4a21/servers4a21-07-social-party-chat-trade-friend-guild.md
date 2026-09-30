@@ -1,7 +1,7 @@
 # ServerS4A21(86 级版本)已实现协议处理参考 —— 组队 / 聊天 / 双人交易 / 好友·黑名单 / 公会 / 频道查询
 
 > - **本册导航**:总览/帧结构/信封/分发架构见 [servers4a21-00-overview.md](servers4a21-00-overview.md);全部 CMD 注册总表也在总览。
-> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DFLegacy 回填参考。路径相对 `DfoServer` 根。
+> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DAFLegacy 回填参考。路径相对 `DfoServer` 根。
 > 帧前提:客户端→服务端 14B 头(cmd u8 恒 1 + type u16 + length u32 + checksum u32 + seq u16 + extra u8,`Network/Core/Packet.cs:67`),body 从第一个载荷字段开始;服务端→客户端 15B 信封 `GamePacketEnvelopeBuilder.Build(type,body)`,type=0x01 应答、0x00 推送。dstr = u32 长度 + GBK 字节(`WriteClientDstr`/`WriteRawDstr`)。
 > 所有协议由 `Network/Protocol/GameProtocolHandler.cs` 的 `GameCommandRegistry` 按 type 分发:每包先过 `CharacterSessionLifecycleCoordinator.CanDispatch`,再对 cmd==1 的包先调 `Trade.CancelBeforeTransition` 后查表(`GameProtocolHandler.cs:339-346`),查不到仅记 Unhandled 日志。
 

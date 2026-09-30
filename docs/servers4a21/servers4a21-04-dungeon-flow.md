@@ -1,7 +1,7 @@
 # ServerS4A21 副本主流程协议参考(入场→加载→推进→击杀→拾取→结算→翻牌→退出/复活/重连)
 
 > - **本册导航**:总览/帧结构/信封/分发架构/已实现 CMD 总表见 [servers4a21-00-overview.md](servers4a21-00-overview.md)。
-> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
+> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DAFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
 
 ## 域综述
 

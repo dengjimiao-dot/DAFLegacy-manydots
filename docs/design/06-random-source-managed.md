@@ -1,6 +1,6 @@
-# 06 · 随机源降级为纯托管实现（服务端与 DFLegacy.RandomNative 解耦，模块保留至 Client 层）
+# 06 · 随机源降级为纯托管实现（服务端与 DAFLegacy.RandomNative 解耦，模块保留至 Client 层）
 
-- 状态：**已实施**（2026-09-24 标注）。服务端随机源托管化已落地（`Server/DFLegacy.Server/Infrastructure/`；2026-09-29 目录修订：原 `Random/` 三文件已并入 `Infrastructure/`，契约由本档与类头注释约束，见 07 §11）；**修订：`DFLegacy.RandomNative` 不删除**，保留至 `Client/DFLegacy.RandomNative/`，仅解除服务端耦合。下文以"删除模块"为结论的表述按此修订理解
+- 状态：**已实施**（2026-09-24 标注）。服务端随机源托管化已落地（`Server/DAFLegacy.Server/Infrastructure/`；2026-09-29 目录修订：原 `Random/` 三文件已并入 `Infrastructure/`，契约由本档与类头注释约束，见 07 §11）；**修订：`DAFLegacy.RandomNative` 不删除**，保留至 `Client/DAFLegacy.RandomNative/`，仅解除服务端耦合。下文以"删除模块"为结论的表述按此修订理解
 - 上级文档：[00 开档总纲](00-kickoff.md) · [01 目标架构](01-target-architecture.md) · [02 可移植性契约](02-portability-contracts.md) · [03 构建、发布与 CI](03-build-release-ci.md) · [04 迁移计划](04-migration-plan.md)
 - 参考实现：`ServerS4A21`（下称"参考项目"）
 - **取代 [05 · RandomNative 跨平台化提案](05-randomnative-crossplatform.md)**：本提案不做原生模块的跨平台移植；服务端与模块解耦（模块保留至 Client 层），05 的结论仍作废
@@ -10,7 +10,7 @@
 
 ## 1. 决策
 
-**服务端与 `DFLegacy.RandomNative` 解耦，把服务端裁决随机改为纯托管的单一实现**（模块保留至 `Client/DFLegacy.RandomNative/`，仅移出服务端），参考参考项目的随机概率模块设计。
+**服务端与 `DAFLegacy.RandomNative` 解耦，把服务端裁决随机改为纯托管的单一实现**（模块保留至 `Client/DAFLegacy.RandomNative/`，仅移出服务端），参考参考项目的随机概率模块设计。
 
 一句话理由：这个原生模块的全部作用是把 CPU 的 RDSEED 硬件熵源接进服务端，而 [05 · §1](05-randomnative-crossplatform.md) 已经确认它**对玩法结果是零影响**——掉落、奖励、强化、合成需要的分布质量，操作系统或运行时的伪随机已经完全满足。为这一点收益维持一个跨平台原生工程（含 RID 探测、`DllImportResolver`、独立 CMake 工具链、CTest、以及 `MSB4278` 导致的"永远进不了解决方案"），成本与收益不成比例。
 
@@ -18,7 +18,7 @@
 
 | 原问题 | 解耦后 |
 | --- | --- |
-| 写死的 `LibraryName = "DFLegacy.RandomNative.dll"` | 服务端代码里不再有任何原生库名（本就是"搬目录"解决不了的那条，见 §3.4） |
+| 写死的 `LibraryName = "DAFLegacy.RandomNative.dll"` | 服务端代码里不再有任何原生库名（本就是"搬目录"解决不了的那条，见 §3.4） |
 | 跨平台编译（M6） | 不做：服务端只剩 C#，模块保持 Windows 专属 |
 | `.slnx` 成员资格（`MSB4278`） | 2026-09-23 修订：原生项目回到解决方案（仅 IDE 可见，`<Build Project="false" />` 不参与构建），`MSB4278` 对解决方案级 `dotnet build` 重新成立——服务端按项目构建，不受影响 |
 | `ProjectReference` / `BuildRandomNativeReference` / `RandomNativeBinary` / 硬编码 `Content`（4 处编译期耦合） | 全部删除 |
@@ -139,15 +139,15 @@ public sealed class DnfLcg
 
 ---
 
-## 3. DFLegacy 现状与差距
+## 3. DAFLegacy 现状与差距
 
 ### 3.1 现状
 
-`src/DFLegacy.Server/GameRandomSource.cs`（约 249 行）实现三级提供程序链：RDSEED（原生）→ 操作系统 CSPRNG（`RandomNumberGenerator.GetInt32`）→ 托管伪随机（`Random.Shared`），并把加载失败、拒绝采样、能力标记、5 个计数器全部包在一个类里。业务侧通过 `IDropRandomSource`（单一方法 `int Next(int exclusiveMaximum)`）取值，共 **42 处调用点、16 个文件**。
+`src/DAFLegacy.Server/GameRandomSource.cs`（约 249 行）实现三级提供程序链：RDSEED（原生）→ 操作系统 CSPRNG（`RandomNumberGenerator.GetInt32`）→ 托管伪随机（`Random.Shared`），并把加载失败、拒绝采样、能力标记、5 个计数器全部包在一个类里。业务侧通过 `IDropRandomSource`（单一方法 `int Next(int exclusiveMaximum)`）取值，共 **42 处调用点、16 个文件**。
 
 ### 3.2 差距一：没有"客户端同步随机"这一类
 
-DFLegacy 有 `ClientRandomSeed` 的概念，但它只是**由裁决随机生成后下发给客户端**：
+DAFLegacy 有 `ClientRandomSeed` 的概念，但它只是**由裁决随机生成后下发给客户端**：
 
 - `DungeonRunState.cs:297` `CreateClientRandomSeed(IDropRandomSource random)` —— 从裁决随机抽 32 位组装种子
 - `DungeonCatalog.cs:150` `ClientRandomSeed { get; init; }` —— 存进房间定义
@@ -155,10 +155,10 @@ DFLegacy 有 `ClientRandomSeed` 的概念，但它只是**由裁决随机生成�
 
 **全仓库没有任何 LCG 实现**（检索 `1103515245` / `Lcg` / `ClientRandom` 均无命中），服务端从不复算客户端序列。而参考项目的规则是"客户端可复算的掉落必须走房间 LCG"。
 
-**这是本提案唯一需要你确认的领域问题**（§7 · Q1）：DFLegacy 的客户端是否会从这个种子复算掉落序列？
+**这是本提案唯一需要你确认的领域问题**（§7 · Q1）：DAFLegacy 的客户端是否会从这个种子复算掉落序列？
 
-- 若**不会**（客户端只把种子用于表现层）：DFLegacy 的随机只有"裁决"一类，本提案直接落地，`DnfLcg` 不必移植。
-- 若**会**：那么 DFLegacy **今天就存在对齐缺口**——服务端掉落走的是 `GameRandomSource`，客户端复算走的是种子驱动的 LCG，两者必然不一致。这种情况需要照搬参考项目：把可复算的掉落改走移植版 `DnfLcg`，并让 `ClientRandomSeed` 成为该 LCG 的种子。
+- 若**不会**（客户端只把种子用于表现层）：DAFLegacy 的随机只有"裁决"一类，本提案直接落地，`DnfLcg` 不必移植。
+- 若**会**：那么 DAFLegacy **今天就存在对齐缺口**——服务端掉落走的是 `GameRandomSource`，客户端复算走的是种子驱动的 LCG，两者必然不一致。这种情况需要照搬参考项目：把可复算的掉落改走移植版 `DnfLcg`，并让 `ClientRandomSeed` 成为该 LCG 的种子。
 
 无论哪种答案，**种子与序列必须同源**这条规则都应当现在就记录进文档。
 
@@ -169,15 +169,15 @@ DFLegacy 有 `ClientRandomSeed` 的概念，但它只是**由裁决随机生成�
 | `EntranceHandshakeReplies.cs:10` | `GetBytes(32)` 会话密钥材料 | **必须保持 CSPRNG**。这是密码学用途，改走伪随机会是安全退化，不是简化 |
 | `JsonGameStore.cs:5545` | 分配唯一邮件 ID（`GetInt32(1, int.MaxValue)` + 1024 次重试） | 属"唯一性分配"，非玩法裁决。建议**原样保留**，但在模块注释中记为显式例外，避免"单一入口"规则被后续改动无声破坏 |
 
-这两处说明：**参考项目的"两类"规则在 DFLegacy 必须扩成"三类"**（§4.1）。
+这两处说明：**参考项目的"两类"规则在 DAFLegacy 必须扩成"三类"**（§4.1）。
 
 ### 3.4 顺带说明：`LibraryName` 与目录位置无关
 
-上一轮已经实测清楚（对照实验：同一份原生库放下 `runtimes/osx-arm64/native/libDFLegacy.RandomNative.dylib`）：
+上一轮已经实测清楚（对照实验：同一份原生库放下 `runtimes/osx-arm64/native/libDAFLegacy.RandomNative.dylib`）：
 
 ```text
-A) DllImport("DFLegacy.RandomNative") + SetDllImportResolver → 调用成功
-B) DllImport("DFLegacy.RandomNative.dll")（现版写法）        → DllNotFoundException
+A) DllImport("DAFLegacy.RandomNative") + SetDllImportResolver → 调用成功
+B) DllImport("DAFLegacy.RandomNative.dll")（现版写法）        → DllNotFoundException
 ```
 
 即：去掉写死文件名的**唯一**办法是"逻辑名 + 解析器"或"彻底不要原生库"，**把模块搬到哪个目录都无效**——`DllImport` 的字符串由运行时探测和解析器决定，与源码位置毫无关系。本提案选择后者，因此这类问题整体消失。
@@ -188,7 +188,7 @@ B) DllImport("DFLegacy.RandomNative.dll")（现版写法）        → DllNotFou
 
 ### 4.1 三类随机（比参考项目多一类）
 
-| 类别 | 用途 | 实现 | DFLegacy 实例 |
+| 类别 | 用途 | 实现 | DAFLegacy 实例 |
 | --- | --- | --- | --- |
 | **密码学随机** | 会话密钥、令牌、任何需要不可预测的字节 | `RandomNumberGenerator` | `EntranceHandshakeReplies.cs:10` |
 | **服务端裁决随机** | 掉落、奖励、强化、合成、商店内容、迷宫/怪物抽取 | **本提案的单一托管实现** | 42 处调用点 / 16 文件 |
@@ -205,7 +205,7 @@ B) DllImport("DFLegacy.RandomNative.dll")（现版写法）        → DllNotFou
 
 ### 4.2 有意保留 `IDropRandomSource` 注入缝（对参考项目的一处偏离）
 
-参考项目的 `ServerRandom` 是**静态类**，无法注入替身，其自测只能测试间接路径。DFLegacy 的 `IDropRandomSource` 是更好的设计：16 个消费文件、以及自测里的 `SequenceDropRandomSource` / `ZeroDropRandomSource` / `FixedDropRandomSource` 都依赖它做确定性测试。
+参考项目的 `ServerRandom` 是**静态类**，无法注入替身，其自测只能测试间接路径。DAFLegacy 的 `IDropRandomSource` 是更好的设计：16 个消费文件、以及自测里的 `SequenceDropRandomSource` / `ZeroDropRandomSource` / `FixedDropRandomSource` 都依赖它做确定性测试。
 
 **因此本提案保留接口与全部调用点不动**，只替换实现。这满足参考项目"单一所有权"的实质（生产环境只有 `GameRandomSource.Shared` 一个实例），同时不牺牲可测性。这是一处有意的、有理由的偏离，不是遗漏。
 
@@ -214,7 +214,7 @@ B) DllImport("DFLegacy.RandomNative.dll")（现版写法）        → DllNotFou
 保留对外名字 `GameRandomSource.Shared`，使 42 处调用点零改动。约 249 行 → 约 20 行：
 
 ```csharp
-namespace DFLegacy.Server;
+namespace DAFLegacy.Server;
 
 // 掉落、奖励、强化、合成等一切"服务端裁决随机"的唯一取值入口。
 public interface IDropRandomSource
@@ -304,7 +304,7 @@ public sealed record GameRandomStatus(string Provider);
 | --- | --- | --- |
 | `Program.cs:75-81` | 启动日志打 4 个能力字段 | 改为打一个 provider 名 |
 | `Program.cs:211` | `/api/status` 的 `Random` 字段 | 保留字段，载荷变为 `{ "provider": "..." }` |
-| `tests/DFLegacy.SmokeTests/Program.cs:42-107` | 用注入委托构造 `GameRandomSource`，断言三级链与拒绝采样 | **整段删除**，改由 `SequenceDropRandomSource` 等替身覆盖接口语义 |
+| `tests/DAFLegacy.SmokeTests/Program.cs:42-107` | 用注入委托构造 `GameRandomSource`，断言三级链与拒绝采样 | **整段删除**，改由 `SequenceDropRandomSource` 等替身覆盖接口语义 |
 | `tests/.../EquipmentQualitySmokeTests.cs:152-175` | 同上，断言硬件种子 | 改用 `SeededRandomSource` 提供确定性种子 |
 | `wwwroot/admin/admin.js` | **不消费该字段**（已实测，检索无命中） | 无需改动 |
 | `ADMIN_API.md:113` | 记录 `random` 为"RDSEED、系统 CSPRNG 和回退源状态及计数" | 文案改写为单一提供程序 |
@@ -314,12 +314,12 @@ public sealed record GameRandomStatus(string Provider);
 
 ### 4.5 目标形态：文件布局与调用关系
 
-**没有"子模块"这一层。** 这里要避免一个术语陷阱：在托管世界里，`Random/` 是一个**模块目录**，不是子模块、不是独立程序集、不是独立构建单元——它就是同一个 `DFLegacy.Server.dll` 里的一组 `.cs` 文件。这与 [D3](00-kickoff.md#5-关键设计决策) 的决定一致（4 个托管项目收成 1 个项目 + 模块目录）。引入"子模块"只会凭空多出一个构建单元，而它没有任何可独立交付的边界。
+**没有"子模块"这一层。** 这里要避免一个术语陷阱：在托管世界里，`Random/` 是一个**模块目录**，不是子模块、不是独立程序集、不是独立构建单元——它就是同一个 `DAFLegacy.Server.dll` 里的一组 `.cs` 文件。这与 [D3](00-kickoff.md#5-关键设计决策) 的决定一致（4 个托管项目收成 1 个项目 + 模块目录）。引入"子模块"只会凭空多出一个构建单元，而它没有任何可独立交付的边界。
 
 **目录**（M0 之后的形态；当前 `GameRandomSource.cs` 平铺在项目根）：
 
 ```text
-Server/DFLegacy.Server/
+Server/DAFLegacy.Server/
   Random/                          ← 模块目录（当前不存在）
     IDropRandomSource.cs           ← 消费缝，仅 1 个成员
     GameRandomSource.cs            ← 生产实现（Random.Shared），约 20 行
@@ -340,11 +340,11 @@ GameRandomSource
 
 所以准确的描述不是"新模块被 `GameRandomSource` 调用"，而是 **`GameRandomSource` 本身就是那个模块的生产实现**。在两者之间再插一层门面没有收益——它们同属一个程序集、同一份 CI、同一次编译。
 
-**命名决定：不保留 `RandomNative` 这个名字。** 实现里已经不含任何原生代码，留着这个名字只会延续一类误解——原 `01 · 6.1` 曾专门指出"这个名字、以及它曾经的位置，都容易引出错误结论"（该节已随服务端解耦移除）。模块按 [01 · 4.1](01-target-architecture.md#41-dflegacyserver主项目) 的目标命名叫 `Random/`，类型按职责命名。
+**命名决定：不保留 `RandomNative` 这个名字。** 实现里已经不含任何原生代码，留着这个名字只会延续一类误解——原 `01 · 6.1` 曾专门指出"这个名字、以及它曾经的位置，都容易引出错误结论"（该节已随服务端解耦移除）。模块按 [01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) 的目标命名叫 `Random/`，类型按职责命名。
 
-**一处可选的重命名**：[01 · 4.1](01-target-architecture.md#41-dflegacyserver主项目) 与 [04 · M2](04-migration-plan.md) 规划的是 `IRandomSource`，本提案为换取零调用点改动而保留 `IDropRandomSource`。取舍是：改名更贴合设计文档的既有命名，但纯机械地触及 16 个文件、42 处调用点；不改名则业务代码一行不动。**建议先按 `IDropRandomSource` 落地，把重命名留作独立提交**——理由与 [01 · 9.4](01-target-architecture.md#94-命名空间策略分两步) 把"移动文件"和"改命名空间"拆成两步相同。
+**一处可选的重命名**：[01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) 与 [04 · M2](04-migration-plan.md) 规划的是 `IRandomSource`，本提案为换取零调用点改动而保留 `IDropRandomSource`。取舍是：改名更贴合设计文档的既有命名，但纯机械地触及 16 个文件、42 处调用点；不改名则业务代码一行不动。**建议先按 `IDropRandomSource` 落地，把重命名留作独立提交**——理由与 [01 · 9.4](01-target-architecture.md#94-命名空间策略分两步) 把"移动文件"和"改命名空间"拆成两步相同。
 
-**本方案不产生任何新的 DLL 调用。** 项目里剩下的原生调用只有 `DFLegacy.Launcher/D3D9DeviceProbe.cs` 的 `d3d9.dll` / `user32.dll`，属 Client 层、在 Z5 的范围内，与本次改动无关；`RandomNumberGenerator` 是 BCL API，不是我们交付的二进制。
+**本方案不产生任何新的 DLL 调用。** 项目里剩下的原生调用只有 `DAFLegacy.Launcher/D3D9DeviceProbe.cs` 的 `d3d9.dll` / `user32.dll`，属 Client 层、在 Z5 的范围内，与本次改动无关；`RandomNumberGenerator` 是 BCL API，不是我们交付的二进制。
 
 ---
 
@@ -352,9 +352,9 @@ GameRandomSource
 
 | 对象 | 说明 |
 | --- | --- |
-| `src/DFLegacy.RandomNative/` 整目录 | **移至 `Client/DFLegacy.RandomNative/` 保留**（修订：不再删除）。8 个文件：`CMakeLists.txt`、`build-native.ps1`、`DFLegacy.RandomNative.vcxproj{,.filters}`、`include/dflegacy_random.h`、`src/dflegacy_random.cpp`、`src/dflegacy_random.def`、`tests/random_native_tests.cpp` |
-| `DFLegacy.Emulator.slnx` | ~~移除 `RandomNative` 条目~~ 2026-09-23 修订：条目保留（原生项目回到解决方案，仅 IDE 可见，不参与构建） |
-| `DFLegacy.Server.csproj:8,9,17-19,23-28` | `RandomNativeBinary`、`BuildRandomNativeReference`、`ProjectReference`、硬编码 `Content` |
+| `src/DAFLegacy.RandomNative/` 整目录 | **移至 `Client/DAFLegacy.RandomNative/` 保留**（修订：不再删除）。8 个文件：`CMakeLists.txt`、`build-native.ps1`、`DAFLegacy.RandomNative.vcxproj{,.filters}`、`include/daflegacy_random.h`、`src/daflegacy_random.cpp`、`src/daflegacy_random.def`、`tests/random_native_tests.cpp` |
+| `DAFLegacy.Emulator.slnx` | ~~移除 `RandomNative` 条目~~ 2026-09-23 修订：条目保留（原生项目回到解决方案，仅 IDE 可见，不参与构建） |
+| `DAFLegacy.Server.csproj:8,9,17-19,23-28` | `RandomNativeBinary`、`BuildRandomNativeReference`、`ProjectReference`、硬编码 `Content` |
 | `GameRandomSource.cs:145-250` | `NativeRdSeed` 与 `NativeMethods`（P/Invoke、探测、异常分类、`DllImportSearchPaths`） |
 | `artifacts/native/random/` | 构建产物（已在 `.gitignore` 中，无需提交动作） |
 
@@ -362,7 +362,7 @@ GameRandomSource
 
 删除原生模块会让若干既有设计条目失去对象。**这些不是可选项——留着会让后续实施者照着一份有对象的规则去建一个不存在的组件。**
 
-> **状态：本节已执行**（2026-09 修订：`DFLegacy.RandomNative` 改为保留至 Client 层，上文涉及"删除模块"的表述已随之再次修订，本表"删除原生模块"的处置相应改为"迁移保留"）。涉及**代码**的条目（自测 5 处、`Program.cs` 两处、`GameRandomSource` 本体）已随 M2 实施。
+> **状态：本节已执行**（2026-09 修订：`DAFLegacy.RandomNative` 改为保留至 Client 层，上文涉及"删除模块"的表述已随之再次修订，本表"删除原生模块"的处置相应改为"迁移保留"）。涉及**代码**的条目（自测 5 处、`Program.cs` 两处、`GameRandomSource` 本体）已随 M2 实施。
 
 | 文档 | 条目 | 处置 |
 | --- | --- | --- |
@@ -383,7 +383,7 @@ GameRandomSource
 
 | 编号 | 问题 | 影响 |
 | --- | --- | --- |
-| **Q1** | **DFLegacy 的客户端是否会从 `ClientRandomSeed` 复算掉落序列？** | 决定要不要移植 `DnfLcg`。若答案为"会"，则当前存在服务端/客户端掉落对齐缺口，本提案范围要扩大（§3.2） |
+| **Q1** | **DAFLegacy 的客户端是否会从 `ClientRandomSeed` 复算掉落序列？** | 决定要不要移植 `DnfLcg`。若答案为"会"，则当前存在服务端/客户端掉落对齐缺口，本提案范围要扩大（§3.2） |
 | Q2 | `GameRandomStatus` 是否可以收缩为一个 provider 字段？ | 会改动 6 处消费点（其中 2 处是自测断言），`admin.js` 已确认无影响 |
 | Q3 | 是否要用 `SeededRandomSource` 之外再加一个"进程级可复现模式"（如 `server.json` 配一个全局种子，用于复现线上问题）？ | 参考项目无此机制；本提案默认不加 |
 | Q4 | `JsonGameStore.cs:5545` 的邮件 ID 分配是否也收进裁决随机？ | 建议不收（属唯一性分配），但需写入例外清单，避免"单一入口"被无声破坏 |
@@ -392,11 +392,11 @@ GameRandomSource
 
 | 检查 | 判据 |
 | --- | --- |
-| 源码无原生痕迹 | `git grep -i "RandomNative" Server/` 无结果（模块保留在 `Client/DFLegacy.RandomNative/`）；`git grep "DllImport" Server/DFLegacy.Server/` 无结果 |
-| 构建图 | `DFLegacy.Server.csproj` 的 `ProjectReference` 不含原生项目（`.slnx` 2026-09-23 修订后重新含 `.vcxproj`，不以此为准） |
+| 源码无原生痕迹 | `git grep -i "RandomNative" Server/` 无结果（模块保留在 `Client/DAFLegacy.RandomNative/`）；`git grep "DllImport" Server/DAFLegacy.Server/` 无结果 |
+| 构建图 | `DAFLegacy.Server.csproj` 的 `ProjectReference` 不含原生项目（`.slnx` 2026-09-23 修订后重新含 `.vcxproj`，不以此为准） |
 | 三平台启动 | 服务端在 win-x64 / linux-x64 / osx-arm64 均正常启动，日志 provider 字段为托管实现，无任何原生相关字段 |
 | 分布式行为不变 | 42 处调用点的分布抽样行为与改动前一致（掉落/奖励/强化/合成各抽样自测） |
-| 密码学未退化 | `git grep "RandomNumberGenerator" Server/DFLegacy.Server/` 仍命中 `Network/Protocol/EntranceHandshakeReplies.cs` |
+| 密码学未退化 | `git grep "RandomNumberGenerator" Server/DAFLegacy.Server/` 仍命中 `Network/Protocol/EntranceHandshakeReplies.cs` |
 | 包内容 | 任一发布产物中不存在 `runtimes/*/native/*` |
 | 自测 | 自测项目在三平台通过，且不再使用 `GameRandomSource` 的注入委托构造器 |
 | API | `/api/status` 正常返回；后台界面 `wwwroot/admin/` 正常加载 |
@@ -405,6 +405,6 @@ GameRandomSource
 
 1. 先答 §7 · Q1（决定是否需要 `DnfLcg`），并确认 Q2/Q4。
 2. 按 §4.3 替换 `GameRandomSource`，新增 `SeededRandomSource`；按 §4.4 收缩状态面并改写 6 处消费点。
-3. 按 §5 处置原生资产（模块迁至 `Client/DFLegacy.RandomNative/` 保留）并删除 csproj/slnx 的 4 处耦合。
+3. 按 §5 处置原生资产（模块迁至 `Client/DAFLegacy.RandomNative/` 保留）并删除 csproj/slnx 的 4 处耦合。
 4. 按 §6 逐条修订 00–04 五份文档，并给 05 标注作废。
 5. 按 §8 验收；其中"三平台启动"与"分布式行为不变"两项必须在真实三平台上跑，而不是仅靠代码审阅。

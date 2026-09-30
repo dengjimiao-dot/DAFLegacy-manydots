@@ -85,7 +85,7 @@ UDP 上报      C→S CMD 2  (NAT 上报)      ► 若已在队: 全队 NOTI 11 
 
 ### 扩展块:自定义队名下行的承载(2026-09-29 实现,2026-09-30 撤销)
 
-**撤销结论(2026-09-30)**:本方案建立在「下行不承载队名文本」的误读上——设置段 kind==0 分支的 `sub_8B3250`(0x41B955)本会无条件消费 u32 长度并按长度读入文本(更正见「队名显示与 titleKind 语义」),原生协议本就承载自定义队名。type 4 块在真实包里永远不会被分派:2 字节设置段 + type 4 块的组合下,kind==0 的 dstr 读取先吃掉后续 4 字节造成游标错位,扩展块从未到达类型分派点——该组合在**任何客户端(打不打补丁)上都不可用**,已由 2026-09-30 双端抓包与客户端插桩日志逐字节证实。服务端已改为在设置段内直接携带 dstr 文本(见 NOTI 9 节),`CustomTitleBlockType`/`WriteCustomTitle` 等扩展代码与对应 SelfTests 断言一并移除;客户端 `UsePartyCustomTitle` 接管与观测钩子、Config.ini 键及 `DFLegacy.Ijl15.party-title.log` 诊断日志已随退役整体移除(2026-09-30),自定义队名由原生设置段路径承载,任何客户端无需补丁。以下为原方案历史记录,前提作废:
+**撤销结论(2026-09-30)**:本方案建立在「下行不承载队名文本」的误读上——设置段 kind==0 分支的 `sub_8B3250`(0x41B955)本会无条件消费 u32 长度并按长度读入文本(更正见「队名显示与 titleKind 语义」),原生协议本就承载自定义队名。type 4 块在真实包里永远不会被分派:2 字节设置段 + type 4 块的组合下,kind==0 的 dstr 读取先吃掉后续 4 字节造成游标错位,扩展块从未到达类型分派点——该组合在**任何客户端(打不打补丁)上都不可用**,已由 2026-09-30 双端抓包与客户端插桩日志逐字节证实。服务端已改为在设置段内直接携带 dstr 文本(见 NOTI 9 节),`CustomTitleBlockType`/`WriteCustomTitle` 等扩展代码与对应 SelfTests 断言一并移除;客户端 `UsePartyCustomTitle` 接管与观测钩子、Config.ini 键及 `DAFLegacy.Ijl15.party-title.log` 诊断日志已随退役整体移除(2026-09-30),自定义队名由原生设置段路径承载,任何客户端无需补丁。以下为原方案历史记录,前提作废:
 
 **目标**:让玩家在改设置窗口输入的任意自定义队名在客户端可见。改动前 kind=0 一律显示本地串『无队伍名』(见上「队名显示与 titleKind 语义」),服务端无任何下行字段可承载该文本。
 
@@ -98,11 +98,11 @@ UDP 上报      C→S CMD 2  (NAT 上报)      ► 若已在队: 全队 NOTI 11 
 | 3 | u32+bytes | title | u32 长度 + CP936 文本,与上行 CMD 12 的 dstr 同形(上限 0x40 字节) |
 
 - **标准(未打补丁)客户端的降级行为**:块循环(0x41B7C3..0x41BB35)读 `u16 队伍号 + u8 块类型` 后按代号查队伍(`sub_4FEF70`);类型 4 不匹配设置段(0/1)、名册段(0/2)、清空段(3)三处分支,**不读任何载荷**即进入下一轮(公共块尾 0x41BB35),块计数用尽即结束。通知分发器**不做游标消费校验**(全局游标 `src` 仅被读取原语 `sub_8F5116..0x8F51D0` 触碰,分发器收尾 0x41C2C3 无比较),故尾部未读文本字节被忽略,标准客户端照常应用前序标准块,无名册错位风险。
-- **补丁客户端的处理**:`Client/DFLegacy.Ijl15` 把类型分派分支 0x41B8F3 接管到 `PartyCustomTitleHook`(`UsePartyCustomTitle` 开关):读块内 dstr(`sub_8F5160` 读 u32 长度 + `sub_8F5180` 读字节,按 0x40 上限截断保护缓冲区),再经 `sub_44D280`(队伍记录 +4)取到名字串(+8,即记录 +0xC)并以 `sub_402AD0`(std::string assign)写入——与 settings 段写本地串 0x272 同址;接管代码复刻原分支语义(类型 1 落设置段、其余跳设置段)并在处理后跳到公共块尾,UI 随之刷新。
+- **补丁客户端的处理**:`Client/DAFLegacy.Ijl15` 把类型分派分支 0x41B8F3 接管到 `PartyCustomTitleHook`(`UsePartyCustomTitle` 开关):读块内 dstr(`sub_8F5160` 读 u32 长度 + `sub_8F5180` 读字节,按 0x40 上限截断保护缓冲区),再经 `sub_44D280`(队伍记录 +4)取到名字串(+8,即记录 +0xC)并以 `sub_402AD0`(std::string assign)写入——与 settings 段写本地串 0x272 同址;接管代码复刻原分支语义(类型 1 落设置段、其余跳设置段)并在处理后跳到公共块尾,UI 随之刷新。
 
-**实现落点**:服务端 `Network/Builders/Party/PartyPacketBuilders.CreatePartyInfo`(仅 `TitleKind == 0 && TitleBytes.Length > 0` 时追加扩展块,`CustomTitleBlockType` / `MaximumCustomTitleBytes` 常量)与 `Network/PartyCoordinator.cs` 的建队、改设置两条发布路径(`BuildBlock` 携带 `TitleBytes`);客户端 `Client/DFLegacy.Ijl15`(`dnf_patches.cpp` 接管与字节校验,开关为 Config.ini `[Features] UsePartyCustomTitle`,见 `ijl15_config`)。
+**实现落点**:服务端 `Network/Builders/Party/PartyPacketBuilders.CreatePartyInfo`(仅 `TitleKind == 0 && TitleBytes.Length > 0` 时追加扩展块,`CustomTitleBlockType` / `MaximumCustomTitleBytes` 常量)与 `Network/PartyCoordinator.cs` 的建队、改设置两条发布路径(`BuildBlock` 携带 `TitleBytes`);客户端 `Client/DAFLegacy.Ijl15`(`dnf_patches.cpp` 接管与字节校验,开关为 Config.ini `[Features] UsePartyCustomTitle`,见 `ijl15_config`)。
 
-**诊断**:补丁的安装与命中都会追加一行到客户端目录下 `Logs\DFLegacy.Ijl15.party-title.log`(逐行 `installed` / `install skipped: …` / `entered block_type=… loop=下标/块数`(类型分派分支实际读到的类型字节与循环状态) / `header idx=… id=… type=…`(块头读取点每次迭代的循环下标、队伍代号与块类型;type 0 块走 find-or-create 且分派直跳设置段,绕过查找与分派两个观测点,此点为唯一全量观测位,游标错位时在此直接暴露异常 id/type) / `loop index=… count=…`(块循环头每次迭代的下标与计数) / `handled type4 len=… text_hex=…` / `lookup id=… block_type=…`(NOTI 9 每次按队伍代号查找的实参,含查找调用点接管后的全部调用方) / `abort: …`(块循环内两处静默中止:presence-check 出口与查找未命中),文本按十六进制记录,文件 1 MB 上限),用于免调试器核实部署、命中与块循环状态。观测点字节校验在写入前执行,任一观测点与原始字节不符即整体跳过并记 `install skipped: NOTI 9 observation bytes do not match`。
+**诊断**:补丁的安装与命中都会追加一行到客户端目录下 `Logs\DAFLegacy.Ijl15.party-title.log`(逐行 `installed` / `install skipped: …` / `entered block_type=… loop=下标/块数`(类型分派分支实际读到的类型字节与循环状态) / `header idx=… id=… type=…`(块头读取点每次迭代的循环下标、队伍代号与块类型;type 0 块走 find-or-create 且分派直跳设置段,绕过查找与分派两个观测点,此点为唯一全量观测位,游标错位时在此直接暴露异常 id/type) / `loop index=… count=…`(块循环头每次迭代的下标与计数) / `handled type4 len=… text_hex=…` / `lookup id=… block_type=…`(NOTI 9 每次按队伍代号查找的实参,含查找调用点接管后的全部调用方) / `abort: …`(块循环内两处静默中止:presence-check 出口与查找未命中),文本按十六进制记录,文件 1 MB 上限),用于免调试器核实部署、命中与块循环状态。观测点字节校验在写入前执行,任一观测点与原始字节不符即整体跳过并记 `install skipped: NOTI 9 observation bytes do not match`。
 
 **验收标准**:① 打补丁客户端上,自定义队名在领队与队员端均显示所输文本,改回预设名后显示预设文案;② 标准客户端上,队伍名仍为预设文案或『无队伍名』,名册/容量/队长槽不受影响(NOTI 9 标准块字节与改动前完全一致);③ 服务端 SelfTests 全绿(含扩展块字节断言与 `protocol-golden` 字节等价守护);④ 真机双客户端复测:改名→双方显示,退队/踢人/断线重连/换代号后名字保持正确。
 
@@ -261,7 +261,7 @@ NOTI 23 USER_AREA / NOTI 24 AREA_USERS 只更新已存在记录(查不到即跳�
 - `Network/PartyCoordinator.cs` — 会话投递、城镇存在表、封包编排;队伍聊天按名册投递 `SendToParty`(格式与路由见 [packet-detail-chat-60cn.md](packet-detail-chat-60cn.md) CMD 17 type 2/11 节)
 - `Network/Builders/Party/PartyPacketBuilders.cs` — CMD 10-14 解析、NOTI 6/7/8/9/10 构建;`CreateCurrentCharacterDetails(mode:3)` 对端上下文构建在 `Network/Builders/Characters/CharactersPacketBuilders.cs`
 - `Game/Session/CharacterSessionRegistry.cs` — 跨会话封包通道(`AttachPacketChannel`)
-- 自测:`DFLegacy.Server.SelfTests/Game/Party/PartySmokeTests.cs`
+- 自测:`DAFLegacy.Server.SelfTests/Game/Party/PartySmokeTests.cs`
 
 ### 参考项目 TURN 式中继(per-ordered-pair)评估(2026-09-29)
 

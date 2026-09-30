@@ -1,7 +1,7 @@
 # 域十:宠物生物 / 佣兵 / 专家副职(ServerS4A21 实现参考)
 
 > - **本册导航**:总览/帧结构/信封/分发架构/已实现 CMD 总表见 [servers4a21-00-overview.md](servers4a21-00-overview.md)。
-> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
+> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DAFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
 
 注册位置:宠物组 `Network/Protocol/GameProtocolHandler.cs:562-582`,佣兵组 `:953-959`,副职组 `:1036-1050`。
 

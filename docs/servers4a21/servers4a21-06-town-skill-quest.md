@@ -1,7 +1,7 @@
 # 86 级版本服务端(ServerS4A21)已实现协议处理参考 — 城镇同步/技能/任务
 
 > - **本册导航**:总览/帧结构/信封/分发架构/已实现 CMD 总表见 [servers4a21-00-overview.md](servers4a21-00-overview.md)。
-> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
+> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DAFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
 ## 域综述
 
 城镇同步采用"客户端上报、服务端投影"模型:客户端每次移动发 `SET_USER_POSITION`,服务端只更新内存坐标(`PlayerContext.CurPosX/Y`)并异步落库,再把 `USER_POSITION(0x0016)` 推回本人并广播同区域;进区域走 `SET_USER_AREA`,由 `SetUserAreaCoreAsync` 统一处理(鉴权→旧区域离开投影→本人 `USER_AREA`→名册同屏),`PARTY_TELEPORT`/`SOLO_TELEPOART` 最终都复用该核心函数。技能侧没有独立 parser,`SkillHandler` 直接按偏移读 body;技能树页(0/1)、指令自定义、连招页均持久化到 SQLite(`SqliteCharacterProgressRepository`/`SqliteSubtype1Repository`,PvP 频道写 `SqlitePvpSkillRepository`),`SKILL_INIT` 与 `COMBO_SKILL_EXTENSION_QUICK_SLOT_RESET` 用 `SKILLINFO(0x0013)` 推送全量技能页。任务管理器入口是 `Game/Quests/QuestManager.cs`(挂于 `GameSession`,经 `GameProtocolHandler.RegisterQuestHandlers` 分发);四个任务命令的请求体都先经 `StripEcho` 去掉前 2 字节回显(`QuestManager.cs:139-145`)再由 `QuestCommandParser` 解析,应答字节统一由 `QuestAckBuilder` 冻结序列化;完成后的状态投影(EXP/升级/可接列表/完成列表)由 `QuestNotificationProjector` 统一推送。

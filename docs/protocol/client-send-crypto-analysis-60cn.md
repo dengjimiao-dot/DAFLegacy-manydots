@@ -1,7 +1,7 @@
 # 60A1 客户端发包加密实测与逆向分析(CMD 加密、密钥调度、种子存档)
 
 > 本文是对 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md) 发包(CMD)加密一节的实证与修正,
-> 结论来源:①抓包 MCP(`Server/DFLegacy.Mcp`,127.0.0.1:12222)回放真实客户端会话 157 个 TCP CMD 帧,
+> 结论来源:①抓包 MCP(`Server/DAFLegacy.Mcp`,127.0.0.1:12222)回放真实客户端会话 157 个 TCP CMD 帧,
 > 逐帧独立复现解密并与服务端 `GameClientCipherState` 产物交叉验证;②IDA(60A1)反编译
 > `sub_777310`/`sub_717CF0`/`sub_8B24C0`/`sub_776F80`/`sub_402030`。
 > 客户端含 VMProtect 壳(`.vmp0`/`.SCY` 段),但下述函数均未虚拟化,可正常反编译。
@@ -23,7 +23,7 @@
 
 ### 2.1 抓包流程
 
-- 服务端 `server.json` 中 `DFLegacy.Mcp.Enabled = true`,端点 `http://127.0.0.1:12222/mcp`(Streamable HTTP,JSON-RPC)。
+- 服务端 `server.json` 中 `DAFLegacy.Mcp.Enabled = true`,端点 `http://127.0.0.1:12222/mcp`(Streamable HTTP,JSON-RPC)。
 - 客户端登录、选角、进城、聊天产生完整会话流量;`packet_watch`(afterSeq=-1 回放)取全部留存事件。
 - 每个 RX TCP CMD 事件带 `wireHex`(线路原始帧,含帧头与密文)与 `bodyHex`(服务端 `TryDecode` 产物,前 2B 序号 + 明文正文)。
 

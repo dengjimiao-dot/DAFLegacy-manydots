@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""双向加解密回环验证: 服务端实现(DFLegacy语义) <-> 客户端实现(IDA 60A1 语义)"""
+"""双向加解密回环验证: 服务端实现(DAFLegacy语义) <-> 客户端实现(IDA 60A1 语义)"""
 import struct, zlib
 
 def ror(b, n): n &= 7; return ((b >> n) | (b << (8-n))) & 0xFF if n else b
 def rol(b, n): n &= 7; return ((b << n) | (b >> (8-n))) & 0xFF if n else b
 
 # ---------- 回包方向: 服务端 GameServerPacket(1.0.1.9) -> 客户端 sub_776F80(null seed) ----------
-def server_encrypt_payload(plain):           # DFLegacy GamePayloadCipher.EncryptServerPayload
+def server_encrypt_payload(plain):           # DAFLegacy GamePayloadCipher.EncryptServerPayload
     return bytes(ror(b ^ 0xB5, 6) for b in plain)
 def client_decrypt_null_seed(cipher):        # IDA sub_776F80, a3=null -> n16053=0x3EB5
     key = 0x3EB5 & 0xFF                      # 0xB5
@@ -32,7 +32,7 @@ def client_encrypt(body_plain, seed):          # IDA sub_777310
     seed, rv = lcg_advance(seed)
     key = rv & 0xFF; rot = (rv >> 8) & 7
     return seed, bytes(ror(b ^ key, rot) for b in body_plain)
-def server_decrypt(cipher, seed):              # DFLegacy TryDecode 语义(已知种子时)
+def server_decrypt(cipher, seed):              # DAFLegacy TryDecode 语义(已知种子时)
     seed, rv = lcg_advance(seed)
     key = rv & 0xFF; rot = (rv >> 8) & 7
     return seed, bytes(rol(b, rot) ^ key for b in cipher)

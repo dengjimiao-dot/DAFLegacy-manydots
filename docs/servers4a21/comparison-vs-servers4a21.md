@@ -1,27 +1,27 @@
-# DFLegacy (60A1) × ServerS4A21 共有协议实现对比
+# DAFLegacy (60A1) × ServerS4A21 共有协议实现对比
 
-> - **对比对象**:`DFLegacy`(服务端,目标客户端 60A1)× `ServerS4A21\Server\DfoServer`(服务端,目标客户端 S4A21,枚举表 NOTI 1219 条)。
+> - **对比对象**:`DAFLegacy`(服务端,目标客户端 60A1)× `ServerS4A21\Server\DfoServer`(服务端,目标客户端 S4A21,枚举表 NOTI 1219 条)。
 > - **对齐方式**:两边客户端版本不同、协议号有漂移,统一按**枚举名**对齐后再比。
-> - **方法**:逐协议阅读双方处理代码(DFLegacy `Server/DFLegacy.Server/Protocol/GameProtocolEngine.cs` + `Network/EntranceService.cs`;S4A21 `Network/Protocol/GameProtocolHandler.cs` 分发 + `Network/Handlers|Parsers|Builders/*`),比对请求解析、应答/推送布局与行为逻辑。关键断言(如 SELL 10B、MOVE 11B)已做抽样核实。
-> - **定性图例**:【一致】= 载荷字段级相同;【版本性差异】= 因客户端版本演进导致的合理布局/语义变化;【实现分歧】= 同语义但逻辑/做法实质不同(互参价值最高);【DFLegacy 简化实现】= DFLegacy 为 60A1 做的简化。
+> - **方法**:逐协议阅读双方处理代码(DAFLegacy `Server/DAFLegacy.Server/Protocol/GameProtocolEngine.cs` + `Network/EntranceService.cs`;S4A21 `Network/Protocol/GameProtocolHandler.cs` 分发 + `Network/Handlers|Parsers|Builders/*`),比对请求解析、应答/推送布局与行为逻辑。关键断言(如 SELL 10B、MOVE 11B)已做抽样核实。
+> - **定性图例**:【一致】= 载荷字段级相同;【版本性差异】= 因客户端版本演进导致的合理布局/语义变化;【实现分歧】= 同语义但逻辑/做法实质不同(互参价值最高);【DAFLegacy 简化实现】= DAFLegacy 为 60A1 做的简化。
 > - 代码位置(file:line)为对比时点状态,仅供参考。
 > - 配套文档:60A1 侧枚举全表见 `client-packet-enums-60cn.md`;S4A21 侧各协议实现详参(帧结构/逐 CMD 请求应答布局/行为)见 `servers4a21-00-overview.md` 及其分册。
 
 ## 0. 总结论
 
 1. 共有协议中**约十分之一字段级一致**(全部是小包,见 §2);副本/物品核心包全部因版本换代不兼容(§5、§4)。
-2. 差异分三层:**协议号漂移**(同名不同号)、**版本性布局差异**(不可也没必要跨版本移植)、**实现分歧**(同语义不同做法,是拿成熟实现校验 DFLegacy 的重点)。
+2. 差异分三层:**协议号漂移**(同名不同号)、**版本性布局差异**(不可也没必要跨版本移植)、**实现分歧**(同语义不同做法,是拿成熟实现校验 DAFLegacy 的重点)。
 3. 最值得优先处理的实现分歧:CMD 130 黑名单错配、DELETE_CHARACTER 成套行为、错误码粒度、邮件手续费/分页等(§7)。
 
 ## 1. 前提性差异(影响所有包)
 
 ### 1.1 帧结构与 seq 位置
 
-- DFLegacy:2 字节序列号在 body 开头,业务载荷从 `body[2]` 开始(`GameProtocolEngine.cs:236` 等)。
+- DAFLegacy:2 字节序列号在 body 开头,业务载荷从 `body[2]` 开始(`GameProtocolEngine.cs:236` 等)。
 - S4A21:seq 在 14B 帧头 `GamePacketHeader` 内(cmd u8 + type u16 + length u32 + checksum u32 + seq u16 + extra u8,合计 14B,`Network/Core/Packet.cs:67-79`),handler 拿到的 body 从第一个载荷字段开始。
 - 因此同一字段在两边的 body 偏移系统性相差 2 字节。下文各协议的偏移均已按各自 body 折算。
-- NOTI 帧:两边均 type=0 推送、type=1 命令应答(DFLegacy `GameProtocolEngine.cs:244/308`;S4A21 `GamePacketEnvelopeBuilder.Build(0x00/0x01, ...)`)。
-- 变长字符串(dstr)两边同格式:u32 长度 + 原始字节;编码两边都是 **GBK/CP936**(DFLegacy `EntranceService.cs:14130` Cp936Lossy;S4A21 `Infrastructure/ClientTextEncoding.cs:6-11`)。
+- NOTI 帧:两边均 type=0 推送、type=1 命令应答(DAFLegacy `GameProtocolEngine.cs:244/308`;S4A21 `GamePacketEnvelopeBuilder.Build(0x00/0x01, ...)`)。
+- 变长字符串(dstr)两边同格式:u32 长度 + 原始字节;编码两边都是 **GBK/CP936**(DAFLegacy `EntranceService.cs:14130` Cp936Lossy;S4A21 `Infrastructure/ClientTextEncoding.cs:6-11`)。
 
 ### 1.2 CMD 协议号漂移(同名不同号)
 
@@ -86,23 +86,23 @@ S4A21 删除了 60A1 的 22/23(RENT_AVATAR/EXTEND_AVATAR),其后 CMD 整体 -2;�
 ## 3. 域一:连接 / 登录 / 角色 / 疲劳
 
 ### 3.1 CMD 0 CHECK_CONNECTION ↔ NOTI 0(心跳)
-- DFLegacy:连接后主动推 16B 挑战 NOTI 0(`EntranceService.cs:2211`),客户端 CMD 0 回显,服务端校验 16B 后回 **NOTI 1 CHANNELINFO**(`GameProtocolEngine.cs:2967`,`EntranceService.cs:12236`)。
+- DAFLegacy:连接后主动推 16B 挑战 NOTI 0(`EntranceService.cs:2211`),客户端 CMD 0 回显,服务端校验 16B 后回 **NOTI 1 CHANNELINFO**(`GameProtocolEngine.cs:2967`,`EntranceService.cs:12236`)。
 - S4A21:**无此环节**——分发处 CMD 0 是空块(`GameProtocolHandler.cs:334-337`),连接即推 NOTI 1(`LoginHandler.cs:41-45`)。
 - 结论:【版本性差异】(A21 客户端无挑战回显)。
 
 ### 3.2 NOTI 1 CHANNELINFO(频道信息)
-- DFLegacy:`dstr 名称, u32 channelType, u32 result, u8 serverId, u8 channelNumber, u32 seed, u32 hostCount + dstr×N, u32 端口1, u32 端口2`(`GameProtocolEngine.cs:3315`)。
+- DAFLegacy:`dstr 名称, u32 channelType, u32 result, u8 serverId, u8 channelNumber, u32 seed, u32 hostCount + dstr×N, u32 端口1, u32 端口2`(`GameProtocolEngine.cs:3315`)。
 - A21:`u8 1, dstr 频道名, u32 0, u32 0, u8 serverIndex, u8 channelId, u8 0, u32 epoch, u32 1, dstr IP, u32 udpPort1, u32 udpPort2, u32 0, u8'0', u8'0', u32 CMD枚举数, u32 NOTI枚举数, u32 0`(`Builders/Login/LoginPacketBuilder.cs:7-33`)。
 - 差异:DFL 有 host 列表;A21 单 IP + **尾部 CMD/NOTI 枚举计数**(客户端协议表校验,DFL 没有)。【版本性差异】
 
 ### 3.3 CMD 1 LOGIN ↔ 登录应答
 - 请求两边同为 `dstr 账号 + dstr 密码`(DFL `EntranceService.cs:13955`;A21 `Parsers/LoginRequestParser.cs:20-61`)。
-- DFLegacy 成功回 5B `[1, flag×3, clientState=0]`(`GameProtocolEngine.cs:421`);A21 回约 50B(环境/端口/IP/24B 0,`LoginPacketBuilder.cs:35-53`),且有 00AD+2×00C5 门控状态机(`LoginHandler.cs:99-143`)。
-- 行为:**A21 不验密码、账号不存在自动建号**(`LoginHandler.cs:81-87`);DFLegacy 校验密码、失败回 `[0,2]`。A21 自动建号属安全问题,不应照抄。
+- DAFLegacy 成功回 5B `[1, flag×3, clientState=0]`(`GameProtocolEngine.cs:421`);A21 回约 50B(环境/端口/IP/24B 0,`LoginPacketBuilder.cs:35-53`),且有 00AD+2×00C5 门控状态机(`LoginHandler.cs:99-143`)。
+- 行为:**A21 不验密码、账号不存在自动建号**(`LoginHandler.cs:81-87`);DAFLegacy 校验密码、失败回 `[0,2]`。A21 自动建号属安全问题,不应照抄。
 - 结论:请求【一致】;应答/流程【版本性差异】+【实现分歧】。
 
 ### 3.4 CMD 8 GET_USERINFO
-- DFLegacy:不解析请求,恒回 NOTI 2 名册(`EntranceService.cs:2543`)。
+- DAFLegacy:不解析请求,恒回 NOTI 2 名册(`EntranceService.cs:2543`)。
 - A21:解析 `[uid u16][mode u8]`,mode 0/1/3/5=查看他人(带请求者鉴权、同频道校验、代际防竞态,`CharacterSelectHandler.cs:600-729`),mode 2 回名册并追加 CMD 0x0286 与成长胶囊包。
 - 结论:【版本性差异】(mode 语义为 A21 新增);A21 的鉴权/竞态防护可借鉴。
 
@@ -117,7 +117,7 @@ S4A21 删除了 60A1 的 22/23(RENT_AVATAR/EXTEND_AVATAR),其后 CMD 整体 -2;�
 ### 3.6 CMD 5 CREATE_CHARACTER
 - 请求:DFL `[job u8, dstr name]`(名 1-30B);A21 `[job u8, nameLen u32, name]`(job≤13,名 2-18B)。
 - 成功两边都 `[1]` + 补发 NOTI 2 名册。**错误码分歧**:DFL 统一 `[0,2]`;A21 细分 0x04/0x12/24(重名)/名字校验码,并有槽位策略、重名预检、失败回滚(`CharacterSelectHandler.cs:954-1059`)。
-- 结论:成功路径【一致】;错误粒度【实现分歧】(DFLegacy 简化)。
+- 结论:成功路径【一致】;错误粒度【实现分歧】(DAFLegacy 简化)。
 
 ### 3.7 CMD 6 DELETE_CHARACTER(成套不兼容,最危险)
 - 请求:DFL 只要 slot u8;A21 是 `[slot u16][名 dstr]` 且**强校验名字与槽位角色一致**(不符回 0x15,`CharacterSelectHandler.cs:1069-1098`)。
@@ -136,7 +136,7 @@ S4A21 删除了 60A1 的 22/23(RENT_AVATAR/EXTEND_AVATAR),其后 CMD 整体 -2;�
 - 错误码语义两边对齐:4=状态非法、18=未虚弱、22=金币不足。
 - 成功路径完全不同:DFL 5B ack `[1, 剩余金币 u32]` + NOTI 4(1B 虚弱恢复值)(`GameProtocolEngine.cs:1958-2004`);A21 **无 CMD ack、全工程不发 NOTI 4**,只发 NOTI 33 `[100]` + 金币刷新,错误包 3B `[0, code, 0]`(`StaminaHandler.cs:133-171`)。
 - 费用模型:DFL 只按等级取价;A21 = 基价×(100-当前疲劳)/90 按档计价,另有恶魔契约免费恢复。
-- 结论:错误码【一致】;成功应答/费用【版本性差异】+【DFLegacy 简化实现】。
+- 结论:错误码【一致】;成功应答/费用【版本性差异】+【DAFLegacy 简化实现】。
 
 ### 3.11 NOTI 2 USERINFO 各子类型(全部重写)
 - DFL 实现 subtype 0/1/2(`GameProtocolEngine.cs:2985-3292`);A21 另有 subtype 3/6(查看他人/进号通知)。
@@ -373,7 +373,7 @@ S4A21 删除了 60A1 的 22/23(RENT_AVATAR/EXTEND_AVATAR),其后 CMD 整体 -2;�
 ### 5.19 NOTI 36 FATIGUE / NOTI 37 EXP
 - FATIGUE:DFL 6B(used/max/premium)、逐房扣减;**A21 从不发送**(无疲劳扣减逻辑,仅保留 0x16 拒绝码)。
 - EXP:DFL 15B(level,累计经验,extraA,extraB,SP);A21 83B(队伍/SP/TP 双页/PvP/14+ 加成分项)。
-- 结论:疲劳属【DFLegacy 独有】;EXP【版本性差异】。
+- 结论:疲劳属【DAFLegacy 独有】;EXP【版本性差异】。
 
 ### 域三 Top 差异
 1. NOTI 35 完全重排(结算 UI 核心包)。
@@ -435,9 +435,9 @@ S4A21 删除了 60A1 的 22/23(RENT_AVATAR/EXTEND_AVATAR),其后 CMD 整体 -2;�
 - 结论:【版本性差异】+【实现分歧】。
 
 ### 6.7 CMD 130 REQUEST_BLACKLIST(60A1)vs A21 黑名单 118/119/120
-- DFLegacy:**黑名单未实现**,且 CMD 130 被 `ExchangeServerCharacterInfoCommand` 占用(`GameProtocolEngine.cs:370`)——按 60A1 名称表 130 实为 REQUEST_BLACKLIST,即把黑名单 opcode 当成了跨服角色信息应答(md 已标注的错配风险)。
+- DAFLegacy:**黑名单未实现**,且 CMD 130 被 `ExchangeServerCharacterInfoCommand` 占用(`GameProtocolEngine.cs:370`)——按 60A1 名称表 130 实为 REQUEST_BLACKLIST,即把黑名单 opcode 当成了跨服角色信息应答(md 已标注的错配风险)。
 - A21:ADD/DELETE/REQUEST 完整实现(dstr 名字 5-33B、ack `[1+name]`/错误码 74 重复/76 不存在/78 满、列表含生日、SQLite 持久化、聊天拦截联动)。
-- 结论:【DFLegacy 未实现/错配】——若两服共享客户端逻辑这是隐患点。
+- 结论:【DAFLegacy 未实现/错配】——若两服共享客户端逻辑这是隐患点。
 
 ### 6.8 CMD 82 CALL_MEMER_LIST(个人商店访客轮询)
 - DFL:固定回 18B 空商店。A21:对应 opcode 79 **未注册**;67(GUILD_MEMER_LIST)实现的是真公会名册,语义无关。
@@ -476,4 +476,4 @@ S4A21 删除了 60A1 的 22/23(RENT_AVATAR/EXTEND_AVATAR),其后 CMD 整体 -2;�
 ## 8. 单侧未实现清单(共有域之外)
 
 - **A21 未实现**(DFL 有):CMD 0 CHECK_CONNECTION 应答、NOTI 0 挑战、NOTI 4 STAMINA、NOTI 26 UDP_HOST、NOTI 36 FATIGUE、USE_SKILL、ALLDIE_MONSTER、RESPONSE_CREATURE(CMD 101)、CREATURE_SEND_MESSAGE(CMD 114)、CALL_MEMER_LIST(79)、疲劳系统整体。
-- **DFLegacy 未实现**(A21 有):逐项清单与回填分期见 [feature-backfill-plan-vs-s4a21.md](feature-backfill-plan-vs-s4a21.md) §1 与 §3–§5(黑名单、双人交易、邮件增强、聊天频道路由、公会等),此处不再重复。
+- **DAFLegacy 未实现**(A21 有):逐项清单与回填分期见 [feature-backfill-plan-vs-s4a21.md](feature-backfill-plan-vs-s4a21.md) §1 与 §3–§5(黑名单、双人交易、邮件增强、聊天频道路由、公会等),此处不再重复。

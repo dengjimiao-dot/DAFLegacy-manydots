@@ -1,4 +1,4 @@
-# DFLegacy
+# DAFLegacy
 
 <a href="#运行环境"><img src="https://img.shields.io/badge/Windows-0078D4" alt="Windows" /></a>
 <a href="#构建与启动"><img src="https://img.shields.io/badge/.NET-10-512BD4" alt=".NET 10" /></a>
@@ -27,14 +27,14 @@
 
 | 模块 | 作用 |
 | --- | --- |
-| `DFLegacy.Server` | 主业务、PVF 数据读取、账号角色持久化、TCP/UDP 服务及 HTTP 管理接口。 |
-| `Server/DFLegacy.Server/Protocol` | 登录与通信协议的编解码、请求解析、响应与通知包构建。 |
-| `DFLegacy.Launcher` | Windows 启动器，管理登录配置、检查运行环境、安装 IJL15 模块并启动客户端，可按需启动本地服务端。 |
-| `DFLegacy.Ijl15` | 32 位 C++ `ijl15.dll` 兼容模块，提供客户端所需的 JPEG 功能及进程内兼容补丁、窗口缩放等功能。 |
-| `DFLegacy.RandomNative` | 64 位 C++ 硬件随机种子桥接，为玩法随机提供 RDSEED 支持；不支持该指令时自动回退，不是运行必需项。 |
+| `DAFLegacy.Server` | 主业务、PVF 数据读取、账号角色持久化、TCP/UDP 服务及 HTTP 管理接口。 |
+| `Server/DAFLegacy.Server/Protocol` | 登录与通信协议的编解码、请求解析、响应与通知包构建。 |
+| `DAFLegacy.Launcher` | Windows 启动器，管理登录配置、检查运行环境、安装 IJL15 模块并启动客户端，可按需启动本地服务端。 |
+| `DAFLegacy.Ijl15` | 32 位 C++ `ijl15.dll` 兼容模块，提供客户端所需的 JPEG 功能及进程内兼容补丁、窗口缩放等功能。 |
+| `DAFLegacy.RandomNative` | 64 位 C++ 硬件随机种子桥接，为玩法随机提供 RDSEED 支持；不支持该指令时自动回退，不是运行必需项。 |
 | `wwwroot/admin` | 独立的中文后台管理页面，使用现代浏览器访问，不依赖前端构建工具。 |
 | `wwwroot/client` | 充值及会员服务页面，与后台管理页面分离。 |
-| `Server/DFLegacy.Server.SelfTests` | 协议、数据解析和主要业务规则的冒烟测试。 |
+| `Server/DAFLegacy.Server.SelfTests` | 协议、数据解析和主要业务规则的冒烟测试。 |
 
 ## 当前实现
 
@@ -85,27 +85,27 @@
 发布服务端与启动器到同一目录：
 
 ```powershell
-dotnet publish .\Server\DFLegacy.Server\DFLegacy.Server.csproj -c Release -o .\dist\DFLegacy.Server
-dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o .\dist\DFLegacy.Server
+dotnet publish .\Server\DAFLegacy.Server\DAFLegacy.Server.csproj -c Release -o .\dist\DAFLegacy.Server
+dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release -o .\dist\DAFLegacy.Server
 ```
 
-服务端发布可由仓库根目录的 `publish.bat` 一键完成：脚本通过 .NET SDK 的 `dotnet publish` 发布到 `dist\DFLegacy.Server`，发布前会清空该输出目录，任一步失败即停止并返回非零退出码。DAF-MCP 模块由 `publish-mcp.bat` 单独发布到 `dist\DFLegacy.Mcp`，模块 DLL 需手动拷入 `dist\DFLegacy.Server` 后 MCP 才生效（未拷贝时服务端照常运行，仅不加载 MCP）。Linux/macOS 下对应使用 `publish.sh` 与 `publish-mcp.sh`。
+服务端发布可由仓库根目录的 `publish.bat` 一键完成：脚本通过 .NET SDK 的 `dotnet publish` 发布到 `dist\DAFLegacy.Server`，发布前会清空该输出目录，任一步失败即停止并返回非零退出码。DAF-MCP 模块由 `publish-mcp.bat` 单独发布到 `dist\DAFLegacy.Mcp`，模块 DLL 需手动拷入 `dist\DAFLegacy.Server` 后 MCP 才生效（未拷贝时服务端照常运行，仅不加载 MCP）。Linux/macOS 下对应使用 `publish.sh` 与 `publish-mcp.sh`。
 
-原生模块由仓库根目录的 `patch.bat` 构建（CMake 与 Visual Studio C++ 工具集编译 IJL15 与 RandomNative，并将启动器发布到 `artifacts\native\launcher`）；启动器发布会复制已构建的 `ijl15.dll`。若只发布服务端而没有 `DFLegacy.RandomNative.dll` 原生随机模块，则仍使用操作系统伪随机。
+原生模块由仓库根目录的 `patch.bat` 构建（CMake 与 Visual Studio C++ 工具集编译 IJL15 与 RandomNative，并将启动器发布到 `artifacts\native\launcher`）；启动器发布会复制已构建的 `ijl15.dll`。若只发布服务端而没有 `DAFLegacy.RandomNative.dll` 原生随机模块，则仍使用操作系统伪随机。
 
-1. `server.json` 的 `DFLegacy.ScriptPvfPath` 默认 `..\Script.pvf`；发布目录放在客户端目录内（与客户端主程序同级）时无需修改，否则改为实际 PVF 路径（相对路径以服务端程序目录为基准）。
+1. `server.json` 的 `DAFLegacy.ScriptPvfPath` 默认 `..\Script.pvf`；发布目录放在客户端目录内（与客户端主程序同级）时无需修改，否则改为实际 PVF 路径（相对路径以服务端程序目录为基准）。
 2. 同目录的 `launcher.json` 的 `ClientPath` 默认指向客户端主程序，按相同布局解析；账号也在此配置，客户端目录应包含匹配的 `Script.pvf`。
-3. 运行 `DFLegacy.Launcher.exe`。默认 `StartServer: true`，启动器会按需启动本地服务端。
+3. 运行 `DAFLegacy.Launcher.exe`。默认 `StartServer: true`，启动器会按需启动本地服务端。
 
 示例配置按"发布目录位于客户端目录内"的布局使用相对路径；布局不同时请自行调整为实际路径。
 
 仅运行服务端时，可在发布目录执行：
 
 ```powershell
-.\DFLegacy.Server.exe
+.\DAFLegacy.Server.exe
 ```
 
-若端口被残留的服务端进程占用（启动报 `AddressAlreadyInUseException`），可运行仓库根目录的 `stop.bat` 结束 `DFLegacy.Server.exe` 并确认端口已释放。
+若端口被残留的服务端进程占用（启动报 `AddressAlreadyInUseException`），可运行仓库根目录的 `stop.bat` 结束 `DAFLegacy.Server.exe` 并确认端口已释放。
 
 更新前备份数据，避免覆盖现有存档。不要同时启动多个实例写入同一份状态文件。
 
@@ -113,7 +113,7 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 
 ### 服务端
 
-`server.json` 的设置位于 `DFLegacy` 节：
+`server.json` 的设置位于 `DAFLegacy` 节：
 
 | 设置 | 用途 |
 | --- | --- |
@@ -122,7 +122,7 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 
 爆率、经验倍率、深渊掉落次数与配方率、掉落开关、黑钻与活动经验加成等**游戏内容参数不在本文件**——它们以 `server_settings` 表为唯一真源，随库持久化；启动时读一次并打印生效值，改库后重启生效。频道容量（`Channel.MaximumUsers`，默认 10）在本文件 `Channel` 节；频道当前人数为在线会话数动态值；频道目录解析自 PVF（`etc/channel_info.etc` + `etc/etc.chn.str`），启动成功时打印列表。
 | `Admin` | HTTP 监听地址和端口，默认 `127.0.0.1:8081`。 |
-| `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DFLegacy.Mcp.dll`。 |
+| `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DAFLegacy.Mcp.dll`。 |
 | `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，默认 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |
 | `Entrance` / `Channel` | 登录入口和频道连接配置。 |
 | `CharacterDatagram` / `GameplayDatagram` | 客户端 UDP 监听配置。 |
@@ -144,7 +144,7 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 ```json
 {
   "mcpServers": {
-    "dflegacy": {
+    "daflegacy": {
       "type": "http",
       "url": "http://127.0.0.1:12222/mcp"
     }
@@ -162,7 +162,7 @@ dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -o
 
 启动器会安装发布目录中的 `ijl15.dll`，首次替换已有模块时保留 `ijl15.original.dll`，缺少客户端 `Config.ini` 时复制默认配置。IJL15 补丁只修改当前进程内存，不改写磁盘上的 PE；Launcher 启动器本身不读写客户端进程内存。
 
-客户端目录中的 `Config.ini` 提供以下常用设置（`[Features]` 每个键对应一个功能开关，`[CeraPurchaseGate]` 对应点券商城门控分项；缺失的键使用默认值，功能清单见 `Client/DFLegacy.Ijl15/src/ijl15_config.cpp` 的默认值表）：
+客户端目录中的 `Config.ini` 提供以下常用设置（`[Features]` 每个键对应一个功能开关，`[CeraPurchaseGate]` 对应点券商城门控分项；缺失的键使用默认值，功能清单见 `Client/DAFLegacy.Ijl15/src/ijl15_config.cpp` 的默认值表）：
 
 ```ini
 [Resolution]
@@ -206,10 +206,10 @@ GiftEligibility=0
 运行主要业务冒烟测试：
 
 ```powershell
-dotnet run --project .\Server\DFLegacy.Server.SelfTests\DFLegacy.Server.SelfTests.csproj -c Release
+dotnet run --project .\Server\DAFLegacy.Server.SelfTests\DAFLegacy.Server.SelfTests.csproj -c Release
 ```
 
-全部通过时末尾输出 `All DFLegacy protocol smoke tests passed.`，退出码为 0。
+全部通过时末尾输出 `All DAFLegacy protocol smoke tests passed.`，退出码为 0。
 
 ## 许可证
 

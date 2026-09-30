@@ -2,10 +2,10 @@
 setlocal
 
 rem Manually build the client-side deliverables:
-rem   Client\DFLegacy.Ijl15\build-native.ps1        -> artifacts\native\ijl15\<config>\win-x86\ijl15.dll
-rem   Client\DFLegacy.RandomNative\build-native.ps1 -> artifacts\native\random\<config>\DFLegacy.RandomNative.dll
-rem   dotnet publish Client\DFLegacy.Launcher       -> artifacts\native\launcher\
-rem   DFLegacy.RandomNative.dll is copied into artifacts\native\launcher as well.
+rem   Client\DAFLegacy.Ijl15\build-native.ps1        -> artifacts\native\ijl15\<config>\win-x86\ijl15.dll
+rem   Client\DAFLegacy.RandomNative\build-native.ps1 -> artifacts\native\random\<config>\DAFLegacy.RandomNative.dll
+rem   dotnet publish Client\DAFLegacy.Launcher       -> artifacts\native\launcher\
+rem   DAFLegacy.RandomNative.dll is copied into artifacts\native\launcher as well.
 rem CMake + Visual Studio C++ build the native modules; the .NET 10 SDK builds
 rem the Launcher. The Launcher publish runs after the native builds, so ijl15.dll
 rem is picked up automatically (optional content item).
@@ -35,32 +35,32 @@ if errorlevel 1 (
     echo [patch] located by build-native.ps1 automatically when VS is installed^).
 )
 
-call :build_one "ijl15" ".\Client\DFLegacy.Ijl15\build-native.ps1" "artifacts\native\ijl15\%CONFIG%\win-x86\ijl15.dll"
+call :build_one "ijl15" ".\Client\DAFLegacy.Ijl15\build-native.ps1" "artifacts\native\ijl15\%CONFIG%\win-x86\ijl15.dll"
 if errorlevel 1 goto :fail
 
-call :build_one "DFLegacy.RandomNative" ".\Client\DFLegacy.RandomNative\build-native.ps1" "artifacts\native\random\%CONFIG%\DFLegacy.RandomNative.dll"
+call :build_one "DAFLegacy.RandomNative" ".\Client\DAFLegacy.RandomNative\build-native.ps1" "artifacts\native\random\%CONFIG%\DAFLegacy.RandomNative.dll"
 if errorlevel 1 goto :fail
 
-echo [patch] Publishing DFLegacy.Launcher (%CONFIG%) ...
+echo [patch] Publishing DAFLegacy.Launcher (%CONFIG%) ...
 where dotnet >nul 2>&1
 if errorlevel 1 (
     echo [patch] dotnet CLI was not found on PATH. The .NET 10 SDK is required.
     goto :fail
 )
-dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c %CONFIG% -r win-x64 -o .\artifacts\native\launcher
+dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c %CONFIG% -r win-x64 -o .\artifacts\native\launcher
 if errorlevel 1 (
-    echo [patch] DFLegacy.Launcher publish FAILED.
+    echo [patch] DAFLegacy.Launcher publish FAILED.
     goto :fail
 )
-echo [patch] DFLegacy.Launcher OK. Output: %CD%\artifacts\native\launcher
+echo [patch] DAFLegacy.Launcher OK. Output: %CD%\artifacts\native\launcher
 
-echo [patch] Publishing DFLegacy.RandomNative (%CONFIG%) ...
-copy /Y "artifacts\native\random\%CONFIG%\DFLegacy.RandomNative.dll" "artifacts\native\launcher\" >nul
+echo [patch] Publishing DAFLegacy.RandomNative (%CONFIG%) ...
+copy /Y "artifacts\native\random\%CONFIG%\DAFLegacy.RandomNative.dll" "artifacts\native\launcher\" >nul
 if errorlevel 1 (
-    echo [patch] DFLegacy.RandomNative publish FAILED.
+    echo [patch] DAFLegacy.RandomNative publish FAILED.
     goto :fail
 )
-echo [patch] DFLegacy.RandomNative OK. Output: %CD%\artifacts\native\launcher\DFLegacy.RandomNative.dll
+echo [patch] DAFLegacy.RandomNative OK. Output: %CD%\artifacts\native\launcher\DAFLegacy.RandomNative.dll
 
 echo.
 echo [patch] Done.

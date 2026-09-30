@@ -136,7 +136,7 @@
 | dstr 读取原语 | `sub_8F5160`(u32)/`sub_8F5180`(count 字节,推进全局游标 `src` @0xBF29E0) | 反编 | 扩展块文本读取;`sub_8B3220` 为二者封装(u32 长度 + 字节);`sub_8B3250(dst, cap, fallback)` 为带上限与回退的 dstr 读取——**u32 长度无条件消费**,0<长度<cap 时读入字节,0/≥cap 时 strncpy 回退串且不消费载荷(NOTI 9 设置段 0x41B955 以 cap=0x40、fallback=串 0x272 调用,即 kind==0 的队名下行通道) |
 | 块循环观测点 | 0x41B7E7(循环头)、0x41B815(块头)、0x41B85C/0x41B8B3(静默出口)、0x41B89F(查找调用) | 反汇编 | 2026-09-30 排查期诊断接管(**已随退役一并移除**,地址结论保留备查):各点接管后复刻原指令并续接;块循环唯一回边为 `0x41C2BE jmp 0x41B7C5`,尾部各分支(0x41BD3C/0x41BDA8,按块所属队伍是否为当前选中队伍选路)汇流 0x41C29F(type≠3 一律回边);type 0 块走 find-or-create `sub_4FF040`(0x41B884)且分派 0x41B8E7 直跳设置段,绕过查找与分派两个观测点,块头点 0x41B815 为唯一全量观测位 |
 | 串表装载 | 0x8AA170 / `sub_8AA290` | 反编 | 读 `Plugin/dnf.str`(文本 `<十进制 id>>文本`,行首 `//` 注释,`\n` 转义换行),装载后删除文件;`sub_8AA5A0` 按 id 取串 |
-| 串表装载钩子 | 0x8AA5FA(原函数 0x8AA170) | 反编 | `Client/DFLegacy.Ijl15` 的 external_string_table 在此注入校验过的 `Plugin/dnf.str`,故磁盘上该文件为串表取值依据 |
+| 串表装载钩子 | 0x8AA5FA(原函数 0x8AA170) | 反编 | `Client/DAFLegacy.Ijl15` 的 external_string_table 在此注入校验过的 `Plugin/dnf.str`,故磁盘上该文件为串表取值依据 |
 
 组队与建队窗口相关串表 id:
 

@@ -1,6 +1,6 @@
 # 09 · DAF-MCP 总网关（一）：协议包实时监听（Packet Tap）
 
-- 状态：**已实现**（2026-09-29 核定：G1 协议包监听随 commit `7e12da7` 落地，代码见 `Server/DFLegacy.Mcp/`、`Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs` 与 `Infrastructure/McpModuleLoader.cs`，§6 全部 6 个工具均已提供，原列于此的 `protocol_decode` 已随字段级解码器断开接线而下线；G2 PVF 工具组尚未实施，见 §15.2）
+- 状态：**已实现**（2026-09-29 核定：G1 协议包监听随 commit `7e12da7` 落地，代码见 `Server/DAFLegacy.Mcp/`、`Server/DAFLegacy.Server/Network/Core/IPacketTapSink.cs` 与 `Infrastructure/McpModuleLoader.cs`，§6 全部 6 个工具均已提供，原列于此的 `protocol_decode` 已随字段级解码器断开接线而下线；G2 PVF 工具组尚未实施，见 §15.2）
 
 ---
 
@@ -11,9 +11,9 @@
 | # | 原则 | 落实方式 |
 | --- | --- | --- |
 | P1 | **标准 MCP 协议** | 官方 C# SDK（`ModelContextProtocol`），Streamable HTTP 标准传输；工具带 JSON Schema 与描述，智能体自动发现 |
-| P2 | **默认关闭** | 唯一配置开关 `DFLegacy.Mcp.Enabled`，默认 `false`；关闭时不开端口、不建线程、零内存驻留 |
-| P3 | **独立启动配置** | `server.json` 新增独立配置节 `DFLegacy.Mcp`：`Enabled`（**默认 false**）、`Host`（默认 `127.0.0.1`）、`Port`（默认 `12222`），与 `DFLegacy.Admin` 的 Host/Port 同构；全部工具组共用该端点 |
-| P4 | **模块独立、单一项目、可插拔** | MCP 全部代码（入口、hub、宿主、全部工具组）收在唯一项目 `DFLegacy.Mcp`；运行期按开关 + DLL 存在性加载（§3.1），拔除 = 删 DLL / 关开关，业务代码无感 |
+| P2 | **默认关闭** | 唯一配置开关 `DAFLegacy.Mcp.Enabled`，默认 `false`；关闭时不开端口、不建线程、零内存驻留 |
+| P3 | **独立启动配置** | `server.json` 新增独立配置节 `DAFLegacy.Mcp`：`Enabled`（**默认 false**）、`Host`（默认 `127.0.0.1`）、`Port`（默认 `12222`），与 `DAFLegacy.Admin` 的 Host/Port 同构；全部工具组共用该端点 |
+| P4 | **模块独立、单一项目、可插拔** | MCP 全部代码（入口、hub、宿主、全部工具组）收在唯一项目 `DAFLegacy.Mcp`；运行期按开关 + DLL 存在性加载（§3.1），拔除 = 删 DLL / 关开关，业务代码无感 |
 | P5 | **不过多侵入业务代码** | 业务文件（`Network/*.cs`）只做删除（去掉 `EnablePacketTracing` 门卫）；抓包分发收敛在 `RuntimeState` 单一漏斗；侵入清单见 §5.2 |
 | P6 | **只读观测** | 全部工具只读；写操作类工具须先补鉴权再立项（§14） |
 
@@ -44,7 +44,7 @@
 | 项 | 说明 |
 | --- | --- |
 | NuGet 包 | `ModelContextProtocol`（核心：协议、Schema 生成）+ `ModelContextProtocol.AspNetCore`（ASP.NET Core 托管、Streamable HTTP） |
-| 引用位置 | **仅 `DFLegacy.Mcp.csproj`**；`DFLegacy.Server` 零引用（§3.1 依赖方向） |
+| 引用位置 | **仅 `DAFLegacy.Mcp.csproj`**；`DAFLegacy.Server` 零引用（§3.1 依赖方向） |
 | 运行环境 | .NET 10 完全兼容（核心库面向 netstandard2.0，集成包面向 net8.0+），无需任何额外运行时 |
 | 版本 | 当前稳定版 **2.2.0**（M2 时锁定）；API 变更以该版本文档为准 |
 | 打包体积 | **实测 +2.1 MB**（framework-dependent 发布，2026-09，SDK 2.2.0）：`ModelContextProtocol.Core.dll` 1.24 MB、`Microsoft.Extensions.AI.Abstractions.dll` 0.64 MB（传递依赖）、`ModelContextProtocol.AspNetCore.dll` 0.14 MB、`ModelContextProtocol.dll` 0.09 MB；与共享框架零重复，现有输出文件一字节不变 |
@@ -68,7 +68,7 @@
 ## 3. 总体架构
 
 ```text
-┌─ DFLegacy.Server 进程 ───────────────────────────────────────────────────────┐
+┌─ DAFLegacy.Server 进程 ───────────────────────────────────────────────────────┐
 │                                                                              │
 │  Network 层业务代码（侵入 = 仅删除 EnablePacketTracing 门卫，§5.2）              │
 │  EntranceService / CharacterDatagramService / GameplayDatagramService        │
@@ -79,7 +79,7 @@
 │    ├─ tracingEnabled ──► 400 条快照 + 日志（现状，管理界面用，不动）              │
 │    └─ TapSink.Active ─► Publish（原始参数直传，不拷贝不富化）                   │
 │                            │  IPacketTapSink ▼                              │
-│  ┌── DFLegacy.Mcp（独立模块项目，默认关闭，运行期加载）──────────────────────────┐ │
+│  ┌── DAFLegacy.Mcp（独立模块项目，默认关闭，运行期加载）──────────────────────────┐ │
 │  │  McpModule（入口）: Enabled && DLL 存在 → 激活，否则静默                    │ │
 │  │  ├─ G1 PacketTapHub：富化（报文名）+ seq / ring / 订阅者通道池                  │ │
 │  │  ├─ G2 PvfTools（后续）: DI 注入 ScriptFileSystem                          │ │
@@ -96,19 +96,19 @@
 ### 3.1 模块加载与依赖方向
 
 ```text
-DFLegacy.Mcp ──引用──► DFLegacy.Server   （工具组可自由 DI 服务端服务）
-DFLegacy.Server ──✗──► DFLegacy.Mcp      （编译期零引用，靠运行期加载）
+DAFLegacy.Mcp ──引用──► DAFLegacy.Server   （工具组可自由 DI 服务端服务）
+DAFLegacy.Server ──✗──► DAFLegacy.Mcp      （编译期零引用，靠运行期加载）
 ```
 
-- **编译期**：`DFLegacy.Server.csproj` 不引用 `DFLegacy.Mcp`，无循环。Server 侧唯一新增是约 20 行加载器 `Infrastructure/McpModuleLoader.cs`（反射 `Assembly.Load("DFLegacy.Mcp")`，找到 `IMcpModule` 入口调用 `Attach`），Program.cs 对它只加 1 行调用。该加载器是通用机制，不含 MCP 业务语义。
-- **运行期**：`Enabled=true` 且输出目录存在 `DFLegacy.Mcp.dll` → 激活；DLL 缺失、加载抛错、初始化异常 → 记一条警告后继续运行，游戏服务永远不受影响。`Enabled=false`（默认）→ 加载器短路。
-- **契约归属规则**：共享类型必须住在**被引用的一侧**（`Mcp → Server` ⇒ 两边都要用的类型只能放 Server，否则循环引用）。据此 Server 侧压到理论最小：`Network/Core/` 留 1 个文件的遥测接缝 `IPacketTapSink`（原始参数直传，不含 MCP 词汇，§4.1）；事件模型、富化、hub 全在 `DFLegacy.Mcp`——给事件加字段不改 Server。
+- **编译期**：`DAFLegacy.Server.csproj` 不引用 `DAFLegacy.Mcp`，无循环。Server 侧唯一新增是约 20 行加载器 `Infrastructure/McpModuleLoader.cs`（反射 `Assembly.Load("DAFLegacy.Mcp")`，找到 `IMcpModule` 入口调用 `Attach`），Program.cs 对它只加 1 行调用。该加载器是通用机制，不含 MCP 业务语义。
+- **运行期**：`Enabled=true` 且输出目录存在 `DAFLegacy.Mcp.dll` → 激活；DLL 缺失、加载抛错、初始化异常 → 记一条警告后继续运行，游戏服务永远不受影响。`Enabled=false`（默认）→ 加载器短路。
+- **契约归属规则**：共享类型必须住在**被引用的一侧**（`Mcp → Server` ⇒ 两边都要用的类型只能放 Server，否则循环引用）。据此 Server 侧压到理论最小：`Network/Core/` 留 1 个文件的遥测接缝 `IPacketTapSink`（原始参数直传，不含 MCP 词汇，§4.1）；事件模型、富化、hub 全在 `DAFLegacy.Mcp`——给事件加字段不改 Server。
 
 ---
 
 ## 4. 抓包契约与事件模型
 
-### 4.1 Server 侧：遥测接缝（`Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`，唯一 1 个文件）
+### 4.1 Server 侧：遥测接缝（`Server/DAFLegacy.Server/Network/Core/IPacketTapSink.cs`，唯一 1 个文件）
 
 ```csharp
 // 服务端声明"我能对外提供协议流原始数据"的端口；不含任何 MCP 概念
@@ -117,8 +117,8 @@ public enum TapDecodeMode { None, ClientCmd, Server }  // 富化提示，按现�
 > 2026-09-29 修订（多端口与逐包捕获）：漏斗由单槽扩展为「单槽端口 + 注册端口」并集分发
 > （`RuntimeState.AddTapSink/RemoveTapSink`，任一 `Active` 即发布）；新增
 > `Network/Core/PacketFileLogSink.cs`（自参考项目 PacketFileLogger 迁移的逐包十六进制捕获，
-> 默认关闭，`DFLegacy:PacketCapture` 配置，64MB 轮转），与 DAF-MCP hub 并存互不挤占。
-> 统一文件日志 `Network/Core/BoundedQueueFileLoggerProvider.cs`（`DFLegacy:Logging` 配置）经
+> 默认关闭，`DAFLegacy:PacketCapture` 配置，64MB 轮转），与 DAF-MCP hub 并存互不挤占。
+> 统一文件日志 `Network/Core/BoundedQueueFileLoggerProvider.cs`（`DAFLegacy:Logging` 配置）经
 > Microsoft.Extensions.Logging 管线全量落盘 `logs/server.log`，与包捕获分离；
 > `Logging.Enabled` 默认 `false`，需显式开启（关闭时不注册提供器，见 CHANGELOG ADD-08）。
 
@@ -138,7 +138,7 @@ public interface IPacketTapSink
 - 原始参数直传（风格与现有 `TraceDatagram(…, ReadOnlySpan<byte> datagram)` 一致），Server 不拥有任何 MCP 形状的数据类型。
 - 该接缝是**通用遥测端口**：SelfTests 直接实现它测漏斗（§12）；未来 pcap 导出等非 MCP 消费者同走这里。
 
-### 4.2 Mcp 侧：事件模型与 hub（`DFLegacy.Mcp`）
+### 4.2 Mcp 侧：事件模型与 hub（`DAFLegacy.Mcp`）
 
 ```csharp
 // PacketTapEvent.cs —— MCP 面向智能体的富事件模型（字段演进不动 Server）
@@ -209,15 +209,15 @@ public sealed class RuntimeState
 
 ```text
 Server/
-├── DFLegacy.Server/
-│   ├── DFLegacy.Server.csproj    不变（不引用 Mcp）
+├── DAFLegacy.Server/
+│   ├── DAFLegacy.Server.csproj    不变（不引用 Mcp）
 │   ├── Program.cs                +1 行：McpModuleLoader.TryAttach(...)
 │   ├── Infrastructure/McpModuleLoader.cs   ← 新增，~20 行反射加载器
 │   ├── Network/Core/IPacketTapSink.cs     ← 遥测接缝（§4.1；原 Tap/ 已并入 Network/Core）
 │   ├── Infrastructure/RuntimeState.cs  §5.1 漏斗改造（+~25 行；原 Persistence/ 移入）
 │   └── Infrastructure/ServerOptions.cs  +McpOptions{Enabled,Host,Port}（与 AdminOptions 同构，+3 属性；原 Hosting/ 已并入 Infrastructure/，见 07 §11）
-└── DFLegacy.Mcp/                 ← 新增模块项目（引用 Server + MCP SDK + AspNetCore FrameworkReference）
-    ├── DFLegacy.Mcp.csproj         引 ModelContextProtocol + ModelContextProtocol.AspNetCore
+└── DAFLegacy.Mcp/                 ← 新增模块项目（引用 Server + MCP SDK + AspNetCore FrameworkReference）
+    ├── DAFLegacy.Mcp.csproj         引 ModelContextProtocol + ModelContextProtocol.AspNetCore
     ├── McpModule.cs                IMcpModule 入口：Attach() 注册各工具组与宿主
     ├── McpHost.cs                  自持 WebApplication + IHostedService，按 McpOptions 绑定
     ├── Tap/                        G1 · 协议抓包（本档）
@@ -229,11 +229,11 @@ Server/
         └── PvfTools.cs
 ```
 
-命名约定：项目名取**协议身份** `DFLegacy.Mcp`——它对外的唯一契约就是标准 MCP 端点，且 P4 要求单项目承载全部工具组，故不得按首个工具组命名（`DFLegacy.PacketTap` 之类在 G2 落地时即失效）；`DafMcp` 前缀与 `DFLegacy` 语义重复，也不用。语义化下沉到**组子目录**：新增工具组 = 新增一个子目录（`Pvf/`、`Catalogs/`…），文件归属一目了然。csproj 不做 NuGet 打包（`AssemblyName` 等取默认值即可）。
+命名约定：项目名取**协议身份** `DAFLegacy.Mcp`——它对外的唯一契约就是标准 MCP 端点，且 P4 要求单项目承载全部工具组，故不得按首个工具组命名（`DAFLegacy.PacketTap` 之类在 G2 落地时即失效）；`DafMcp` 前缀与 `DAFLegacy` 语义重复，也不用。语义化下沉到**组子目录**：新增工具组 = 新增一个子目录（`Pvf/`、`Catalogs/`…），文件归属一目了然。csproj 不做 NuGet 打包（`AssemblyName` 等取默认值即可）。
 
-平台属性：`net10.0`，**不设** `PlatformTarget` / `RuntimeIdentifier`（保持 AnyCPU，64 位兼容）；模块纯托管、无 P/Invoke（MCP SDK 亦然），以 `Assembly.Load` 进入 Server 进程后位数随宿主（默认 64 位，见 `DFLegacy.Server` 的平台属性）。
+平台属性：`net10.0`，**不设** `PlatformTarget` / `RuntimeIdentifier`（保持 AnyCPU，64 位兼容）；模块纯托管、无 P/Invoke（MCP SDK 亦然），以 `Assembly.Load` 进入 Server 进程后位数随宿主（默认 64 位，见 `DAFLegacy.Server` 的平台属性）。
 
-`publish.bat` / `publish.sh` 各 +1 行：`dotnet publish Server/DFLegacy.Mcp/...` 后**按白名单拷贝**——`DFLegacy.Mcp.dll`、`ModelContextProtocol*.dll`、`Microsoft.Extensions.AI.Abstractions.dll`（排除随 ProjectReference 流入的 `DFLegacy.Server.*` 与内容文件）。不拷 = 该次发布天然无 MCP。Mcp 不是 NuGet 包、不装 GAC：**单独编译的模块 DLL，可增删**。
+`publish.bat` / `publish.sh` 各 +1 行：`dotnet publish Server/DAFLegacy.Mcp/...` 后**按白名单拷贝**——`DAFLegacy.Mcp.dll`、`ModelContextProtocol*.dll`、`Microsoft.Extensions.AI.Abstractions.dll`（排除随 ProjectReference 流入的 `DAFLegacy.Server.*` 与内容文件）。不拷 = 该次发布天然无 MCP。Mcp 不是 NuGet 包、不装 GAC：**单独编译的模块 DLL，可增删**。
 
 **构建产物精简（已实测）**：csproj 设 `GenerateDependencyFile=false`、`DebugType=none`、`SatelliteResourceLanguages=en` 后，publish 产物**恰为 5 个 .dll**（自身 + 4 个 SDK DLL，体积见 §2.1），无 deps.json / pdb / xml / 资源子目录。`deps.json` 缺席不影响加载——加载器的 `Resolving` 兜底即为此设计。`PublishSingleFile` 单文件捆绑对"被宿主 `Assembly.Load` 的插件"**不可行**（bundle 由宿主 hostfxr 解包），不做单文件；若将来必须单文件，走"SDK DLL 内嵌为资源 + 加载器 `Resolving` 装载"（§14.7）。
 
@@ -244,7 +244,7 @@ Server/
 McpModuleLoader.TryAttach(builder, options);
 ```
 
-加载器内部：`Enabled=false` 短路 → `Assembly.Load("DFLegacy.Mcp")`（DLL 在发布目录即可探测；用默认 `AssemblyLoadContext` 的 `Resolving` 事件兜底解析 MCP 及其 SDK 依赖）→ 反射调用 `McpModule.Attach(services, configuration, options)` → 注册 `PacketTapHub`（写入 `RuntimeState.TapSink`）、`McpHost` 宿主与工具组。
+加载器内部：`Enabled=false` 短路 → `Assembly.Load("DAFLegacy.Mcp")`（DLL 在发布目录即可探测；用默认 `AssemblyLoadContext` 的 `Resolving` 事件兜底解析 MCP 及其 SDK 依赖）→ 反射调用 `McpModule.Attach(services, configuration, options)` → 注册 `PacketTapHub`（写入 `RuntimeState.TapSink`）、`McpHost` 宿主与工具组。
 
 ```text
 网络入口：http://{Mcp.Host}:{Mcp.Port}/mcp   （默认 127.0.0.1:12222/mcp）
@@ -258,10 +258,10 @@ McpModuleLoader.TryAttach(builder, options);
 
 | 操作 | 步骤 | 结果 |
 | --- | --- | --- |
-| **插上** | 发布目录放入 `DFLegacy.Mcp.dll`（publish 脚本默认做）+ `Enabled: true` + 重启 | 按配置的 Host:Port 起监听，抓包可用 |
+| **插上** | 发布目录放入 `DAFLegacy.Mcp.dll`（publish 脚本默认做）+ `Enabled: true` + 重启 | 按配置的 Host:Port 起监听，抓包可用 |
 | **运行时关闭** | `"Enabled": false`（默认） | 加载器短路：不开端口、无后台线程、内存零驻留 |
-| **拔除（免重编译）** | 删除发布目录里的 `DFLegacy.Mcp.dll` | 加载器记一条调试日志，服务端照常 |
-| **拔除（源码级）** | 删 `DFLegacy.Mcp/` 项目 + publish 拷贝行 + `McpModuleLoader.cs` | 服务端编译通过、行为与未装过一致（`Tap/IPacketTapSink.cs` 留存为惰性接缝） |
+| **拔除（免重编译）** | 删除发布目录里的 `DAFLegacy.Mcp.dll` | 加载器记一条调试日志，服务端照常 |
+| **拔除（源码级）** | 删 `DAFLegacy.Mcp/` 项目 + publish 拷贝行 + `McpModuleLoader.cs` | 服务端编译通过、行为与未装过一致（`Tap/IPacketTapSink.cs` 留存为惰性接缝） |
 | **故障隔离** | — | DLL 损坏 / 端口被占 / 初始化异常 → 记警告并保持关闭，游戏服务照常 |
 
 ---
@@ -362,11 +362,11 @@ McpModuleLoader.TryAttach(builder, options);
 
 ## 8. 配置（P2 / P3）
 
-`server.json` 新增独立配置节 `DFLegacy.Mcp`，与 `DFLegacy.Admin` 同构（组合根解析为 `McpOptions`）：
+`server.json` 新增独立配置节 `DAFLegacy.Mcp`，与 `DAFLegacy.Admin` 同构（组合根解析为 `McpOptions`）：
 
 ```json
 {
-  "DFLegacy": {
+  "DAFLegacy": {
     "Mcp": {
       "Enabled": false,
       "Host": "127.0.0.1",
@@ -378,13 +378,13 @@ McpModuleLoader.TryAttach(builder, options);
 
 | 项 | 默认 | 说明 |
 | --- | --- | --- |
-| `Enabled` | **`false`** | MCP 启动开关，默认关闭；false 时加载器短路，不开端口、零驻留；true 且 `DFLegacy.Mcp.dll` 在位时模块激活 |
+| `Enabled` | **`false`** | MCP 启动开关，默认关闭；false 时加载器短路，不开端口、零驻留；true 且 `DAFLegacy.Mcp.dll` 在位时模块激活 |
 | `Host` | `127.0.0.1` | 监听地址（IP）。默认回环；改非回环等同主动暴露协议流，须自行叠加防火墙/认证（§9） |
 | `Port` | `12222` | 监听端口。默认值已核对无冲突：本仓库 8080/8081/2311/7001–7003；参考项目区段 10011–10200、12311–12312、17200、30000+（§16.2）。被占时模块记错误日志并保持关闭 |
 
 工具组不单独配置（§15.4）；容量参数（ring 4096、单包截断 4096/8192 字节、订阅通道 1024）为代码常量。`README.md` 选项表实现时补三行。
 
-**模块 DLL 必须与 Server 同批重建**（2026-09-29 以一次真实改动登记）：模块与宿主同进程，直接引用宿主类型（`Network/Core/PacketTypes.cs` 的 `PacketTypeNames`、`IPacketTapSink` 等），因此任何触及宿主类型面的改动（本次为 `PacketNames` 删除与 `PacketTapEvent.PlainText` 下线）都必须重发 `DFLegacy.Mcp.dll`（`publish-mcp.sh` / `publish-mcp.bat`）后再启用。加载器经 `Resolving` 钩子从 `AppContext.BaseDirectory` 解析模块（`Infrastructure/McpModuleLoader.cs`），故产物须放在服务端可执行文件同目录。
+**模块 DLL 必须与 Server 同批重建**（2026-09-29 以一次真实改动登记）：模块与宿主同进程，直接引用宿主类型（`Network/Core/PacketTypes.cs` 的 `PacketTypeNames`、`IPacketTapSink` 等），因此任何触及宿主类型面的改动（本次为 `PacketNames` 删除与 `PacketTapEvent.PlainText` 下线）都必须重发 `DAFLegacy.Mcp.dll`（`publish-mcp.sh` / `publish-mcp.bat`）后再启用。加载器经 `Resolving` 钩子从 `AppContext.BaseDirectory` 解析模块（`Infrastructure/McpModuleLoader.cs`），故产物须放在服务端可执行文件同目录。
 
 跨版本混用的失败形态是**静默失效**而非启动报错：旧模块中已不存在的类型引用在该方法执行时抛 `TypeLoadException`，被 `PacketTapHub.Publish` 的兜底 try/catch 吞掉（"追踪绝不影响会话"的设计使然），且异常点在入 ring 之前，于是**事件全不落 ring**——`packet_watch` 永远等不到事件、`tap_status` 的 seq 不前进，而 `packet_names_search` 与 `packet-names://` 资源在调用时直接报错。启用后先各调一次 `tap_status` 与 `packet_names_search`，两者都正常才认为模块与宿主同版。
 
@@ -410,7 +410,7 @@ McpModuleLoader.TryAttach(builder, options);
 ```json
 {
   "mcpServers": {
-    "dflegacy": {
+    "daflegacy": {
       "type": "http",
       "url": "http://127.0.0.1:12222/mcp"
     }
@@ -418,7 +418,7 @@ McpModuleLoader.TryAttach(builder, options);
 }
 ```
 
-URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）；新工具组上线自动出现在同一端点，客户端配置不变。
+URL 按 `server.json` 的 `DAFLegacy.Mcp.Host/Port` 拼接（默认即上例）；新工具组上线自动出现在同一端点，客户端配置不变。
 
 ### 10.2 典型分析流程（G1）
 
@@ -432,7 +432,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ### M1 · 漏斗与遥测接缝（无 MCP，可独立合入）
 
-- 新增 `Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`（1 个文件：接口 + `TapDecodeMode` 枚举）
+- 新增 `Server/DAFLegacy.Server/Network/Core/IPacketTapSink.cs`（1 个文件：接口 + `TapDecodeMode` 枚举）
 - `RuntimeState`：`_tracingEnabled` + `TapSink` 属性 + 原始参数 Publish；`TracePacket` 增加 `rawFrame` 可选参
 - `Network/*`：按 §5.2 清单删门卫
 - `Program.cs`：`runtime._tracingEnabled = options.EnablePacketTracing` 装配（1 行）
@@ -440,7 +440,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ### M2 · MCP 模块与 G1 工具组（默认关，开了就能用）
 
-- 新增 `Server/DFLegacy.Mcp/`：McpModule、PacketTapEvent、PacketTapHub、McpHost（按 McpOptions 绑定）、核心工具（watch/get/wait/session_list/tap_status）
+- 新增 `Server/DAFLegacy.Mcp/`：McpModule、PacketTapEvent、PacketTapHub、McpHost（按 McpOptions 绑定）、核心工具（watch/get/wait/session_list/tap_status）
 - Server 侧：`Infrastructure/McpModuleLoader.cs` + Program.cs 1 行；`ServerOptions` + `McpOptions`
 - publish 脚本 +1 行拷贝；`server.json` 开关（默认 false）；README 补行；锁定 SDK 版本（2.2.0）
 
@@ -465,7 +465,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 - 起服务端（`EnablePacketTracing=false`、`Mcp.Enabled=true`），脚本 TCP 客户端走一次 entrance 握手（60a4，见 `docs/protocol/60a4-handshake-protocol.md`），断言：`packet_watch` 收到 `entrance:*` 的 RX/TX 事件；`/api/packets` 全程为空数组。
 - 默认关闭验收：`Enabled=false` 启动 → 配置的 MCP 端口无监听（端口探测断言）。
-- 拔插验收：删除 `DFLegacy.Mcp.dll` 后启动正常；源码级移除 Mcp 项目后全解决方案构建通过、冒烟全绿。
+- 拔插验收：删除 `DAFLegacy.Mcp.dll` 后启动正常；源码级移除 Mcp 项目后全解决方案构建通过、冒烟全绿。
 
 **人工验收**
 
@@ -490,7 +490,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 4. **双端对拍**：同屏订阅两个会话做 diff。
 5. **stdio 适配进程**：个别客户端只支持 stdio 时提供薄适配（stdio ↔ 本机 HTTP）。
 6. **SDK 版本升级**：跟随 2.x 稳定线，升级记录落在 PR 描述里。
-7. **单文件插件形态**（与多文件的取舍，启用前必读）：把 4 个 SDK DLL 内嵌为 `DFLegacy.Mcp.dll` 资源、加载器经 `Resolving` 从资源装载——发布目录只增 1 个文件。注意 `PublishSingleFile` 对"被宿主 `Assembly.Load` 的插件"不可行（bundle 由宿主 hostfxr 解包），内嵌是唯一可行路径。两形态影响对比：
+7. **单文件插件形态**（与多文件的取舍，启用前必读）：把 4 个 SDK DLL 内嵌为 `DAFLegacy.Mcp.dll` 资源、加载器经 `Resolving` 从资源装载——发布目录只增 1 个文件。注意 `PublishSingleFile` 对"被宿主 `Assembly.Load` 的插件"不可行（bundle 由宿主 hostfxr 解包），内嵌是唯一可行路径。两形态影响对比：
 
    | 维度 | 多文件（5 个 DLL，现行） | 内嵌资源单文件 |
    | --- | --- | --- |
@@ -509,7 +509,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ### 15.1 新增一个工具组 = 什么
 
-工具组是 `DFLegacy.Mcp` 内部的一个组织单元：**一个子目录（`Tap/`、`Pvf/`、`Catalogs/`…）内的一组静态 `[McpServerToolType]` 工具类 + 可选 Resources/Prompts**，所需服务端服务通过构造函数 DI 注入。新增流程：在 `DFLegacy.Mcp` 新增 `<Group>Tools.cs` →（如需）在 `McpModule.Attach` 注册 → 冒烟 + 文档。**服务端代码零改动**；开关与端点不变；客户端不换配置即可发现新工具。
+工具组是 `DAFLegacy.Mcp` 内部的一个组织单元：**一个子目录（`Tap/`、`Pvf/`、`Catalogs/`…）内的一组静态 `[McpServerToolType]` 工具类 + 可选 Resources/Prompts**，所需服务端服务通过构造函数 DI 注入。新增流程：在 `DAFLegacy.Mcp` 新增 `<Group>Tools.cs` →（如需）在 `McpModule.Attach` 注册 → 冒烟 + 文档。**服务端代码零改动**；开关与端点不变；客户端不换配置即可发现新工具。
 
 ### 15.2 G2 · PVF 解密读取（下一个实现，届时另开新档细化）
 
@@ -549,7 +549,7 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 | --- | --- | --- | --- |
 | 服务端包捕获 | `PacketFileLogger`：`--packet-capture` 开关（默认关）→ 4096 有界异步队列 → 落盘 `packet_log.txt`（64MB 上限，满则丢 + 计数告警） | `PacketTapHub`：`Enabled`（默认关）→ ring(4096) + 订阅通道(1024, DropOldest) → MCP 长轮询 | **继承全部工程纪律**（有界队列、丢弃计数、默认关闭、截断上限）；消费端从"人 tail 文件"升级为"智能体游标实时拉取"，且多出报文名富化 |
 | 带外抓包 | `PvfProxy` 独立进程：TCP 中间人（7001/10011 → 7002/10012），逐行日志，bat 编排拉起全家桶 | 不需要：tap 在进程内协议层（解密后帧 + RX wire 双份） | 中间人方案保留为 fallback 认知：当需要抓"不经服务端代码路径"的流量时它仍是正解 |
-| PVF 读取 | `Tool/PvfLib` 独立库：`PvfDecryptor`（Decrypt/Guard + zlib）、`PvfUnpacker/PvfPacker`、`ScriptParser`（Parse → 节点树） | G2（§15.2）：现有 `ScriptFileSystem/PvfArchiveReader` 覆盖读路径；`pvf_parse_script` 参考 `ScriptParser` 思路 | PvfLib 的能力面是 G2 的验收参照；但其"独立成库"的组织方式**不采纳**——PVF 工具归入 `DFLegacy.Mcp` 单一项目（P4） |
+| PVF 读取 | `Tool/PvfLib` 独立库：`PvfDecryptor`（Decrypt/Guard + zlib）、`PvfUnpacker/PvfPacker`、`ScriptParser`（Parse → 节点树） | G2（§15.2）：现有 `ScriptFileSystem/PvfArchiveReader` 覆盖读路径；`pvf_parse_script` 参考 `ScriptParser` 思路 | PvfLib 的能力面是 G2 的验收参照；但其"独立成库"的组织方式**不采纳**——PVF 工具归入 `DAFLegacy.Mcp` 单一项目（P4） |
 
 ### 16.2 端口规划互认
 
@@ -573,14 +573,14 @@ URL 按 `server.json` 的 `DFLegacy.Mcp.Host/Port` 拼接（默认即上例）�
 
 ## 17. 日志
 
-MCP 的日志走**主进程的 ILoggerFactory**（`Attach` 时注入，`McpHost` 自持 WebApplication 的日志也接同一工厂）——输出与游戏服务同一渠道（控制台/文件按现有配置），**不产生第二份日志文件**，也**不写 `packet_log.txt`**（那仍是 `EnablePacketTracing` 通道的领地）。类别名约定 `DFLegacy.Mcp.*`。
+MCP 的日志走**主进程的 ILoggerFactory**（`Attach` 时注入，`McpHost` 自持 WebApplication 的日志也接同一工厂）——输出与游戏服务同一渠道（控制台/文件按现有配置），**不产生第二份日志文件**，也**不写 `packet_log.txt`**（那仍是 `EnablePacketTracing` 通道的领地）。类别名约定 `DAFLegacy.Mcp.*`。
 
 ### 17.1 自身运行日志（有）
 
 | 阶段 | 事件 | 级别 | 处置 |
 | --- | --- | --- | --- |
 | 装配 | `Enabled=false`（默认）短路 | Debug | 一行说明后返回，默认 Info 级别下不可见 |
-| 装配 | `Enabled=true` 但 `DFLegacy.Mcp.dll` 不存在 | Warning | 继续，模块不激活 |
+| 装配 | `Enabled=true` 但 `DAFLegacy.Mcp.dll` 不存在 | Warning | 继续，模块不激活 |
 | 装配 | 加载/初始化抛异常 | Warning + 异常栈 | 继续，`TapSink` 保持 null |
 | 装配 | 激活成功 | Information | 端点 URL、工具组数 |
 | 宿主 | 监听启动 / 停止 | Information | `http://{Host}:{Port}/mcp` |

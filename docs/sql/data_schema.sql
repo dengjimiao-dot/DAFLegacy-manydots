@@ -1,5 +1,5 @@
 -- ============================================================================
--- DFLegacy 60A1 数据种子（仅 test 账号）
+-- DAFLegacy 60A1 数据种子（仅 test 账号）
 -- 生成工具：tools/export_state_sql.py
 -- 生成时间：2026-09-30T13:25:30
 -- 数据来源：docs/sql/state.json（只保留 username=='test' 的账号，
@@ -653,13 +653,13 @@ INSERT INTO character_dungeon_progress (character_id, dungeon_id, max_difficulty
 
 -- ---- character_mail（7 行）----
 INSERT INTO character_mail (character_id, sender, text, gold, item_id, item_count, item_state, durability, seal_state, avatar_remaining_seconds, avatar_ability_index, equipment_quality_seed, instance_id, is_new, state, created_at, expires_at) VALUES
-  (3, 'DFLegacy', 'Level 54 equipment grant: item 20093.', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 3, 1786448993, 1789040993),
-  (3, 'DFLegacy', 'EXP book test: book_exp1.stk x10', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 3, 1786462787, 1789054787),
-  (3, 'DFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
-  (3, 'DFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
-  (3, 'DFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
-  (3, 'DFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
-  (3, 'DFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698);
+  (3, 'DAFLegacy', 'Level 54 equipment grant: item 20093.', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 3, 1786448993, 1789040993),
+  (3, 'DAFLegacy', 'EXP book test: book_exp1.stk x10', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 3, 1786462787, 1789054787),
+  (3, 'DAFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
+  (3, 'DAFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
+  (3, 'DAFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
+  (3, 'DAFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698),
+  (3, 'DAFLegacy', 'Soul orb', 0, 0, 0, 0, 0, 0, 0, 0, 0, '', 0, 2, 1789059698, 1791651698);
 
 -- ---- character_fatigue（4 行）----
 INSERT INTO character_fatigue (character_id, consumed, last_reset_at) VALUES

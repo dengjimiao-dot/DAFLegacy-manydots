@@ -18,8 +18,8 @@
 | [02-portability-contracts.md](02-portability-contracts.md) | 可移植性契约 R1–R11：分层、路径、编码、随机源、数据目录、降级 | 实现 |
 | [03-build-release-ci.md](03-build-release-ci.md) | 构建入口、包内容责任表、发布布局与 CI 矩阵（2026-09-23 修订：流水线只出服务端两包） | 构建与发布 |
 | [04-migration-plan.md](04-migration-plan.md) | M0–M5 分阶段任务、每阶段验收标准、回滚策略、风险与待决问题 | 执行者 |
-| [05-randomnative-crossplatform.md](05-randomnative-crossplatform.md) | **已作废**：`DFLegacy.RandomNative` 跨平台化提案（被 06 取代） | — |
-| [06-random-source-managed.md](06-random-source-managed.md) | 随机源降级为纯托管实现：服务端与 `DFLegacy.RandomNative` 解耦的决策（模块保留至 Client 层）、参考项目设计摘录、三类随机、待确认问题 | 架构与实现 |
+| [05-randomnative-crossplatform.md](05-randomnative-crossplatform.md) | **已作废**：`DAFLegacy.RandomNative` 跨平台化提案（被 06 取代） | — |
+| [06-random-source-managed.md](06-random-source-managed.md) | 随机源降级为纯托管实现：服务端与 `DAFLegacy.RandomNative` 解耦的决策（模块保留至 Client 层）、参考项目设计摘录、三类随机、待确认问题 | 架构与实现 |
 
 ### 两个约定
 
@@ -29,7 +29,7 @@
 
 ## 1. 背景
 
-DFLegacy 是一个 60A1 客户端旧版协议的模拟器实现，共 6 个子项目：2 个原生 C++ 模块（`DFLegacy.Ijl15`、`DFLegacy.RandomNative`）与 4 个 .NET 项目（`DFLegacy.Launcher`、`DFLegacy.Protocol`、`DFLegacy.Server`、`DFLegacy.SmokeTests`），全部混在同一个 `DFLegacy.Emulator.slnx` 里。其中 `DFLegacy.RandomNative` 原定随服务端随机源托管化一并删除，后修订为**保留并移至 Client 层**（`Client/DFLegacy.RandomNative`，[06 · 随机源降级为纯托管实现](06-random-source-managed.md)），仍为 6 个子项目。
+DAFLegacy 是一个 60A1 客户端旧版协议的模拟器实现，共 6 个子项目：2 个原生 C++ 模块（`DAFLegacy.Ijl15`、`DAFLegacy.RandomNative`）与 4 个 .NET 项目（`DAFLegacy.Launcher`、`DAFLegacy.Protocol`、`DAFLegacy.Server`、`DAFLegacy.SmokeTests`），全部混在同一个 `DAFLegacy.Emulator.slnx` 里。其中 `DAFLegacy.RandomNative` 原定随服务端随机源托管化一并删除，后修订为**保留并移至 Client 层**（`Client/DAFLegacy.RandomNative`，[06 · 随机源降级为纯托管实现](06-random-source-managed.md)），仍为 6 个子项目。
 
 当前构建链路整体绑定 Windows：解决方案文件混入 `.vcxproj`，因此只能用 MSBuild 构建；两个 CI workflow 固定 `runs-on: windows-latest`；`publish.bat` 是批处理并依赖 vswhere 定位 MSBuild；`build-native.ps1` 还要求 CMake 提供 Visual Studio 生成器；`README.md` 的"运行环境"明确写了 Windows + Visual Studio 桌面 C++ 组件。
 
@@ -42,7 +42,7 @@ DFLegacy 是一个 60A1 客户端旧版协议的模拟器实现，共 6 个子�
 ### 目标
 
 1. **G1** 服务端（协议 + 脚本读取 + 业务规则 + HTTP 后台 + 游戏服务）成为一等可移植目标，可在 Linux 上构建、测试、发布、运行。
-2. **G2** 服务端不再依赖原生能力（RDSEED 硬件随机桥）：服务端裁决随机改为纯托管的单一实现，与 `DFLegacy.RandomNative` 解耦——模块本身保留至 Client 层（`Client/DFLegacy.RandomNative`），不再被服务端引用（[06 · 随机源降级为纯托管实现](06-random-source-managed.md)）。
+2. **G2** 服务端不再依赖原生能力（RDSEED 硬件随机桥）：服务端裁决随机改为纯托管的单一实现，与 `DAFLegacy.RandomNative` 解耦——模块本身保留至 Client 层（`Client/DAFLegacy.RandomNative`），不再被服务端引用（[06 · 随机源降级为纯托管实现](06-random-source-managed.md)）。
 3. **G3** Server 层与 Client 层的边界由构建系统在**每次构建时**强制，而不是靠约定和自觉。
 4. **G4** 现有 Windows 交付方式（Launcher + IJL15 注入 + 服务端与 Launcher 同目录的部署布局）行为保持不变。
 5. **G5** 两层可以**独立构建与打包**，产物互不依赖；全仓库收敛为**一个解决方案**（2026-09-23 修订：解决方案含原生项目、仅 MSBuild 可构建，服务端跨平台构建按项目进行，见 [D4](#d4--全仓库一个解决方案层边界由编译器强制)）。
@@ -62,25 +62,25 @@ DFLegacy 是一个 60A1 客户端旧版协议的模拟器实现，共 6 个子�
 
 | 子项目 | 类型 / TFM | 非 Windows 编译 | 非 Windows 运行 | 阻塞原因 |
 | --- | --- | --- | --- | --- |
-| `DFLegacy.Protocol` | net10.0 类库（4,470 行） | ✅ 通过 | ✅ | 无。纯托管，无 P/Invoke、无平台分支 |
-| `DFLegacy.Server` | net10.0 Web（80 文件 / 41,926 行） | ✅ 通过 | ✅ 可启动（降级） | 见 3.2 |
-| `DFLegacy.SmokeTests` | net10.0 控制台 | ✅ 通过 | ✅ 全部通过 | 无 |
-| `DFLegacy.Launcher` | net10.0-**windows** / WinForms | ❌ `NETSDK1100` | ❌ | 目标框架 + WinForms + `d3d9.dll`/`user32.dll` P/Invoke |
-| `DFLegacy.Ijl15` | C++ Win32 x86 DLL（5,555 行） | ❌ 设计上拒绝 | — | CMake 对非 `WIN32` 直接 `FATAL_ERROR`；且本质是 Windows 游戏模块 |
+| `DAFLegacy.Protocol` | net10.0 类库（4,470 行） | ✅ 通过 | ✅ | 无。纯托管，无 P/Invoke、无平台分支 |
+| `DAFLegacy.Server` | net10.0 Web（80 文件 / 41,926 行） | ✅ 通过 | ✅ 可启动（降级） | 见 3.2 |
+| `DAFLegacy.SmokeTests` | net10.0 控制台 | ✅ 通过 | ✅ 全部通过 | 无 |
+| `DAFLegacy.Launcher` | net10.0-**windows** / WinForms | ❌ `NETSDK1100` | ❌ | 目标框架 + WinForms + `d3d9.dll`/`user32.dll` P/Invoke |
+| `DAFLegacy.Ijl15` | C++ Win32 x86 DLL（5,555 行） | ❌ 设计上拒绝 | — | CMake 对非 `WIN32` 直接 `FATAL_ERROR`；且本质是 Windows 游戏模块 |
 
 实测命令与结果：
 
 ```text
-dotnet build src/DFLegacy.Protocol          → 0 warning, 0 error
-dotnet build src/DFLegacy.Server            → 0 warning, 0 error
-dotnet build tests/DFLegacy.SmokeTests      → 0 warning, 0 error
-dotnet tests/.../DFLegacy.SmokeTests.dll    → "All DFLegacy protocol smoke tests passed."（退出码 0）
-dotnet build src/DFLegacy.Launcher          → error NETSDK1100
+dotnet build src/DAFLegacy.Protocol          → 0 warning, 0 error
+dotnet build src/DAFLegacy.Server            → 0 warning, 0 error
+dotnet build tests/DAFLegacy.SmokeTests      → 0 warning, 0 error
+dotnet tests/.../DAFLegacy.SmokeTests.dll    → "All DAFLegacy protocol smoke tests passed."（退出码 0）
+dotnet build src/DAFLegacy.Launcher          → error NETSDK1100
 ```
 
 ### 3.2 服务端在 macOS 上的真实启动行为
 
-直接运行已构建的 `DFLegacy.Server.dll`，实际输出：
+直接运行已构建的 `DAFLegacy.Server.dll`，实际输出：
 
 ```text
 info: Game random source initialized: provider=OperatingSystemCSPRNG,
@@ -125,8 +125,8 @@ File.Exists(该路径)                       → false
 从 macOS 直接交叉发布 Linux 目标，当前代码无需任何改动即可成功：
 
 ```bash
-dotnet publish src/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x64 --self-contained false -o <out>
-# → 成功。产物 DFLEGACY.Server 经 file(1) 确认为：
+dotnet publish src/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release -r linux-x64 --self-contained false -o <out>
+# → 成功。产物 DAFLEGACY.Server 经 file(1) 确认为：
 #   ELF 64-bit LSB pie executable, x86-64, dynamically linked,
 #   interpreter /lib64/ld-linux-x86-64.so.2
 ```
@@ -137,15 +137,15 @@ dotnet publish src/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x6
 
 ### 3.6 全仓库能否只用一个解决方案
 
-参考项目 `ServerS4A21` 的做法是**一个解决方案 + 单项目 + 目录分层**（`Server/DfoServer.sln` 只含 `DfoServer` 与 `PvfLib` 两个项目，业务分层体现为 `Network/`、`Game/`、`GameWorld/`、`Infrastructure/`、`Data/`、`Sqlite/`、`SelfTests/` 等目录）。它之所以只需要一个解决方案，是因为**它不含原生项目**。DFLegacy 有平台专属的原生构建对象（`DFLegacy.Ijl15`），这是"是否必须多个解决方案"的根因。
+参考项目 `ServerS4A21` 的做法是**一个解决方案 + 单项目 + 目录分层**（`Server/DfoServer.sln` 只含 `DfoServer` 与 `PvfLib` 两个项目，业务分层体现为 `Network/`、`Game/`、`GameWorld/`、`Infrastructure/`、`Data/`、`Sqlite/`、`SelfTests/` 等目录）。它之所以只需要一个解决方案，是因为**它不含原生项目**。DAFLegacy 有平台专属的原生构建对象（`DAFLegacy.Ijl15`），这是"是否必须多个解决方案"的根因。
 
 就此做了三组实测：
 
 | # | 试验 | 结果 |
 | --- | --- | --- |
-| 1 | 单个 `.slnx` 含全部 4 个 `.csproj`（含 `net10.0-windows` 的 Launcher），加 `-p:EnableWindowsTargeting=true` | Launcher **编译成功**（产出 `net10.0-windows/DFLegacy.Launcher.dll`），仅被 `BuildIjl15` 目标打断——`powershell.exe` 不存在，`MSB3073` 退出码 127 |
+| 1 | 单个 `.slnx` 含全部 4 个 `.csproj`（含 `net10.0-windows` 的 Launcher），加 `-p:EnableWindowsTargeting=true` | Launcher **编译成功**（产出 `net10.0-windows/DAFLegacy.Launcher.dll`），仅被 `BuildIjl15` 目标打断——`powershell.exe` 不存在，`MSB3073` 退出码 127 |
 | 2 | 同上，跳过 `BuildIjl15` / `CopyIjl15ToOutput` / `CopyIjl15ToPublish` 三个目标（即完成 Launcher 解耦后的状态） | **完整成功，0 警告 0 错误** |
-| 3 | 现有 `DFLegacy.Emulator.slnx`（含 2 个 `.vcxproj`） | **硬错误**：两个 `.vcxproj` 报 `MSB4278`——`$(VCTargetsPath)/Microsoft.Cpp.Default.props` 不存在，需要 `MSBuild.exe`。不是"跳过"，是失败 |
+| 3 | 现有 `DAFLegacy.Emulator.slnx`（含 2 个 `.vcxproj`） | **硬错误**：两个 `.vcxproj` 报 `MSB4278`——`$(VCTargetsPath)/Microsoft.Cpp.Default.props` 不存在，需要 `MSBuild.exe`。不是"跳过"，是失败 |
 
 由此得到三条确定结论：
 
@@ -161,9 +161,9 @@ dotnet publish src/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x6
 
 | # | 试验 | 结果 |
 | --- | --- | --- |
-| 4 | 从 macOS 单独 `dotnet publish` Client 层的 Launcher（`-r win-x64`，并跳过 M0 将拆掉的原生目标） | **成功**。整个还原过程只涉及 `DFLegacy.Protocol`（Launcher 里那条死引用，M0 删除）与 `DFLegacy.Launcher` 两个项目，完全未触碰 Server 层的服务端项目。产物 `DFLegacy.Launcher.exe` 经 `file(1)` 确认为 `PE32+ executable (GUI) x86-64, for MS Windows` |
+| 4 | 从 macOS 单独 `dotnet publish` Client 层的 Launcher（`-r win-x64`，并跳过 M0 将拆掉的原生目标） | **成功**。整个还原过程只涉及 `DAFLegacy.Protocol`（Launcher 里那条死引用，M0 删除）与 `DAFLegacy.Launcher` 两个项目，完全未触碰 Server 层的服务端项目。产物 `DAFLegacy.Launcher.exe` 经 `file(1)` 确认为 `PE32+ executable (GUI) x86-64, for MS Windows` |
 
-**结论：两层可以独立分离打包构建。** 依赖关系是零，两个方向都是——试验 4 里那次对 `DFLegacy.Protocol` 的还原来自一条已确认的死引用，M0 删掉后 Client 层打包只涉及 `DFLegacy.Launcher` 自身；Server 打包则完全不触碰 Client 层。
+**结论：两层可以独立分离打包构建。** 依赖关系是零，两个方向都是——试验 4 里那次对 `DAFLegacy.Protocol` 的还原来自一条已确认的死引用，M0 删掉后 Client 层打包只涉及 `DAFLegacy.Launcher` 自身；Server 打包则完全不触碰 Client 层。
 
 两点说明：
 
@@ -175,15 +175,15 @@ dotnet publish src/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x6
 **项目结构图**（完整带注释版见 [01 · 1.1](01-target-architecture.md#11-项目结构图)）：
 
 ```text
-DFLegacy/
-├── DFLegacy.Emulator.slnx  唯一解决方案（全部 5 个项目；原生项目仅 IDE 可见，构建走 patch.bat）
+DAFLegacy/
+├── DAFLegacy.Emulator.slnx  唯一解决方案（全部 5 个项目；原生项目仅 IDE 可见，构建走 patch.bat）
 ├── publish.bat             stop.bat  Windows 构建 / 发布 / 停止脚本（保留）
 ├── publish.sh              [新] M5 · Linux/macOS 脚本（自探测 RID）
 ├── .github/workflows/      build.yml / release.yml（改造）
 ├── docs/design/            本设计文档集
 │
 ├── Server/                 ── Server 层：服务端侧交付物来源 ──
-│   ├── DFLegacy.Server/    服务端主项目（改后零 ProjectReference）
+│   ├── DAFLegacy.Server/    服务端主项目（改后零 ProjectReference）
 │   │   ├── Program.cs    组合根
 │   │   ├── Protocol/     线路协议（原独立项目并入）             11
 │   │   ├── PvfScript/    PVF/脚本访问 + 编码契约              1+新
@@ -199,13 +199,13 @@ DFLegacy/
 │   │   │   └── Account/[1]  Creature/[1]  Drop/[1]
 │   │   ├── server.json   [移] M0 · 从仓库根移入
 │   │   └── wwwroot/       admin/ 后台界面 + client/ 旧版充值页面
-│   ├── DFLegacy.Server.SelfTests/  自测（独立 exe，目录与主项目同构）
+│   ├── DAFLegacy.Server.SelfTests/  自测（独立 exe，目录与主项目同构）
 │
 ├── Client/                 ── Client 层：Windows 客户端交付物 ──
-│   ├── DFLegacy.Launcher/  Windows 启动器                       net10.0-windows
+│   ├── DAFLegacy.Launcher/  Windows 启动器                       net10.0-windows
 │   │   └── launcher.json  [移] M0 · 从仓库根移入
-│   ├── DFLegacy.Ijl15/     ijl15.dll 替身  C++ · Win32 x86
-│   ├── DFLegacy.RandomNative/  RDSEED 硬件随机桥  C++ · x64  [移] M2 · 服务端解耦后保留至此
+│   ├── DAFLegacy.Ijl15/     ijl15.dll 替身  C++ · Win32 x86
+│   ├── DAFLegacy.RandomNative/  RDSEED 硬件随机桥  C++ · x64  [移] M2 · 服务端解耦后保留至此
 │   └── Patch/ [移] M0 · 预编译补丁资产：d3d8.dll（原 third_party/d3d8to9/）
 ```
 
@@ -219,8 +219,8 @@ DFLegacy/
 | --- | --- | --- | --- |
 > 2026-09-29 修订：技术模块目录已重组（`Protocol/`→`Network/{Core,Protocol}`、`Hosting/`→`Infrastructure/`、`Random/`→`Infrastructure/`、`RuntimeState`→`Infrastructure/`、`SerializedWriteStream`→`Network/Core/`）；本档下文七模块表述为开档时点形态，现行目录以 07 §11 实施记录为准。
 
-| **Server 层** | 服务端侧交付物来源，全部是纯可移植的托管代码 | `Server/DFLegacy.Server/`（含 `Protocol/`、`PvfScript/`、`Random/`、`Network/`、`Persistence/`、`Hosting/`、`Services/` 七个技术模块，以及 `GameWorld/` + `Game/<业务域>/` 两类游戏模块）、`Server/DFLegacy.Server.SelfTests/` | win / linux / osx |
-| **Client 层** | 全部 Windows 客户端交付物 | `Client/DFLegacy.Launcher/`、`Client/DFLegacy.Ijl15/`、`Client/Patch/` | win（`Ijl15` 为 x86） |
+| **Server 层** | 服务端侧交付物来源，全部是纯可移植的托管代码 | `Server/DAFLegacy.Server/`（含 `Protocol/`、`PvfScript/`、`Random/`、`Network/`、`Persistence/`、`Hosting/`、`Services/` 七个技术模块，以及 `GameWorld/` + `Game/<业务域>/` 两类游戏模块）、`Server/DAFLegacy.Server.SelfTests/` | win / linux / osx |
+| **Client 层** | 全部 Windows 客户端交付物 | `Client/DAFLegacy.Launcher/`、`Client/DAFLegacy.Ijl15/`、`Client/Patch/` | win（`Ijl15` 为 x86） |
 
 **每层一条不变量**，它取代原来那句"Server/ 树里的东西都能在三平台构建"：
 
@@ -233,22 +233,22 @@ DFLegacy/
 
 关于分层的三个要点：
 
-1. **`DFLegacy.Server` 属于 Server 层。** 这是本次架构判断的核心。服务端曾经唯一的原生耦合（`GameRandomSource` 里的两个 `DllImport`）已随服务端与 `DFLegacy.RandomNative` 的解耦消失——模块保留在 Client 层（[06 · 随机源降级为纯托管实现](06-random-source-managed.md)）。它现在是纯可移植代码，用一个 `dotnet build` 就能覆盖 Linux 部署场景。
+1. **`DAFLegacy.Server` 属于 Server 层。** 这是本次架构判断的核心。服务端曾经唯一的原生耦合（`GameRandomSource` 里的两个 `DllImport`）已随服务端与 `DAFLegacy.RandomNative` 的解耦消失——模块保留在 Client 层（[06 · 随机源降级为纯托管实现](06-random-source-managed.md)）。它现在是纯可移植代码，用一个 `dotnet build` 就能覆盖 Linux 部署场景。
 
-2. **配置文件跟着所属层走，不放仓库根。** `server.json` 是 Server 层的资产、`launcher.json` 是 Client 层的资产，两者都要从仓库根移进各自的项目（M0）；`Config.ini` 已在 `Client/DFLegacy.Ijl15/` 下，符合这条规则。这与第 1 点是同一条原则的另一面：仓库根不该躺着只属于某一层的文件。发布产物布局不受影响——文件仍被复制到可执行文件旁边。
+2. **配置文件跟着所属层走，不放仓库根。** `server.json` 是 Server 层的资产、`launcher.json` 是 Client 层的资产，两者都要从仓库根移进各自的项目（M0）；`Config.ini` 已在 `Client/DAFLegacy.Ijl15/` 下，符合这条规则。这与第 1 点是同一条原则的另一面：仓库根不该躺着只属于某一层的文件。发布产物布局不受影响——文件仍被复制到可执行文件旁边。
 
 ### 跨层交互只有一条
 
 ```text
 Client 层 ──运行期──→ Server 层
-  Launcher 按文件名启动 DFLegacy.Server.exe（部署约定，无编译期依赖）
+  Launcher 按文件名启动 DAFLegacy.Server.exe（部署约定，无编译期依赖）
 ```
 
-**编译期引用是两个方向都零。** 早期版本设想的第二条运行期联系（Server 层运行期探测可选原生资产）随服务端与 `DFLegacy.RandomNative` 的解耦一并消失。
+**编译期引用是两个方向都零。** 早期版本设想的第二条运行期联系（Server 层运行期探测可选原生资产）随服务端与 `DAFLegacy.RandomNative` 的解耦一并消失。
 
-**剩下这一条不可避免**：`Launcher` 在 `StartServer=true`（默认）时按字面量 `"DFLegacy.Server.exe"` 在同目录找服务端。它没有编译期依赖，却有不可忽略的部署耦合——这是 Windows 合并包必须存在的原因（[01 · 2.3](01-target-architecture.md#23-与-server-层的跨层联系)）。
+**剩下这一条不可避免**：`Launcher` 在 `StartServer=true`（默认）时按字面量 `"DAFLegacy.Server.exe"` 在同目录找服务端。它没有编译期依赖，却有不可忽略的部署耦合——这是 Windows 合并包必须存在的原因（[01 · 2.3](01-target-architecture.md#23-与-server-层的跨层联系)）。
 
-**"编译期零引用"这件事本身值得单说。** 早期的设计版本声称存在一条合法的跨层引用（Client → `DFLegacy.Protocol`），依据是 `DFLegacy.Launcher.csproj` 里的 `ProjectReference`。经实测该引用**是死引用**——Launcher 的源码没有使用 Protocol 的任何一个 public 类型（43 个类型逐个检索，零命中），它只 `using System.*`，配置模型也定义在自己内部。详见 [01 · 3.0](01-target-architecture.md#30-先修正一处事实launcher-对-protocol-的引用是死引用)。
+**"编译期零引用"这件事本身值得单说。** 早期的设计版本声称存在一条合法的跨层引用（Client → `DAFLegacy.Protocol`），依据是 `DAFLegacy.Launcher.csproj` 里的 `ProjectReference`。经实测该引用**是死引用**——Launcher 的源码没有使用 Protocol 的任何一个 public 类型（43 个类型逐个检索，零命中），它只 `using System.*`，配置模型也定义在自己内部。详见 [01 · 3.0](01-target-architecture.md#30-先修正一处事实launcher-对-protocol-的引用是死引用)。
 
 ## 5. 关键设计决策
 
@@ -256,15 +256,15 @@ Client 层 ──运行期──→ Server 层
 
 不从 DDD 或 Clean Architecture 的角度重排项目，而是**只问一个问题：这东西随哪个包分发**。随客户端包走的进 `Client/`，随服务端包走的进 `Server/`，两层之间只剩一条运行期联系（上节）。
 
-**位置判据与"服务端可移植"是两件事，分工必须说清。** 位置由交付面决定；"服务端能在三个平台构建"这条性质由一个**不变量**守住：服务端**托管**构建图里不得出现 Windows 专属节点。前者是命名与归属的规则，后者是可以被机器验证的规则——服务端与 `DFLegacy.RandomNative` 解耦后（模块保留在 Client 层），`Server/` 下没有任何 Windows 专属成员（[Z1–Z4](01-target-architecture.md#32-禁止清单)）。
+**位置判据与"服务端可移植"是两件事，分工必须说清。** 位置由交付面决定；"服务端能在三个平台构建"这条性质由一个**不变量**守住：服务端**托管**构建图里不得出现 Windows 专属节点。前者是命名与归属的规则，后者是可以被机器验证的规则——服务端与 `DAFLegacy.RandomNative` 解耦后（模块保留在 Client 层），`Server/` 下没有任何 Windows 专属成员（[Z1–Z4](01-target-architecture.md#32-禁止清单)）。
 
 - **理由**：分层的价值必须能被机器验证，否则会退化回"约定"。"服务端托管构建图是否纯净"可以用一个 Linux 构建直接判定（`dotnet build` 两个服务端 `.csproj` 必须成功；2026-09-23 修订把原生项目放回解决方案后，跨平台验证改为按项目构建）；而"领域层是否干净"这种断言今天无法验证（没有替换需求）。把可验证的属性当分层依据。
-- **取舍**：`DFLegacy.Server` 会同时包含 HTTP 后台、游戏服务、业务目录三件事，不够"内部干净"。接受这一点，换取不搬动 2 万多行已验证代码。
+- **取舍**：`DAFLegacy.Server` 会同时包含 HTTP 后台、游戏服务、业务目录三件事，不够"内部干净"。接受这一点，换取不搬动 2 万多行已验证代码。
 - **收益**：层名与位置名实相符（`Client/` 只剩面向客户端的东西），归属规则简单到可以口头传递——"随哪个包分发就放哪层，跨层引用一律禁止"。新增代码时几乎不会归属错。
 
 ### D2 · 原生随机模块与服务端解耦（模块保留至 Client 层），随机源降级为纯托管单一实现
 
-`DFLegacy.Server.csproj` 曾有一个指向 `DFLegacy.RandomNative.vcxproj` 的 `ProjectReference`，以及一个硬编码到 `artifacts/native/random/$(Configuration)/` 的 `Content` 项，使**服务端的构建图里存在一个只有 Windows 才能求值的节点**。本设计将服务端与 `DFLegacy.RandomNative` 项目整体解耦（模块保留至 `Client/DFLegacy.RandomNative`，不再被任何托管项目引用），服务端裁决随机改为纯托管的**单一实现**：`Random/` 模块目录里的 `GameRandomSource`（基于 `Random.Shared`），对外缝保留 `IDropRandomSource`，42 处调用点零改动。
+`DAFLegacy.Server.csproj` 曾有一个指向 `DAFLegacy.RandomNative.vcxproj` 的 `ProjectReference`，以及一个硬编码到 `artifacts/native/random/$(Configuration)/` 的 `Content` 项，使**服务端的构建图里存在一个只有 Windows 才能求值的节点**。本设计将服务端与 `DAFLegacy.RandomNative` 项目整体解耦（模块保留至 `Client/DAFLegacy.RandomNative`，不再被任何托管项目引用），服务端裁决随机改为纯托管的**单一实现**：`Random/` 模块目录里的 `GameRandomSource`（基于 `Random.Shared`），对外缝保留 `IDropRandomSource`，42 处调用点零改动。
 
 **边界**：协议层会话密钥等密码学用途必须继续走 `RandomNumberGenerator`，不得改走伪随机。
 
@@ -273,7 +273,7 @@ Client 层 ──运行期──→ Server 层
 
 ### D3 · 服务端收成一个项目，模块用目录分组
 
-服务端全部代码收进**一个项目** `Server/DFLegacy.Server/`，内部用模块目录分组：技术模块（`Protocol/`、`PvfScript/`、`Random/`、`Network/`、`Persistence/`、`Hosting/`、`Services/`）与游戏模块（`GameWorld/` 放脚本静态定义，`Game/<业务域>/` 放运行时规则，按参照项目的 `Game/*` 模型）。原先计划的独立项目 `DFLegacy.Script`（现名 `PvfScript`）与 `DFLegacy.Random` 改为**目录**，原独立项目 `DFLegacy.Protocol` **并入**同一项目。
+服务端全部代码收进**一个项目** `Server/DAFLegacy.Server/`，内部用模块目录分组：技术模块（`Protocol/`、`PvfScript/`、`Random/`、`Network/`、`Persistence/`、`Hosting/`、`Services/`）与游戏模块（`GameWorld/` 放脚本静态定义，`Game/<业务域>/` 放运行时规则，按参照项目的 `Game/*` 模型）。原先计划的独立项目 `DAFLegacy.Script`（现名 `PvfScript`）与 `DAFLegacy.Random` 改为**目录**，原独立项目 `DAFLegacy.Protocol` **并入**同一项目。
 
 - **理由**：目录层级形式参照 `ServerS4A21`（`Server/DfoServer/Network/` 这种层/项目/模块三级），它的服务端也是一个项目加模块目录。Protocol 之所以能并入，是因为实测证明它不需要是独立程序集（[01 · 3.0](01-target-architecture.md#30-先修正一处事实launcher-对-protocol-的引用是死引用)）——它没有被 Client 层引用。
 - **收益**：服务端主项目**零 `ProjectReference`**，层边界的判定从"4 个项目是否各自纯净"简化为"服务端托管项目是否引用了另一层的项目或任何 `.vcxproj`"，机械且不易出错。
@@ -282,15 +282,15 @@ Client 层 ──运行期──→ Server 层
 
 ### D4 · 全仓库一个解决方案；层边界由编译器强制
 
-`DFLegacy.Emulator.slnx` 是仓库中唯一的解决方案文件，成员是全部 5 个项目（服务端主项目、自测、Launcher、Ijl15、RandomNative），IDE 内全量可见（2026-09-23 修订）。两个 `.vcxproj` 以 `<Build Project="false" />` 标注为**不参与解决方案构建**——原生构建统一走 `patch.bat`（[03 · 4.5](03-build-release-ci.md)）；含 `.vcxproj` 的解决方案在 `dotnet` CLI 上是硬错误（`MSB4278`），服务端跨平台构建按项目进行（`dotnet build` 直接指定 `.csproj`）。
+`DAFLegacy.Emulator.slnx` 是仓库中唯一的解决方案文件，成员是全部 5 个项目（服务端主项目、自测、Launcher、Ijl15、RandomNative），IDE 内全量可见（2026-09-23 修订）。两个 `.vcxproj` 以 `<Build Project="false" />` 标注为**不参与解决方案构建**——原生构建统一走 `patch.bat`（[03 · 4.5](03-build-release-ci.md)）；含 `.vcxproj` 的解决方案在 `dotnet` CLI 上是硬错误（`MSB4278`），服务端跨平台构建按项目进行（`dotnet build` 直接指定 `.csproj`）。
 
 - **理由**：实测（[3.6](#36-全仓库能否只用一个解决方案)）表明不含 `.vcxproj` 的单解决方案可在三个平台 `dotnet build`，而含 `.vcxproj` 的在 `dotnet` CLI 上是硬错误（`MSB4278`）。2026-09-23 修订权衡后把原生项目放回解决方案：IDE 全项目可见、单一构建入口的价值高于"解决方案本身可跨平台"——后者由"按项目构建服务端"等价实现。`<Build Project="false" />` 同时消除原生项目在解决方案平台矩阵下的配置冲突（Ijl15 仅 Win32、RandomNative 仅 x64，否则 `msbuild` 会以 `MSB8013` 请求不存在的 `Release|x64`）。
 - **层边界靠什么守**：编译器，不是自建机制。实测证明 Z1–Z3 全部被无条件覆盖——跨层引用是 `NU1201`（`net10.0` 项目引用 `net10.0-windows` 项目，还原期拒绝，与 `EnableWindowsTargeting` 无关）、`.vcxproj` 引用是 `MSB4278`、`UseWindowsForms` / `UseWPF` 是 `NETSDK1100`。只有 Z5（Windows 系统库 `DllImport`）需要补一处 CI 源码扫描。**不引入 `Directory.Build.props` / `Directory.Build.targets`，也不写 MSBuild 校验目标**——完整实测矩阵与取消理由见 [01 · 3.3](01-target-architecture.md)。
-- **一条必须遵守的约束**：`EnableWindowsTargeting` **只写在 `Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj` 内**，绝不放仓库根。它是 `NETSDK1100` 那道门禁的开关，全局打开会让 Server 层的 WinForms/WPF 违规在 Linux 上静默通过。
-- **保留**：`DFLegacy.Emulator.slnx` 的文件名不变，Windows 用户既有的命令与 Visual Studio 工作流不受影响——只是它不再构建原生项目；原生与客户端产物由 `patch.bat` 承担（见 [03 · 4.5](03-build-release-ci.md) 的运维模型修订）。
+- **一条必须遵守的约束**：`EnableWindowsTargeting` **只写在 `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj` 内**，绝不放仓库根。它是 `NETSDK1100` 那道门禁的开关，全局打开会让 Server 层的 WinForms/WPF 违规在 Linux 上静默通过。
+- **保留**：`DAFLegacy.Emulator.slnx` 的文件名不变，Windows 用户既有的命令与 Visual Studio 工作流不受影响——只是它不再构建原生项目；原生与客户端产物由 `patch.bat` 承担（见 [03 · 4.5](03-build-release-ci.md) 的运维模型修订）。
 ### D5 · 路径与数据目录锚点显式化、可覆盖
 
-引入统一路径解析：配置中的路径统一用 `/`，读取时把 `\` 归一为 `/`；锚点默认仍是 `AppContext.BaseDirectory`（保持现有 Windows 部署布局不变），但允许 `DFLEGACY_HOME` 环境变量覆盖，以便 Linux systemd / 容器把可写数据放到 `/var/lib/dflegacy`。
+引入统一路径解析：配置中的路径统一用 `/`，读取时把 `\` 归一为 `/`；锚点默认仍是 `AppContext.BaseDirectory`（保持现有 Windows 部署布局不变），但允许 `DAFLEGACY_HOME` 环境变量覆盖，以便 Linux systemd / 容器把可写数据放到 `/var/lib/daflegacy`。
 
 - **理由**：`AppContext.BaseDirectory` 在 Linux 上通常是只读的安装目录，把 `data/state.json` 写在那里不符合平台习惯；同时现有 Windows 用户依赖"发布目录内的相对路径"，不能破坏。
 
@@ -302,7 +302,7 @@ Client 层 ──运行期──→ Server 层
 
 ### D7 · Launcher 只做构建解耦，不做跨平台改造
 
-把 `DFLegacy.Launcher.csproj` 里的 `BuildIjl15` / `CopyIjl15ToOutput` / `CopyIjl15ToPublish` 三个 MSBuild Target 改成**消费预构建产物**，原生构建变成一个独立的、可选的前置步骤。同时加 `EnableWindowsTargeting=true` 使 Launcher 可以在非 Windows 上交叉编译出 Windows 二进制。
+把 `DAFLegacy.Launcher.csproj` 里的 `BuildIjl15` / `CopyIjl15ToOutput` / `CopyIjl15ToPublish` 三个 MSBuild Target 改成**消费预构建产物**，原生构建变成一个独立的、可选的前置步骤。同时加 `EnableWindowsTargeting=true` 使 Launcher 可以在非 Windows 上交叉编译出 Windows 二进制。
 
 - **理由**：现在"构建 Launcher"隐含"必须有 PowerShell + CMake + Visual Studio"；解耦后 Launcher 的构建只需 .NET SDK。这让 macOS/Linux 开发者可以验证 Launcher 的托管代码改动而无需 Windows 环境。
 - **不做的**：不移植 WinForms、不移植 `D3D9DeviceProbe`。
@@ -311,7 +311,7 @@ Client 层 ──运行期──→ Server 层
 
 **两层各自可以独立构建与打包**，互不需要对方的产物。这是分层带来的直接收益，也是它必须经受的检验——如果两层仍要一起构建才能出包，分层就只是目录上的装饰。
 
-实测（见 [3.7](#37-两层能否独立打包实测)）：从 macOS 单独发布 Client 层的 Launcher，产出合法的 Windows GUI 可执行文件，全程不触碰 Server 层的服务端项目。当时那次还原涉及 `DFLegacy.Protocol`（即 Launcher 里那条死引用，M0 删除），删掉之后 Client 层打包只还原 `DFLegacy.Launcher` 自身。
+实测（见 [3.7](#37-两层能否独立打包实测)）：从 macOS 单独发布 Client 层的 Launcher，产出合法的 Windows GUI 可执行文件，全程不触碰 Server 层的服务端项目。当时那次还原涉及 `DAFLegacy.Protocol`（即 Launcher 里那条死引用，M0 删除），删掉之后 Client 层打包只还原 `DAFLegacy.Launcher` 自身。
 
 - **依赖关系是零，两个方向都是**：Client 打包只涉及 Client 层的项目，不编译 Server 的任何代码、不需要 Server 的任何产物；Server 打包则完全不触碰 Client 层。
 - **发布产物分开**：服务端包按 RID 出 `win-x64` / `linux-x64`；客户端包只出 `win-x64`。
@@ -321,11 +321,11 @@ Client 层 ──运行期──→ Server 层
 
 | 里程碑 | 内容 | 产出 | 验收摘要 |
 | --- | --- | --- | --- |
-| **M0** 结构重组与构建收敛 | 目录三极重组（`Server/`/`Client/`）+ Protocol 并入 + 单解决方案 + Launcher 解耦 + 配置文件归位 | `Server/DFLegacy.Server/{Protocol,Script,Random,Network,…}/`、`Client/…` | 三平台按项目 `dotnet build` 服务端两项目成功（2026-09-23 修订；解决方案含 `.vcxproj`，仅 MSBuild 可构建）；产物与移动前逐项一致 |
+| **M0** 结构重组与构建收敛 | 目录三极重组（`Server/`/`Client/`）+ Protocol 并入 + 单解决方案 + Launcher 解耦 + 配置文件归位 | `Server/DAFLegacy.Server/{Protocol,Script,Random,Network,…}/`、`Client/…` | 三平台按项目 `dotnet build` 服务端两项目成功（2026-09-23 修订；解决方案含 `.vcxproj`，仅 MSBuild 可构建）；产物与移动前逐项一致 |
 | **M1** 层边界护栏 | CI 源码扫描（Z5）+ 三平台矩阵 + 功能面与产物基线 | 可执行的层边界 | 故意给 Server 层项目加 Windows 依赖能被拦下 |
-| **M2** 随机源收拢 | 服务端与 `DFLegacy.RandomNative` 解耦（模块保留至 Client 层），`Random/` 模块换成纯托管的单一实现（保留 `IDropRandomSource`） | 服务端随机源无任何原生依赖 | 42 处调用点零改动；三平台随机源行为一致 |
+| **M2** 随机源收拢 | 服务端与 `DAFLegacy.RandomNative` 解耦（模块保留至 Client 层），`Random/` 模块换成纯托管的单一实现（保留 `IDropRandomSource`） | 服务端随机源无任何原生依赖 | 42 处调用点零改动；三平台随机源行为一致 |
 | **M3** PVF 脚本模块收拢 | `PvfScript/` 模块补齐编码契约与路径归一；集中编码注册 | PVF 读取三平台测试 | 含 CP936/CP949 路径表的 PVF 用例在 3 平台通过 |
-| **M4** 路径与数据契约 | `PathResolver`、`DFLEGACY_HOME`；修 R9 降级一致性 | 配置与路径契约落地 | Linux 上服务端用真实 `Script.pvf` 完整启动并接受连接 |
+| **M4** 路径与数据契约 | `PathResolver`、`DAFLEGACY_HOME`；修 R9 降级一致性 | 配置与路径契约落地 | Linux 上服务端用真实 `Script.pvf` 完整启动并接受连接 |
 | **M5** 独立打包与发布 | `publish.sh`（RID 探测）、CI 发布矩阵 | CI 绿 | `ubuntu-latest` 产出 `linux-x64` 服务端包（2026-09-23 修订后 CI 只出服务端包；2026-09-29 修订后仅保留 Linux 平台，`windows-latest` 发布 job 移除，Windows 形态由本地 `publish.bat` 产出） |
 
 M0–M5 是本次重构的全部承诺范围。详细任务分解与每阶段验收命令见 [04 迁移路线](04-migration-plan.md)。
@@ -341,10 +341,10 @@ M0–M5 是本次重构的全部承诺范围。详细任务分解与每阶段验
 | 风险 | 影响 | 应对 |
 | --- | --- | --- |
 | **M0 的目录重组是本次改动面最大的一步**（移动 79 + 11 个 `.cs`、3 个项目换位置、1 个项目消失，并牵连 `.slnx`、CI、`publish.bat`） | 漏改一处路径即构建失败；若与语义改动混在一起则无法二分定位 | 作为**纯 `git mv` 的独立提交**，验收标准是"产物与移动前逐项一致"而非"能构建"；四件事必须在同一提交内完成，只做一半会落到半旧半新的路径上 |
-| Protocol 并入主项目后，`DFLegacy.Protocol.csproj` 消失 | 若有外部脚本引用该 csproj 会失效 | 全仓库检索确认只有 `DFLegacy.Launcher.csproj` 引用它，且是死引用；CI 与 `publish.bat` 均未引用该 csproj 路径 |
+| Protocol 并入主项目后，`DAFLegacy.Protocol.csproj` 消失 | 若有外部脚本引用该 csproj 会失效 | 全仓库检索确认只有 `DAFLegacy.Launcher.csproj` 引用它，且是死引用；CI 与 `publish.bat` 均未引用该 csproj 路径 |
 | 搬运 `ScriptFileSystem` 时改变行为 | PVF 路径大小写、缓存语义、目录回退路径可能出现细微差异 | M3 前先补齐已存在行为的特征测试；`StringComparer.OrdinalIgnoreCase` 等语义逐条对照。注意 M0 **只移动文件不改逻辑**，M3 才调整语义 |
-| **把 `EnableWindowsTargeting` 放到仓库根或共享 props** | Z2 的 WinForms/WPF 违规会在 Linux 上静默通过——护栏失效且无任何报错 | 它只写在 `Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj` 内；M0 验收含"仓库根不存在 `Directory.Build.props`"一项（[01 · 3.3](01-target-architecture.md)）。**Z1–Z3 本身由编译器无条件守住，不需要额外机制** |
-| `.vcxproj` 移出解决方案后，Windows 上 `msbuild DFLegacy.Emulator.slnx` 不再构建原生项目 | 习惯用该命令的开发者会以为原生已构建 | `publish.bat` 显式调用 `build-native.ps1`；`README.md` 不改，改动说明落在 [03](03-build-release-ci.md) |
+| **把 `EnableWindowsTargeting` 放到仓库根或共享 props** | Z2 的 WinForms/WPF 违规会在 Linux 上静默通过——护栏失效且无任何报错 | 它只写在 `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj` 内；M0 验收含"仓库根不存在 `Directory.Build.props`"一项（[01 · 3.3](01-target-architecture.md)）。**Z1–Z3 本身由编译器无条件守住，不需要额外机制** |
+| `.vcxproj` 移出解决方案后，Windows 上 `msbuild DAFLegacy.Emulator.slnx` 不再构建原生项目 | 习惯用该命令的开发者会以为原生已构建 | `publish.bat` 显式调用 `build-native.ps1`；`README.md` 不改，改动说明落在 [03](03-build-release-ci.md) |
 | **迁移可能丢掉功能入口而无人察觉** | 文件一个不少、构建也通过，但某个 CLI 开关或 Admin API 端点失效——**文件覆盖检查发现不了这类问题** | M0 提取功能面基线（[02 · R11](02-portability-contracts.md#r11--功能面不变)），并明确：服务端 CLI、Launcher 的 6 个 CLI 模式、31 个路由、6 个后台服务都必须逐项验证**运行期可达**，不能只看构建 |
 | 改名 `server.json` / `launcher.json` 的项类型写错 | 文件静默不进输出目录，构建却显示成功 | 两个项目 SDK 不同（`Content` vs `None`）；验收要求实际 `ls` 输出目录（[01 · 10.3](01-target-architecture.md#103-验收)） |
 | Linux 上缺少 `Script.pvf` 导致 M4 无法验收 | 里程碑卡住 | 用现有目录回退模式（`SkillScriptPath`）构造最小脚本集作为验收夹具，真实 PVF 验收另计 |

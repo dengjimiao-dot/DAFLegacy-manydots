@@ -1,4 +1,4 @@
-# DFLegacy 设计文档汇总
+# DAFLegacy 设计文档汇总
 
 - 更新:2026-09-29
 - 本目录收录服务端结构性设计文档;各文档状态以其自身标注 + 代码实际落地核定,与本页冲突时以代码为真。
@@ -38,17 +38,17 @@
 ### 08 · SQLite 存储迁移(已实现)
 
 - 原现状:唯一持久化入口 `Persistence/JsonGameStore.cs`(约 5,600 行):单文件 `state.json` 全量重写、无事务边界。**该实现已整体移除**。
-- 落地形态:领域逻辑集中在 `Server/DFLegacy.Server/Sqlite/GameStoreCore.cs`(公开面 `IGameStore`,消费方只依赖接口),落盘为同目录 `SqliteGameStore.cs` + `SqliteStateStore.cs`;写入粒度为「内存树 diff → 单个 IMMEDIATE 事务增量写」,不再整库重写。基础设施 `GameDatabase` / `SqliteDatabaseBootstrap` / `SqliteMigrations` 参照 ServerS4A21 的短连接 + 基线/增量两段式迁移形态。
+- 落地形态:领域逻辑集中在 `Server/DAFLegacy.Server/Sqlite/GameStoreCore.cs`(公开面 `IGameStore`,消费方只依赖接口),落盘为同目录 `SqliteGameStore.cs` + `SqliteStateStore.cs`;写入粒度为「内存树 diff → 单个 IMMEDIATE 事务增量写」,不再整库重写。基础设施 `GameDatabase` / `SqliteDatabaseBootstrap` / `SqliteMigrations` 参照 ServerS4A21 的短连接 + 基线/增量两段式迁移形态。
 - 旧档不转换:无库则按基线建空库并播种 `test/test`,有库直接用。取舍与三处基线修正见该文 §10。
-- schema 基线:[Server/DFLegacy.Server/Sqlite/act1_schema.sql](../../Server/DFLegacy.Server/Sqlite/act1_schema.sql)(统称 60A1,23 张表,其中 7 张为未实现功能的预留表,见该文档 D8;**表设计模式取自 [86S4A21](../sql/86S4A21_schema.sql)、功能面上限兼容已移除的早期草案**;`lock_state`/`hunt_trigger_format`/`account_dungeon_progress`/`character_exp_boost` 为草案兼容预留;不采纳 86 的 item_core BLOB,物品走扁平列 + item_uid 代理主键)。
+- schema 基线:[Server/DAFLegacy.Server/Sqlite/act1_schema.sql](../../Server/DAFLegacy.Server/Sqlite/act1_schema.sql)(统称 60A1,23 张表,其中 7 张为未实现功能的预留表,见该文档 D8;**表设计模式取自 [86S4A21](../sql/86S4A21_schema.sql)、功能面上限兼容已移除的早期草案**;`lock_state`/`hunt_trigger_format`/`account_dungeon_progress`/`character_exp_boost` 为草案兼容预留;不采纳 86 的 item_core BLOB,物品走扁平列 + item_uid 代理主键)。
 - 验证:SelfTests 23 套件全绿,其中 `sqlite-infrastructure` 覆盖新建库/重复初始化去重/异构基线拒绝/版本双写互验/失败删三件套/存取往返;真机回归未做,见 `PENDING.md` P-08。
 
 ### 09 · DAF-MCP 协议包实时监听(已实现)
 
 - 代码落点:
-  - `Server/DFLegacy.Mcp/`:独立模块项目(`McpModule`、`McpHost`、`Tap/PacketTap{Event,Hub,Filter,Tools}`、`Tap/PacketNamesResource`)——§6 全部 6 个工具(`packet_watch/get/wait`、`session_list`、`packet_names_search`、`tap_status`)均已提供。
-  - `Server/DFLegacy.Server/Network/Core/IPacketTapSink.cs`:遥测接缝;`Infrastructure/RuntimeState.cs`:漏斗改造;`Infrastructure/McpModuleLoader.cs`:反射加载器。
-- 配置:`server.json` → `DFLegacy.Mcp.{Enabled,Host,Port}`(`Enabled` 代码默认 `false`;当前本地 `server.json` 已开启,`127.0.0.1:12222`)。发布:`publish-mcp.bat` / `publish-mcp.sh` 单独发布模块 DLL。
+  - `Server/DAFLegacy.Mcp/`:独立模块项目(`McpModule`、`McpHost`、`Tap/PacketTap{Event,Hub,Filter,Tools}`、`Tap/PacketNamesResource`)——§6 全部 6 个工具(`packet_watch/get/wait`、`session_list`、`packet_names_search`、`tap_status`)均已提供。
+  - `Server/DAFLegacy.Server/Network/Core/IPacketTapSink.cs`:遥测接缝;`Infrastructure/RuntimeState.cs`:漏斗改造;`Infrastructure/McpModuleLoader.cs`:反射加载器。
+- 配置:`server.json` → `DAFLegacy.Mcp.{Enabled,Host,Port}`(`Enabled` 代码默认 `false`;当前本地 `server.json` 已开启,`127.0.0.1:12222`)。发布:`publish-mcp.bat` / `publish-mcp.sh` 单独发布模块 DLL。
 - 接入与验收:见 [README.md §MCP](../../README.md)(智能体接入配置、工具清单)。
 - 尚未实施(属后续方向,不影响本档状态):G2 PVF 工具组(§15.2)、鉴权、pcap 导出、stdio 适配、包注入(§14)。
 
@@ -57,7 +57,7 @@
 00–06 系列已随原工作区同步入库(2026-09-29),均为跨平台可移植性重构的设计与实施记录;源码注释中的引用现已可本地解析:
 
 - `PathResolver.cs`、`PvfEncodings.cs` → [02 · 可移植性契约](02-portability-contracts.md)(R3/R4/R5)
-- `DFLegacy.Launcher.csproj` → [01 · 目标架构](01-target-architecture.md)(3.3 补丁资产、2.4)
+- `DAFLegacy.Launcher.csproj` → [01 · 目标架构](01-target-architecture.md)(3.3 补丁资产、2.4)
 - `JsonGameStore.cs`、`GameRandomSource.cs` → [06 · 随机源纯托管](06-random-source-managed.md)(随机三分类、唯一性分配规则)
 - 正文中的"04·Q6""沿用 04 执行原则"等引用 → [04 · 迁移路线](04-migration-plan.md)
 - 编号 07–09 延续该系列次序(09 曾误题"07",已改正)。

@@ -1,6 +1,6 @@
 # ServerS4A21(86 级版本)已实现协议处理参考 · 总览
 
-> - **整理对象**:`ServerS4A21` 的 `Server/DfoServer`(下称 A21),目标客户端为 86 级上限版本(仓库内代号 86JP/S4A21,分发入口方法即名 `OnPacketReceived_86JP`)。本文整理其**已实现的游戏协议处理**,供 DFLegacy 回填协议时参考。
+> - **整理对象**:`ServerS4A21` 的 `Server/DfoServer`(下称 A21),目标客户端为 86 级上限版本(仓库内代号 86JP/S4A21,分发入口方法即名 `OnPacketReceived_86JP`)。本文整理其**已实现的游戏协议处理**,供 DAFLegacy 回填协议时参考。
 > - **使用方式**:按域拆分的分册见文末导航。每协议条目含:请求解析、应答/推送布局、行为要点,均带 `文件:行号` 证据(行号为整理时点状态,仅供参考)。引用路径相对 `Server/DfoServer`。
 > - **配套文档**:两版共有协议的逐项对比与定性见 [comparison-vs-servers4a21.md](comparison-vs-servers4a21.md);60A1 侧枚举全表见 [client-packet-enums-60cn.md](../protocol/client-packet-enums-60cn.md);回填实施方案见 [feature-backfill-plan-vs-s4a21.md](feature-backfill-plan-vs-s4a21.md)。**A21 的 NOTI/CMD 编号与 60A1 有漂移,回填时必须先过 60A1 枚举表换算,严禁照抄编号。A21 结论仅作参考——两版协议与用法存在差异,不得直接照搬;用于本项目的任何结论须经客户端主程序 IDA 数据库逐 case 验证。**
 

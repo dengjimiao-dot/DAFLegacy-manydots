@@ -9,11 +9,11 @@
 
 | 入口 | 现状 | 目标 |
 | --- | --- | --- |
-| `DFLegacy.Emulator.slnx` | 全部 6 个项目，含 2 个 `.vcxproj`，只能 MSBuild | **唯一解决方案，5 个成员**（2026-09-23 修订：放回 Launcher 与 2 个原生项目，IDE 全量可见；原生标注 `<Build Project="false" />` 不参与构建）；解决方案仅 MSBuild 可构建，服务端跨平台按项目构建 |
-| `publish.bat` | 批处理，vswhere 找 MSBuild，产出 `dist/DFLegacy.Server` | **保留**，Windows 发布入口 |
+| `DAFLegacy.Emulator.slnx` | 全部 6 个项目，含 2 个 `.vcxproj`，只能 MSBuild | **唯一解决方案，5 个成员**（2026-09-23 修订：放回 Launcher 与 2 个原生项目，IDE 全量可见；原生标注 `<Build Project="false" />` 不参与构建）；解决方案仅 MSBuild 可构建，服务端跨平台按项目构建 |
+| `publish.bat` | 批处理，vswhere 找 MSBuild，产出 `dist/DAFLegacy.Server` | **保留**，Windows 发布入口 |
 | `publish.sh` | 不存在 | **新增**，Linux/macOS 发布入口，产出同一目录布局 |
-| `stop.bat` | `taskkill` 结束 `DFLegacy.Server.exe` | **保留**；服务端须支持 `SIGTERM` 优雅退出（R7） |
-| `build-native.ps1` × 2 | PowerShell + 必须 Visual Studio CMake 生成器 | **保留 2 个**（`DFLegacy.Ijl15` 与 `DFLegacy.RandomNative` 的 Windows 原生构建），均由 `patch.bat` 调用；`random` 那份随模块保留至 `Client/DFLegacy.RandomNative/` |
+| `stop.bat` | `taskkill` 结束 `DAFLegacy.Server.exe` | **保留**；服务端须支持 `SIGTERM` 优雅退出（R7） |
+| `build-native.ps1` × 2 | PowerShell + 必须 Visual Studio CMake 生成器 | **保留 2 个**（`DAFLegacy.Ijl15` 与 `DAFLegacy.RandomNative` 的 Windows 原生构建），均由 `patch.bat` 调用；`random` 那份随模块保留至 `Client/DAFLegacy.RandomNative/` |
 | `.github/workflows/build.yml` | `runs-on: windows-latest` | **单 job**：护栏扫描 + 服务端自测，不做发布（2026-09-30 修订，见 [5.1](#51-buildyml-目标结构)；2026-09-23 修订见 [4.5](#45-运维模型变更2026-09-23-修订流水线只出服务端包)；修订前为 portable 矩阵 + windows-full 双 job） |
 | `.github/workflows/release.yml` | `runs-on: windows-latest`，单平台产物 | **Linux 服务端单包**：`linux-x64`（2026-09-23 修订产物只含服务端；2026-09-29 修订移除 `windows-server` job，Windows 服务端包由本地 `publish.bat` 产出，见 [6](#6-发布流程releaseyml)） |
 
@@ -25,7 +25,7 @@
 
 ### 唯一需要跨项目注意的属性：`EnableWindowsTargeting`
 
-它**只写在** `Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj` 内：
+它**只写在** `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj` 内：
 
 ```xml
 <PropertyGroup>
@@ -57,12 +57,12 @@ MSBuild 属性与 `Include` 中的路径**统一使用 `/`**。两个平台都�
 
 | 文件 | 构建期来源 | 复制机制（谁负责） | 合并 | 客户端 | 服务端 | Linux | 生效 |
 | --- | --- | --- | :-: | :-: | :-: | :-: | --- |
-| `DFLegacy.Server.exe` / `DFLegacy.Server` | Server 项目输出 | `dotnet publish` 本体 | ✅ | — | ✅ | ✅ | 现状 |
-| `DFLegacy.Launcher.exe` | Launcher 项目输出 | `dotnet publish` 本体 | ✅ | ✅ | — | — | 现状 |
-| `server.json` | `Server/DFLegacy.Server/`（项目内） | `Server.csproj` 的 `<Content Update>` | ✅ | — | ✅ | ✅ | M0 归位 |
-| `launcher.json` | `Client/DFLegacy.Launcher/`（项目内） | `Launcher.csproj` 的 `<None Update>` | ✅ | ✅ | — | — | M0 归位 |
-| `wwwroot/**`（12 个） | `Server/DFLegacy.Server/wwwroot/` | `Server.csproj` 的 `<Content Update="wwwroot/**">` | ✅ | — | ✅ | ✅ | 现状 |
-| `Config.ini` | `Client/DFLegacy.Ijl15/`（跨项目取文件） | `Launcher.csproj` 的 `<Content Include>` + `Link` | ✅ | ✅ | — | — | 现状 |
+| `DAFLegacy.Server.exe` / `DAFLegacy.Server` | Server 项目输出 | `dotnet publish` 本体 | ✅ | — | ✅ | ✅ | 现状 |
+| `DAFLegacy.Launcher.exe` | Launcher 项目输出 | `dotnet publish` 本体 | ✅ | ✅ | — | — | 现状 |
+| `server.json` | `Server/DAFLegacy.Server/`（项目内） | `Server.csproj` 的 `<Content Update>` | ✅ | — | ✅ | ✅ | M0 归位 |
+| `launcher.json` | `Client/DAFLegacy.Launcher/`（项目内） | `Launcher.csproj` 的 `<None Update>` | ✅ | ✅ | — | — | M0 归位 |
+| `wwwroot/**`（12 个） | `Server/DAFLegacy.Server/wwwroot/` | `Server.csproj` 的 `<Content Update="wwwroot/**">` | ✅ | — | ✅ | ✅ | 现状 |
+| `Config.ini` | `Client/DAFLegacy.Ijl15/`（跨项目取文件） | `Launcher.csproj` 的 `<Content Include>` + `Link` | ✅ | ✅ | — | — | 现状 |
 | `ijl15.dll` | `artifacts/native/ijl15/<config>/win-x86/` | `Launcher.csproj` 的可选 `<Content Condition="Exists(...)">` | ✅ | ✅ | — | — | M0 改为可选内容项 |
 | `d3d8.dll` | `Client/Patch/` | `Launcher.csproj` 新增 `<Content>` | ✅ | ✅ | — | — | **M5 新增** |
 | `LICENSE-d3d8to9.md` | `Client/Patch/` | 同上（许可义务，必须与 `d3d8.dll` 同步） | ✅ | ✅ | — | — | **M5 新增** |
@@ -75,17 +75,17 @@ MSBuild 属性与 `Include` 中的路径**统一使用 `/`**。两个平台都�
 3. **`Config.ini` 与 `ijl15.dll` 的来源是 `Ij15` 项目，而复制责任在 `Launcher` 项目**——这是一条跨项目文件依赖（[01 · 2.2](01-target-architecture.md#22-client-层内部的依赖)）。拆 Launcher 的原生 Target 时不要连它一起删掉。
 4. **Linux 包不含任何客户端侧资产**：`launcher.json`、`Config.ini`、`ijl15.dll`、`d3d8.dll`、`LICENSE-d3d8to9.md` 都没有 Linux 形态。这是刻意的，不是遗漏。
 
-**建议在 CI 加一步"包内容校验"**：按上表**按包分列**检查每个包里该有的文件**实际存在**，缺失即失败（注意不能把四个包的期望混成一张清单——例如无扩展名的 `DFLegacy.Server` apphost 只存在于 Linux 包，`ijl15.dll` 只存在于含客户端资产的包）。
+**建议在 CI 加一步"包内容校验"**：按上表**按包分列**检查每个包里该有的文件**实际存在**，缺失即失败（注意不能把四个包的期望混成一张清单——例如无扩展名的 `DAFLegacy.Server` apphost 只存在于 Linux 包，`ijl15.dll` 只存在于含客户端资产的包）。
 
 ```yaml
 - name: 校验包内容（按包分列）
   shell: pwsh
   run: |
     $expected = @{
-      'dist/DFLegacy.Server'  = @('DFLegacy.Server.exe','server.json','launcher.json','wwwroot',
+      'dist/DAFLegacy.Server'  = @('DAFLegacy.Server.exe','server.json','launcher.json','wwwroot',
                                   'Config.ini','ijl15.dll','d3d8.dll','LICENSE-d3d8to9.md')
-      'dist/server-linux-x64' = @('DFLegacy.Server','server.json','wwwroot')
-      'dist/client-win-x64'   = @('DFLegacy.Launcher.exe','launcher.json','Config.ini',
+      'dist/server-linux-x64' = @('DAFLegacy.Server','server.json','wwwroot')
+      'dist/client-win-x64'   = @('DAFLegacy.Launcher.exe','launcher.json','Config.ini',
                                   'ijl15.dll','d3d8.dll','LICENSE-d3d8to9.md')
     }
     $failed = $false
@@ -104,9 +104,9 @@ MSBuild 属性与 `Include` 中的路径**统一使用 `/`**。两个平台都�
 > **2026-09-23 修订**：发布流水线只产出服务端两包，客户端产物由本地 `patch.bat` 发布（见 [4.5](#45-运维模型变更2026-09-23-修订流水线只出服务端包)）。本节的合并包布局、发布命令与 `-p:BuildIjl15Native=true` 说明为修订前基线，其中"`-p:BuildIjl15Native=true` 是 M0 之后的必需参数"一段已作废。
 
 ```text
-dist/DFLegacy.Server/
-  DFLegacy.Server.exe
-  DFLegacy.Launcher.exe          ← 与 Server 同目录，便于 Launcher 按 exe 名拉起服务端（01 · 2.3）
+dist/DAFLegacy.Server/
+  DAFLegacy.Server.exe
+  DAFLegacy.Launcher.exe          ← 与 Server 同目录，便于 Launcher 按 exe 名拉起服务端（01 · 2.3）
   ijl15.dll                      ← 由 Launcher 安装到客户端目录
   Config.ini                     ← 同上，随 ijl15.dll 一起安装
   d3d8.dll                       ← M5 新增；随包分发（01 · 2.4）
@@ -120,8 +120,8 @@ dist/DFLegacy.Server/
 发布命令（与现在等价，仅补上显式 RID 与 M0 后的 `-p:BuildIjl15Native=true`）：
 
 ```powershell
-dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r win-x64 -o dist/DFLegacy.Server
-dotnet publish Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj -c Release -r win-x64 -o dist/DFLegacy.Server -p:BuildIjl15Native=true
+dotnet publish Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release -r win-x64 -o dist/DAFLegacy.Server
+dotnet publish Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj -c Release -r win-x64 -o dist/DAFLegacy.Server -p:BuildIjl15Native=true
 ```
 
 **`-p:BuildIjl15Native=true` 是 M0 之后的必需参数**：Launcher 的原生 Target 解耦为显式 opts-in 后，不传这个属性就不会复制 `ijl15.dll`。M0 之前该步骤由 `Build` 目标自动触发，所以旧命令里没有它——**升级时漏掉这个参数，包会静默缺少 `ijl15.dll`**。
@@ -130,7 +130,7 @@ dotnet publish Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj -c Release -r w
 
 ```text
 dist/server-linux-x64/
-  DFLegacy.Server               ← 无扩展名，apphost 可执行
+  DAFLegacy.Server               ← 无扩展名，apphost 可执行
   server.json
   wwwroot/
   data/state.json
@@ -139,7 +139,7 @@ dist/server-linux-x64/
 发布命令：
 
 ```bash
-dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
+dotnet publish Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
 ```
 
 **这个包不含任何客户端侧资产**（`launcher.json`、`Config.ini`、`ijl15.dll`、`d3d8.dll`、`LICENSE-d3d8to9.md`）——它们没有 Linux 形态，是刻意的排除而非遗漏（[3.0](#30-包内容来源与复制责任)）。
@@ -152,7 +152,7 @@ dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux
 
 ## 4. 原生项目的构建与消费
 
-原生产物与托管项目的耦合是本次重构的核心。`DFLegacy.RandomNative` 已与服务端解耦并保留至 `Client/DFLegacy.RandomNative/`（服务端随机源降级为纯托管实现，见 [06 · 随机源降级为纯托管实现](06-random-source-managed.md)），它不参与解决方案构建、不进任何流水线交付，本节只展开 `DFLegacy.Ijl15`；原 §4.2（`RandomNative` 的消费方式）与原 §4.4（跨平台化）随服务端解耦一并移除，故小节编号跳过。
+原生产物与托管项目的耦合是本次重构的核心。`DAFLegacy.RandomNative` 已与服务端解耦并保留至 `Client/DAFLegacy.RandomNative/`（服务端随机源降级为纯托管实现，见 [06 · 随机源降级为纯托管实现](06-random-source-managed.md)），它不参与解决方案构建、不进任何流水线交付，本节只展开 `DAFLegacy.Ijl15`；原 §4.2（`RandomNative` 的消费方式）与原 §4.4（跨平台化）随服务端解耦一并移除，故小节编号跳过。
 
 ### 4.1 产物落地约定
 
@@ -165,9 +165,9 @@ artifacts/native/
 
 `artifacts/` 已在 `.gitignore` 中，产物不入库。**RID 作为目录层级显式体现**，取代现在"同目录下靠文件名区分"的做法（当前 `artifacts/native/ijl15/$(Configuration)/ijl15.dll` 没有 RID 维度，一旦多平台就会冲突）。
 
-### 4.3 `DFLegacy.Ijl15` 的构建与 Launcher 解耦（M0 改造）
+### 4.3 `DAFLegacy.Ijl15` 的构建与 Launcher 解耦（M0 改造）
 
-当前 `DFLegacy.Launcher.csproj` 含三个依赖 PowerShell 与 CMake 的 Target，由 `Build` 自动触发：
+当前 `DAFLegacy.Launcher.csproj` 含三个依赖 PowerShell 与 CMake 的 Target，由 `Build` 自动触发：
 
 ```text
 BuildIjl15           BeforeTargets=Build     → Exec powershell build-native.ps1
@@ -208,15 +208,15 @@ CopyIjl15ToPublish   AfterTargets=Publish    → 复制到 $(PublishDir)
 | 交付物 | 构建方式 | 工具链 |
 | --- | --- | --- |
 | 服务端包 | `publish.bat`（流水线与本地同一入口），仅 `dotnet publish` 服务端项目 | 仅 .NET SDK |
-| 原生模块 `ijl15.dll` / `DFLegacy.RandomNative.dll` | `patch.bat` 手动构建（包装各自的 `build-native.ps1`）；RandomNative 的产物随发布一并复制进客户端包目录 | CMake + MSVC |
-| 启动器 / 客户端包 | `patch.bat` 一并 `dotnet publish` Launcher（输出 `dist\DFLegacy.Launcher\`）；产物存在即自动带上插件 | 仅 .NET SDK |
+| 原生模块 `ijl15.dll` / `DAFLegacy.RandomNative.dll` | `patch.bat` 手动构建（包装各自的 `build-native.ps1`）；RandomNative 的产物随发布一并复制进客户端包目录 | CMake + MSVC |
+| 启动器 / 客户端包 | `patch.bat` 一并 `dotnet publish` Launcher（输出 `dist\DAFLegacy.Launcher\`）；产物存在即自动带上插件 | 仅 .NET SDK |
 
 由此落地的结论：**拆分项目后不需要任何"混合编译模式"。** Server.csproj 零
 ProjectReference、零原生耦合；Launcher.csproj 零 ProjectReference；解决方案
 的两个 `.vcxproj` 成员不参与构建（`<Build Project="false" />`）；`ijl15.dll`
 是 `Condition="Exists(...)"` 的可选内容项。
 原 M0 引入的 `-p:BuildIjl15Native=true` 混合编译开关随本决定删除
-（[§4.3](#43-dflegacyijl15-的构建与-launcher-解耦m0-改造) 中的开关写法已失效），
+（[§4.3](#43-daflegacyijl15-的构建与-launcher-解耦m0-改造) 中的开关写法已失效），
 §3.0/§3.1 中"`-p:BuildIjl15Native=true` 是必需参数"的说明一并作废——
 发布客户端包前先跑一次 `patch.bat` 即可。`build.yml` 收敛为单 job：护栏扫描 +
 服务端自测 + `publish.bat` + 服务端包内容校验；`release.yml` 只产出服务端双包
@@ -224,7 +224,7 @@ ProjectReference、零原生耦合；Launcher.csproj 零 ProjectReference；解�
 `patch.bat` 发布到 `artifacts\native\launcher\`。
 
 > **2026-09-29 修订**：`release.yml` 移除 `windows-server` job，CI 发布只保留
-> Linux 服务端包（`DFLegacy-<tag>-linux-x64.zip`）。Windows 服务端包不再由 CI
+> Linux 服务端包（`DAFLegacy-<tag>-linux-x64.zip`）。Windows 服务端包不再由 CI
 > 产出，需要 Windows 形态时在本地执行 `publish.bat`（产物等价，见 [3.0](#30-包内容来源与复制责任)）。
 
 > **2026-09-30 修订**：`build.yml` 收敛为护栏扫描 + 服务端自测，移除
@@ -262,23 +262,23 @@ jobs:
         with: { dotnet-version: 10.0.x }
       - name: 构建服务端项目（解决方案含 .vcxproj，dotnet CLI 报 MSB4278）
         run: |
-          dotnet build Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release
-          dotnet build Server/DFLegacy.Server.SelfTests/DFLegacy.Server.SelfTests.csproj -c Release
+          dotnet build Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release
+          dotnet build Server/DAFLegacy.Server.SelfTests/DAFLegacy.Server.SelfTests.csproj -c Release
       - name: 自测
         # 协议 / PvfScript / Random / 业务域用例都在同一个自测项目里，一次执行
-        run: dotnet Server/DFLegacy.Server.SelfTests/bin/Release/net10.0/DFLegacy.Server.SelfTests.dll
+        run: dotnet Server/DAFLegacy.Server.SelfTests/bin/Release/net10.0/DAFLegacy.Server.SelfTests.dll
       - name: 发布 Linux 服务端
         if: matrix.os == 'ubuntu-latest'
-        run: dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
+        run: dotnet publish Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest'
         with:
-          name: DFLegacy-server-linux-x64
+          name: DAFLegacy-server-linux-x64
           path: dist/server-linux-x64
           retention-days: 7
 
   windows-full:
-    # 全量构建，含 DFLegacy.Ijl15 原生项目 —— 保持现有覆盖
+    # 全量构建，含 DAFLegacy.Ijl15 原生项目 —— 保持现有覆盖
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -287,24 +287,24 @@ jobs:
       - uses: microsoft/setup-msbuild@v2
       - name: 构建原生项目
         # 原生成员在解决方案中不参与构建（<Build Project="false" />），原生构建是独立步骤。
-        # DFLegacy.Ijl15 注册了 CTest 用例（ijl15_compatibility），
+        # DAFLegacy.Ijl15 注册了 CTest 用例（ijl15_compatibility），
         # 现有 CI 并未运行它；调用仓库既有的 build-native.ps1 的 -RunTests 开关一并补齐。
         run: |
-          .\Client\DFLegacy.Ijl15\build-native.ps1 -Configuration Release -RunTests
+          .\Client\DAFLegacy.Ijl15\build-native.ps1 -Configuration Release -RunTests
       - name: 构建托管解决方案
-        run: msbuild .\DFLegacy.Emulator.slnx /m /restore /p:Configuration=Release
+        run: msbuild .\DAFLegacy.Emulator.slnx /m /restore /p:Configuration=Release
       - name: 冒烟测试
-        run: .\Server\DFLegacy.Server.SelfTests\bin\Release\net10.0\DFLegacy.Server.SelfTests.exe
+        run: .\Server\DAFLegacy.Server.SelfTests\bin\Release\net10.0\DAFLegacy.Server.SelfTests.exe
       - name: 发布 Windows 服务端与启动器
         # Launcher 的原生 Target 已在 M0 解耦为显式 opts-in，
         # 因此这里必须传 -p:BuildIjl15Native=true 才会复制 ijl15.dll。
         run: |
-          dotnet publish .\Server\DFLegacy.Server\DFLegacy.Server.csproj -c Release -r win-x64 -o .\dist\DFLegacy.Server
-          dotnet publish .\Client\DFLegacy.Launcher\DFLegacy.Launcher.csproj -c Release -r win-x64 -o .\dist\DFLegacy.Server -p:BuildIjl15Native=true
+          dotnet publish .\Server\DAFLegacy.Server\DAFLegacy.Server.csproj -c Release -r win-x64 -o .\dist\DAFLegacy.Server
+          dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release -r win-x64 -o .\dist\DAFLegacy.Server -p:BuildIjl15Native=true
       - uses: actions/upload-artifact@v4
         with:
-          name: DFLegacy-dist
-          path: dist/DFLegacy.Server
+          name: DAFLegacy-dist
+          path: dist/DAFLegacy.Server
           retention-days: 7
 ```
 
@@ -315,9 +315,9 @@ jobs:
 
 ### 5.2 测试运行器风格的取舍
 
-仓库现有自测项目（M0 后为 `Server/DFLegacy.Server.SelfTests/`）是自建 runner（`Program.cs` + 退出码，输出 `All DFLegacy protocol smoke tests passed.`），全仓库**没有任何测试框架包引用**。
+仓库现有自测项目（M0 后为 `Server/DAFLegacy.Server.SelfTests/`）是自建 runner（`Program.cs` + 退出码，输出 `All DAFLegacy protocol smoke tests passed.`），全仓库**没有任何测试框架包引用**。
 
-**决定：自测项目 `Server/DFLegacy.Server.SelfTests/` 沿用同样的自建 runner 风格**，作为 Exe 由 CI 直接执行，不引入 xunit/nunit/MSTest。新增的 PvfScript / Random 用例放在该项目的对应目录下，不另建项目。
+**决定：自测项目 `Server/DAFLegacy.Server.SelfTests/` 沿用同样的自建 runner 风格**，作为 Exe 由 CI 直接执行，不引入 xunit/nunit/MSTest。新增的 PvfScript / Random 用例放在该项目的对应目录下，不另建项目。
 
 - **理由**：与现有约定一致；避免为三个平台的 CI 引入测试框架的还原与适配成本；这些测试本身就是"跑一串用例、失败即非零退出"的形态，不需要框架的发现与并行能力。
 - **可选项**：若后续测试量增大需要参数化、夹具生命周期或覆盖率集成，再整体迁移到 xunit 会比现在部分迁移更省事。这是一次性决定，记录在 [04 · 待决问题](04-migration-plan.md#5-待决问题)。
@@ -326,16 +326,16 @@ jobs:
 
 目标结构：按标签触发，产出**分层独立的包**并各自计算校验和。
 
-> **2026-09-23 修订**：`release.yml` 只产出两个**服务端**包（`DFLegacy-<tag>-linux-x64.zip` 与 `DFLegacy-<tag>-server-win-x64.zip`，后者升为必需），只单独构建 `Server/DFLegacy.Server/DFLegacy.Server.csproj`，产物只含服务端；合并包与纯客户端包不再由 CI 产出。下表为修订前的基线设计，保留备查。
+> **2026-09-23 修订**：`release.yml` 只产出两个**服务端**包（`DAFLegacy-<tag>-linux-x64.zip` 与 `DAFLegacy-<tag>-server-win-x64.zip`，后者升为必需），只单独构建 `Server/DAFLegacy.Server/DAFLegacy.Server.csproj`，产物只含服务端；合并包与纯客户端包不再由 CI 产出。下表为修订前的基线设计，保留备查。
 >
-> **2026-09-29 修订**：`release.yml` 只保留 `linux-server` job，唯一发布产物为 `DFLegacy-<tag>-linux-x64.zip`（含 `.sha256`）；`windows-server` job 移除，Windows 服务端包改由本地 `publish.bat` 产出。标签解析、包内容校验、校验和格式与 release 创建逻辑保持不变。
+> **2026-09-29 修订**：`release.yml` 只保留 `linux-server` job，唯一发布产物为 `DAFLegacy-<tag>-linux-x64.zip`（含 `.sha256`）；`windows-server` job 移除，Windows 服务端包改由本地 `publish.bat` 产出。标签解析、包内容校验、校验和格式与 release 创建逻辑保持不变。
 
 | 产物 | 内容 | 构建平台 | 必需 |
 | --- | --- | --- | --- |
-| `DFLegacy-<tag>-win-x64.zip` | **合并包**：服务端 + 启动器 + `ijl15.dll` + `d3d8.dll`\* + `LICENSE-d3d8to9.md`\* + 配置 + `wwwroot`，同目录 | `windows-latest` | ✅ |
-| `DFLegacy-<tag>-linux-x64.zip` | **服务端包**：服务端 + 配置 + `wwwroot` | `ubuntu-latest` | ✅ |
-| `DFLegacy-<tag>-client-win-x64.zip` | **纯客户端包**：启动器 + `ijl15.dll` + `d3d8.dll`\* + `LICENSE-d3d8to9.md`\* + `launcher.json` + `Config.ini` | `windows-latest` | ⭕ |
-| `DFLegacy-<tag>-server-win-x64.zip` | **纯服务端包**（Windows 形态）：服务端 + 配置 + `wwwroot` | `windows-latest` | ⭕ |
+| `DAFLegacy-<tag>-win-x64.zip` | **合并包**：服务端 + 启动器 + `ijl15.dll` + `d3d8.dll`\* + `LICENSE-d3d8to9.md`\* + 配置 + `wwwroot`，同目录 | `windows-latest` | ✅ |
+| `DAFLegacy-<tag>-linux-x64.zip` | **服务端包**：服务端 + 配置 + `wwwroot` | `ubuntu-latest` | ✅ |
+| `DAFLegacy-<tag>-client-win-x64.zip` | **纯客户端包**：启动器 + `ijl15.dll` + `d3d8.dll`\* + `LICENSE-d3d8to9.md`\* + `launcher.json` + `Config.ini` | `windows-latest` | ⭕ |
+| `DAFLegacy-<tag>-server-win-x64.zip` | **纯服务端包**（Windows 形态）：服务端 + 配置 + `wwwroot` | `windows-latest` | ⭕ |
 | `*.zip.sha256` | 各包的校验和，格式 `<hash>  <filename>` | 同上 | ✅ |
 
 **两个必需包对应两层**：合并包保持 G4（现有 Windows 用法不变），Linux 服务端包是本次重构的目标产物。另两个可选包在"只需要启动器"或"服务端单独部署"的场景下有用，成本只是多一次 `dotnet publish`——两层已经独立（[01 · 8.2](01-target-architecture.md#82-两层独立打包)、[00 · 3.7](00-kickoff.md#37-两层能否独立打包实测)），出这四个包不需要任何额外解耦工作。
@@ -375,7 +375,7 @@ fi
 
 三点取舍：
 
-- **是否 `--self-contained`**：参照项目用 `--self-contained true -p:PublishSingleFile=true`，产出单文件、目标机无需 .NET 运行时。DFLegacy 现在的发布是**框架依赖**（需要 .NET 10 运行时）。**建议保持框架依赖**——改变部署形态是独立决定，不应混在可移植性重构里。
+- **是否 `--self-contained`**：参照项目用 `--self-contained true -p:PublishSingleFile=true`，产出单文件、目标机无需 .NET 运行时。DAFLegacy 现在的发布是**框架依赖**（需要 .NET 10 运行时）。**建议保持框架依赖**——改变部署形态是独立决定，不应混在可移植性重构里。
 - **`PUBLISH_ALL=1`**：本次只在 CI 里用到（矩阵各自发布自己的 RID），保留该开关是为了本地一次性产出全部包。
 - **覆盖 `osx-*`**：`detect_rid` 覆盖 macOS 是为了让 `publish.sh` 在开发机上可用，**不意味着发布 macOS 产物**——macOS 在本次设计中只是开发平台（[04 · Q3](04-migration-plan.md#5-待决问题)）。
 
@@ -385,14 +385,14 @@ M0 完成**单解决方案改造**（`.vcxproj` 移出 + Launcher 解耦）之�
 
 | 阶段 | 场景 | 使用入口 |
 | --- | --- | --- |
-| M0 之前 | Windows 全量构建（含原生） | `msbuild DFLegacy.Emulator.slnx`（`DFLegacy.Ijl15` 经 `.vcxproj` 一并构建） |
+| M0 之前 | Windows 全量构建（含原生） | `msbuild DAFLegacy.Emulator.slnx`（`DAFLegacy.Ijl15` 经 `.vcxproj` 一并构建） |
 | M0 之前 | Linux/macOS 验证 | 逐个项目 `dotnet build` |
-| **M0 之后** | Windows 全量构建 | `msbuild DFLegacy.Emulator.slnx`（仅托管，原生成员 `<Build Project="false" />`）+ `patch.bat`（原生与 Launcher，2026-09-23 修订） |
+| **M0 之后** | Windows 全量构建 | `msbuild DAFLegacy.Emulator.slnx`（仅托管，原生成员 `<Build Project="false" />`）+ `patch.bat`（原生与 Launcher，2026-09-23 修订） |
 | **M0 之后** | 三平台验证与发布 | 按项目 `dotnet build`/`publish` 服务端项目（产物只含服务端；2026-09-23 修订取代原"解决方案 + 分层 publish"方案） |
 | **M0 之后** | Windows 一键发布 | 服务端包走 `publish.bat`（仅 .NET SDK）；客户端产物走 `patch.bat`（2026-09-23 修订，见 [4.5](#45-运维模型变更2026-09-23-修订流水线只出服务端包)） |
 
 **M0 是关键分界点**，因为它同时改变"解决方案含哪些项目"与"原生如何被构建"两件事。这带来一个必须交代清楚的行为变化：
 
-> `.vcxproj` 移出后，`msbuild .\DFLegacy.Emulator.slnx` **不再构建原生项目**。习惯用该命令的开发者会以为原生已经构建好了。原生与客户端产物由 `patch.bat` 显式补齐（2026-09-23 修订后 `publish.bat` 收敛为仅服务端发布），直接用 msbuild 的场景需要在文档中说明——这是本次重构中唯一的行为退化，已记录在 [00 · 风险摘要](00-kickoff.md)。
+> `.vcxproj` 移出后，`msbuild .\DAFLegacy.Emulator.slnx` **不再构建原生项目**。习惯用该命令的开发者会以为原生已经构建好了。原生与客户端产物由 `patch.bat` 显式补齐（2026-09-23 修订后 `publish.bat` 收敛为仅服务端发布），直接用 msbuild 的场景需要在文档中说明——这是本次重构中唯一的行为退化，已记录在 [00 · 风险摘要](00-kickoff.md)。
 
-**不做的**：不改名任何现有文件（`DFLegacy.Emulator.slnx` 保持原名），不调整 `dist/` 的输出布局（合并包仍落在 `dist/DFLegacy.Server`），不改动 `README.md`。
+**不做的**：不改名任何现有文件（`DAFLegacy.Emulator.slnx` 保持原名），不调整 `dist/` 的输出布局（合并包仍落在 `dist/DAFLegacy.Server`），不改动 `README.md`。

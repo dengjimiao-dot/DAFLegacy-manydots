@@ -47,7 +47,7 @@ cmd = dump_table(0xB54430)
 res = {"noti": {i: n for i, n in noti if n}, "cmd": {i: n for i, n in cmd if n}}
 res["noti_holes"] = [i for i, n in noti if n is None]
 res["cmd_holes"] = [i for i, n in cmd if n is None]
-json.dump(res, open(r'E:\github\DFLegacy\tools\packet_id_map.json','w'), indent=1)
+json.dump(res, open(r'E:\github\DAFLegacy\tools\packet_id_map.json','w'), indent=1)
 print("NOTI entries:", len(res["noti"]), "holes:", res["noti_holes"][:20])
 print("CMD entries:", len(res["cmd"]), "holes:", res["cmd_holes"][:20])
 print("\n--- NOTI first 20 ---")

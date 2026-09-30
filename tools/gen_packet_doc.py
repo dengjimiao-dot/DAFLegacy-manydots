@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 
-res = json.load(open(r'E:\github\DFLegacy\tools\packet_id_map.json'))
+res = json.load(open(r'E:\github\DAFLegacy\tools\packet_id_map.json'))
 
 NOTI_TOTAL = max(map(int, res["noti"])) + 1
 CMD_TOTAL = max(map(int, res["cmd"])) + 1
@@ -60,7 +60,7 @@ CMD_NOTE = {
 def n_name(i): return res["noti"].get(str(i), "—")
 def c_name(i): return res["cmd"].get(str(i), "—")
 
-BYTES = json.load(open(r'E:\github\DFLegacy\tools\packet_bytes.json'))
+BYTES = json.load(open(r'E:\github\DAFLegacy\tools\packet_bytes.json'))
 # CMD ids whose example body is a sequence-only placeholder (layout not confirmed by a server parser)
 PLACEHOLDER_BODY = {1,2,3,4,5,7,8,9,15,16,17,18,19,20,21,24,25,26,28,29,30,31,32,33,34,35,36,37,38,
                     40,41,43,45,46,47,48,49,51,67,68,72,73,74,75,82,97,98,99,102,103,105,124,132,
@@ -221,10 +221,10 @@ A = lines.append
 A("# 客户端协议枚举全表(60A1, IDA 提取)")
 A("")
 A("> 来源: `D:/IDA/60A1/DNF.exe.i64`(对应已脱壳 `DNF.exe`, ImageBase 0x400000)。")
-A("> 枚举名表位于 .rdata: NOTI 表 `0xB54170`(%d 项,0-%d 命名,其余为 `NOTI_NO_NAME` 占位,槽 %d NULL 结尾), CMD 表 `0xB54430`(%d 项,0-%d 命名,其余为 `CMD_NO_NAME` 占位,表后紧接 RTTI)。表索引即枚举数值,已用 DFLegacy 已知 ID 逐项验证。" % (NOTI_TOTAL, NOTI_NAMED-1, NOTI_TOTAL, CMD_TOTAL, CMD_NAMED-1))
+A("> 枚举名表位于 .rdata: NOTI 表 `0xB54170`(%d 项,0-%d 命名,其余为 `NOTI_NO_NAME` 占位,槽 %d NULL 结尾), CMD 表 `0xB54430`(%d 项,0-%d 命名,其余为 `CMD_NO_NAME` 占位,表后紧接 RTTI)。表索引即枚举数值,已用 DAFLegacy 已知 ID 逐项验证。" % (NOTI_TOTAL, NOTI_NAMED-1, NOTI_TOTAL, CMD_TOTAL, CMD_NAMED-1))
 A("> 提取脚本: `tools/extract_packet_tables.py` / `tools/dump_packet_tables.py`;原始数据 `tools/packet_id_map.json`。")
 A(">")
-A("> 图例: ✅=DFLegacy 服务端已实现(有应答/发送) ❌=未实现(客户端会收到忽略/无回包)")
+A("> 图例: ✅=DAFLegacy 服务端已实现(有应答/发送) ❌=未实现(客户端会收到忽略/无回包)")
 A("> 汇总: NOTI %d/%d 已实现; CMD %d/%d 已处理(分母含 NO_NAME 占位:NOTI %d 项、CMD %d 项,均未实现)。" % (len(NOTI_IMPL), NOTI_TOTAL, len(CMD_IMPL), CMD_TOTAL, NOTI_TOTAL-NOTI_NAMED, CMD_TOTAL-CMD_NAMED))
 A("> CMD 处理方式: `E`=引擎内联 `D`=专用应答 `G`=通用成功 `N`=异步回NOTI")
 A(">")
@@ -369,6 +369,6 @@ for d in [
     A("- " + d)
 A("")
 
-out = r"E:\github\DFLegacy\docs\protocol\client-packet-enums-60cn.md"
+out = r"E:\github\DAFLegacy\docs\protocol\client-packet-enums-60cn.md"
 open(out, "w", encoding="utf-8").write("\n".join(lines))
 print("written:", out, len(lines), "lines")

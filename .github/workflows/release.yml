@@ -36,15 +36,15 @@ jobs:
 
       - name: Build server project
         # 发布流水线只单独构建服务端项目（自测在 build.yml 的 PR 流水线执行）。
-        run: dotnet build Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release
+        run: dotnet build Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release
 
       - name: Publish Linux server
-        run: dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
+        run: dotnet publish Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release -r linux-x64 -o dist/server-linux-x64
 
       - name: Verify package contents (Linux server)
         shell: pwsh
         run: |
-          $expected = @('DFLegacy.Server','server.json','wwwroot')
+          $expected = @('DAFLegacy.Server','server.json','wwwroot')
           $missing = $expected | Where-Object { -not (Test-Path (Join-Path 'dist/server-linux-x64' $_)) }
           if ($missing) { throw "包内容缺失：$($missing -join ', ')" }
 
@@ -54,7 +54,7 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           $tag = $env:TAG
-          $zip = "artifacts/release/DFLegacy-$tag-linux-x64.zip"
+          $zip = "artifacts/release/DAFLegacy-$tag-linux-x64.zip"
           New-Item -ItemType Directory -Path (Split-Path $zip) -Force | Out-Null
           Compress-Archive -Path "dist/server-linux-x64/*" -DestinationPath $zip -Force
           $sha256 = (Get-FileHash -Path $zip -Algorithm SHA256).Hash
@@ -62,7 +62,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DFLegacy-linux-x64
+          name: DAFLegacy-linux-x64
           path: |
             artifacts/release/*.zip
             artifacts/release/*.sha256

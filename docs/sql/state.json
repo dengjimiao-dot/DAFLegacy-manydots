@@ -4670,7 +4670,7 @@
           "Mailbox": [
             {
               "Id": 114327379,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "Level 54 equipment grant: item 20093.",
               "Gold": 0,
               "Attachment": null,
@@ -4681,7 +4681,7 @@
             },
             {
               "Id": 1227625113,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "EXP book test: book_exp1.stk x10",
               "Gold": 0,
               "Attachment": null,
@@ -4692,7 +4692,7 @@
             },
             {
               "Id": 442770359,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "Soul orb",
               "Gold": 0,
               "Attachment": null,
@@ -4703,7 +4703,7 @@
             },
             {
               "Id": 775014465,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "Soul orb",
               "Gold": 0,
               "Attachment": null,
@@ -4714,7 +4714,7 @@
             },
             {
               "Id": 538459709,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "Soul orb",
               "Gold": 0,
               "Attachment": null,
@@ -4725,7 +4725,7 @@
             },
             {
               "Id": 1714134978,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "Soul orb",
               "Gold": 0,
               "Attachment": null,
@@ -4736,7 +4736,7 @@
             },
             {
               "Id": 1647703676,
-              "Sender": "DFLegacy",
+              "Sender": "DAFLegacy",
               "Text": "Soul orb",
               "Gold": 0,
               "Attachment": null,

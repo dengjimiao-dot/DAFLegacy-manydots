@@ -1,7 +1,7 @@
 # DNF.exe 60A4 (DNF_ACT1_0918) 入口握手协议文档
 
 > 来源：对 `DNF_ACT1_0918/60A4/DNF.exe` 的静态逆向（2026-09-28）。
-> 用途：与本项目 `Server/DFLegacy.Server/Network/`（`PacketFrame` / `EntranceHandshakeReplies` /
+> 用途：与本项目 `Server/DAFLegacy.Server/Network/`（`PacketFrame` / `EntranceHandshakeReplies` /
 > `EntranceCrypto` / `EntranceMetadata`）做一致性核对。仅用于自有程序兼容性研究。
 >
 > ⚠️ 样本注意：本样本带 VMProtect 壳，`ChannelScript.pvf` 字符串为**脱壳者手动注入的节点**，

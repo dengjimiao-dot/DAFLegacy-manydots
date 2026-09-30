@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-rem Build and publish the portable game server into dist\DFLegacy.Server.
+rem Build and publish the portable game server into dist\DAFLegacy.Server.
 rem Requires only the .NET 10 SDK (the solution no longer contains native
 rem projects). The client plugin (ijl15.dll) is built separately with patch.bat.
 rem The DAF-MCP module is published separately with publish-mcp.bat.
@@ -14,19 +14,19 @@ if errorlevel 1 (
     goto :fail
 )
 
-echo [publish] Cleaning dist\DFLegacy.Server ...
-if exist "dist\DFLegacy.Server" rmdir /s /q "dist\DFLegacy.Server"
-if exist "dist\DFLegacy.Server" (
-    echo [publish] Could not remove dist\DFLegacy.Server. Stop any process using it and retry.
+echo [publish] Cleaning dist\DAFLegacy.Server ...
+if exist "dist\DAFLegacy.Server" rmdir /s /q "dist\DAFLegacy.Server"
+if exist "dist\DAFLegacy.Server" (
+    echo [publish] Could not remove dist\DAFLegacy.Server. Stop any process using it and retry.
     goto :fail
 )
 
-echo [publish] Publishing server to dist\DFLegacy.Server ...
-dotnet publish .\Server\DFLegacy.Server\DFLegacy.Server.csproj -c Release -r win-x64 -o .\dist\DFLegacy.Server
+echo [publish] Publishing server to dist\DAFLegacy.Server ...
+dotnet publish .\Server\DAFLegacy.Server\DAFLegacy.Server.csproj -c Release -r win-x64 -o .\dist\DAFLegacy.Server
 if errorlevel 1 goto :fail
 
 echo.
-echo [publish] Done. Output directory: %CD%\dist\DFLegacy.Server
+echo [publish] Done. Output directory: %CD%\dist\DAFLegacy.Server
 if "%CI%"=="" pause
 exit /b 0
 

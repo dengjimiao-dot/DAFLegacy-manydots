@@ -1,7 +1,7 @@
 # DNF.exe 60A1 客户端活动(Event)系统支持文档
 
 > 来源：对 `DNF_ACT1_0918/DF/DNF.exe` 的静态逆向（2026-09-28，IDA Professional 9.1 批处理 + 原始 PE 扫描）。
-> 用途：确认客户端对"活动"的支持范围与协议入口，指导 `Server/DFLegacy.Server` 活动相关
+> 用途：确认客户端对"活动"的支持范围与协议入口，指导 `Server/DAFLegacy.Server` 活动相关
 > NOTI 包的实现；同时为 `Network/Core/PacketTypes.cs` 头注释中引用的
 > `docs/protocol/client-packet-enums-60cn.md` 补上 NOTI 名字表实测数据（见附录 A）。
 > 仅用于自有程序兼容性研究。

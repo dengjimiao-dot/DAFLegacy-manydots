@@ -3,7 +3,7 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Text.Json;
-using DFLegacy.Protocol;
+using DAFLegacy.Protocol;
 
 var result = new Dictionary<string, object>();
 
@@ -117,7 +117,7 @@ foreach (var id in new[] { 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 2
 }
 
 var options = new JsonSerializerOptions { WriteIndented = false };
-File.WriteAllText(@"E:\github\DFLegacy\tools\packet_bytes.json", JsonSerializer.Serialize(result, options));
+File.WriteAllText(@"E:\github\DAFLegacy\tools\packet_bytes.json", JsonSerializer.Serialize(result, options));
 Console.WriteLine($"dumped {result.Count} packet byte samples");
 
 // Round-trip check: decrypt each dumped frame back to plaintext with the

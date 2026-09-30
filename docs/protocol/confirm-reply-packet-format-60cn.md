@@ -3,7 +3,7 @@
 > - **目的**:回答"未实现的包,如何确认服务端应答回包(服务端→客户端)的字段格式与长度"。结论:不靠猜,客户端解析代码本身就是格式的权威定义——**case 内读取顺序 = 线上字段顺序,读取器游标推进量 = 字段宽度,全部推进之和 = 精确载荷长度**(帧总长 = 6 + 载荷)。
 > - **验证环境**:客户端主程序 IDA 库(ImageBase 0x400000, Hex-Rays 就绪),经 ida-pro-mcp HTTP 端点 `http://127.0.0.1:13337/mcp` 操作,文中所有地址均已在 IDB 实证。
 > - **配套工具**:`tools/extract_noti_readers.py`(批量提取某 NOTI 的读取序列);帧头与加解密实证见 [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)。
-> - **服务端对应物**:回包构建 `Server/DFLegacy.Server/Network/Core/GameServerPacket.cs`(6B 头自动写长度);明文回读 `Network/Core/PacketPlainText.cs`(当前保留未接入);分发 `Network/EntranceService.cs` + `Network/Dispatch/`(注册表与分发器,未命中回落 `Network/Protocol/FallbackCommandReplies.cs`)。
+> - **服务端对应物**:回包构建 `Server/DAFLegacy.Server/Network/Core/GameServerPacket.cs`(6B 头自动写长度);明文回读 `Network/Core/PacketPlainText.cs`(当前保留未接入);分发 `Network/EntranceService.cs` + `Network/Dispatch/`(注册表与分发器,未命中回落 `Network/Protocol/FallbackCommandReplies.cs`)。
 
 ## 1. 核心原理
 

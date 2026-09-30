@@ -1,8 +1,8 @@
-# 05 · DFLegacy.RandomNative 跨平台化提案（已作废）
+# 05 · DAFLegacy.RandomNative 跨平台化提案（已作废）
 
 > **本提案已作废，不要据此实施。**
 >
-> 本文研究的是"如何把 `DFLegacy.RandomNative` 改造成可跨平台编译"。后续决定服务端随机源降级为纯托管的单一实现，并与该模块解耦；**模块本身保留至 `Client/DFLegacy.RandomNative/`，不跨平台移植**。取代本文的是 [06 · 随机源降级为纯托管实现](06-random-source-managed.md)。
+> 本文研究的是"如何把 `DAFLegacy.RandomNative` 改造成可跨平台编译"。后续决定服务端随机源降级为纯托管的单一实现，并与该模块解耦；**模块本身保留至 `Client/DAFLegacy.RandomNative/`，不跨平台移植**。取代本文的是 [06 · 随机源降级为纯托管实现](06-random-source-managed.md)。
 >
 > 保留本文仅作技术记录，其中三项实测结论仍然有效：`_rdseed64_step` 需要目标特性且三个编译器处理方式不同、clang 没有 `__builtin_ia32_rdseed_di_step`、以及 CTest 用例在 Release 下因 `NDEBUG` 而空跑。另有 §5.6 关于 `.vcxproj` 与 `MSB4278` 的实测记录。
 >
@@ -13,13 +13,13 @@
 - 原对应里程碑：M6（可选）——**已取消**
 - 验证环境：macOS 26.6.2 / Apple clang 21.0.0 / dotnet SDK 10.0.301 / 无 cmake、无 GCC、无 MSVC
 
-本文回答一个问题：**`DFLegacy.RandomNative` 能否通过手工改造实现跨平台编译。** 结论是能，且本文给出经过编译验证的完整提案源码与测试代码。**在批准之前，本文所有代码都只作为设计材料存放，不写入 `src/`。**
+本文回答一个问题：**`DAFLegacy.RandomNative` 能否通过手工改造实现跨平台编译。** 结论是能，且本文给出经过编译验证的完整提案源码与测试代码。**在批准之前，本文所有代码都只作为设计材料存放，不写入 `src/`。**
 
 ---
 
 ## 1. 范围
 
-**在范围内**：让 `DFLegacy.RandomNative` 在 `win-x64` / `linux-x64` / `linux-arm64` / `macos-arm64` 上都能编译，且**接口与 ABI 完全不变**（两个导出符号、参数与返回值语义一致）。
+**在范围内**：让 `DAFLegacy.RandomNative` 在 `win-x64` / `linux-x64` / `linux-arm64` / `macos-arm64` 上都能编译，且**接口与 ABI 完全不变**（两个导出符号、参数与返回值语义一致）。
 
 **明确不在范围内**（都是独立的事，不要混进本次改造）：
 
@@ -27,24 +27,24 @@
 | --- | --- |
 | 托管侧按 RID 探测 + `SetDllImportResolver` | 属 [02 · R2](02-portability-contracts.md#r2--原生能力的运行期发现) / M2。**只做本提案，Linux 上仍不会加载原生桥**——因为 `GameRandomSource.cs` 的 `CpuAdvertisesRdSeed()` 第一条判断是 `OperatingSystem.IsWindows()`（`GameRandomSource.cs:198`） |
 | 进入 `.slnx` 解决方案 | 与本次无关，且不可能：`.vcxproj` 在 `dotnet` CLI 上恒报 `MSB4278`（实测见 §5.6） |
-| 产物目录改 RID 布局（`artifacts/native/random/<config>/<rid>/`） | 属 M2。改动会破坏 `DFLegacy.Server.csproj:8` 现有的消费路径，本提案保持 Windows 产物位置不变以免引入回归 |
+| 产物目录改 RID 布局（`artifacts/native/random/<config>/<rid>/`） | 属 M2。改动会破坏 `DAFLegacy.Server.csproj:8` 现有的消费路径，本提案保持 Windows 产物位置不变以免引入回归 |
 | 托管侧 `IRandomSource` 抽象 | 属 M2，与本提案正交 |
 
 ---
 
 ## 2. 现状阻塞点
 
-[01 · 4.4](01-target-architecture.md#44-dflegacyrandomnative服务端可选原生资产可选跨平台化) 已列出七条。本文保留该清单，并在 §3 补上本次实测发现的、清单里没有或写错的部分。
+[01 · 4.4](01-target-architecture.md#44-daflegacyrandomnative服务端可选原生资产可选跨平台化) 已列出七条。本文保留该清单，并在 §3 补上本次实测发现的、清单里没有或写错的部分。
 
 | 阻塞点 | 位置 | 处理 |
 | --- | --- | --- |
 | CMake 对非 `WIN32` 直接 `FATAL_ERROR` | `CMakeLists.txt:5-7` | 移除，改按目标架构判定 |
 | `CMAKE_SIZEOF_VOID_P EQUAL 8` 判 x64 | `CMakeLists.txt:9-11` | 该判据在 ARM64 上同样为真；改查 `CMAKE_SYSTEM_PROCESSOR` |
 | MSVC 专属选项 `/W4 /WX /permissive-` | `CMakeLists.txt:26-28` | 按编译器分支 |
-| MSVC 专属内建 `__cpuidex` / `_rdseed64_step` / `_mm_pause` | `dflegacy_random.cpp:12,18,43,49` | 按编译器与架构分支 |
-| `__declspec(dllexport/dllimport)` | `dflegacy_random.h:5-11` | 非 Windows 走 `visibility("default")` |
+| MSVC 专属内建 `__cpuidex` / `_rdseed64_step` / `_mm_pause` | `daflegacy_random.cpp:12,18,43,49` | 按编译器与架构分支 |
+| `__declspec(dllexport/dllimport)` | `daflegacy_random.h:5-11` | 非 Windows 走 `visibility("default")` |
 | `__cdecl` | 头文件与实现 | 定义统一宏；x86-64 上本就只有一种约定 |
-| `.def` 文件 | `src/dflegacy_random.def` | Windows 保留；其他平台靠导出宏 |
+| `.def` 文件 | `src/daflegacy_random.def` | Windows 保留；其他平台靠导出宏 |
 | `build-native.ps1` 要求 VS 生成器 | `build-native.ps1` | 不动它（Windows 入口保持现状），另加跨平台 CMake 预设 |
 
 ---
@@ -53,13 +53,13 @@
 
 ### 3.1 `_rdseed64_step` 需要目标特性，且三个编译器的处理方式互不相同
 
-这是 [01 · 4.4](01-target-architecture.md#44-dflegacyrandomnative服务端可选原生资产可选跨平台化) 与 [03 · 4.4](03-build-release-ci.md#44-dflegacyrandomnative-的跨平台化m6可选) 都没有记录的细节，也是这次改造最容易踩的坑。
+这是 [01 · 4.4](01-target-architecture.md#44-daflegacyrandomnative服务端可选原生资产可选跨平台化) 与 [03 · 4.4](03-build-release-ci.md#44-daflegacyrandomnative-的跨平台化m6可选) 都没有记录的细节，也是这次改造最容易踩的坑。
 
 实测：clang 在不加任何标注时直接编译失败。
 
 ```text
 error: always_inline function '_rdseed64_step' requires target feature 'rdseed',
-       but would be inlined into function 'dflegacy_rdseed64'
+       but would be inlined into function 'daflegacy_rdseed64'
        that is compiled without support for 'rdseed'
 ```
 
@@ -75,7 +75,7 @@ error: always_inline function '_rdseed64_step' requires target feature 'rdseed',
 
 ### 3.2 `__builtin_ia32_rdseed_di_step` 是 GCC 专有，clang 没有
 
-[01 · 4.4](01-target-architecture.md#44-dflegacyrandomnative服务端可选原生资产可选跨平台化) 与 [03 · 4.4](03-build-release-ci.md#44-dflegacyrandomnative-的跨平台化m6可选) 都写着「Clang/GCC 走 `__cpuid_count` / `__builtin_ia32_rdseed_di_step` / `__builtin_ia32_pause`」。**这一条对 clang 不成立**：
+[01 · 4.4](01-target-architecture.md#44-daflegacyrandomnative服务端可选原生资产可选跨平台化) 与 [03 · 4.4](03-build-release-ci.md#44-daflegacyrandomnative-的跨平台化m6可选) 都写着「Clang/GCC 走 `__cpuid_count` / `__builtin_ia32_rdseed_di_step` / `__builtin_ia32_pause`」。**这一条对 clang 不成立**：
 
 ```text
 Apple clang version 21.0.0
@@ -96,9 +96,9 @@ clang 提供的是 Intel 风格的内建：`_rdseed64_step`（来自 `<immintrin
 
 ## 4. 提案实现
 
-五个文件。前三份是 `src/DFLegacy.RandomNative/` 下现有文件的替换内容，第四份是新增，第五份是测试。
+五个文件。前三份是 `src/DAFLegacy.RandomNative/` 下现有文件的替换内容，第四份是新增，第五份是测试。
 
-### 4.1 `include/dflegacy_random.h`
+### 4.1 `include/daflegacy_random.h`
 
 ```cpp
 #pragma once
@@ -109,24 +109,24 @@ clang 提供的是 Intel 风格的内建：`_rdseed64_step`（来自 `<immintrin
 // a single integer convention. Kept explicit so the managed side's
 // CallingConvention.Cdecl remains an exact match on every platform.
 #if defined(_WIN32)
-#define DFLEGACY_RANDOM_CALL __cdecl
+#define DAFLEGACY_RANDOM_CALL __cdecl
 #else
-#define DFLEGACY_RANDOM_CALL
+#define DAFLEGACY_RANDOM_CALL
 #endif
 
 // Export/import. Windows uses __declspec and pins the symbol names with a .def
 // file; everywhere else the symbols are kept by this macro plus the build's
 // hidden default visibility.
 #if defined(_WIN32)
-#if defined(DFLEGACY_RANDOM_EXPORTS)
-#define DFLEGACY_RANDOM_API __declspec(dllexport)
+#if defined(DAFLEGACY_RANDOM_EXPORTS)
+#define DAFLEGACY_RANDOM_API __declspec(dllexport)
 #else
-#define DFLEGACY_RANDOM_API __declspec(dllimport)
+#define DAFLEGACY_RANDOM_API __declspec(dllimport)
 #endif
 #elif defined(__GNUC__) || defined(__clang__)
-#define DFLEGACY_RANDOM_API __attribute__((visibility("default")))
+#define DAFLEGACY_RANDOM_API __attribute__((visibility("default")))
 #else
-#define DFLEGACY_RANDOM_API
+#define DAFLEGACY_RANDOM_API
 #endif
 
 extern "C"
@@ -135,12 +135,12 @@ extern "C"
     // cannot and the caller has to fall back. Always 0 on architectures without
     // RDSEED, ARM64 included, so both symbols exist everywhere and the host
     // never has to branch on the architecture or the operating system.
-    DFLEGACY_RANDOM_API int DFLEGACY_RANDOM_CALL dflegacy_rdseed_supported() noexcept;
+    DAFLEGACY_RANDOM_API int DAFLEGACY_RANDOM_CALL daflegacy_rdseed_supported() noexcept;
 
     // Writes one 64-bit RDSEED sample to *value and returns 1; returns 0 after
     // retry_count unsuccessful attempts, leaving *value untouched. A retry_count
     // of 0 is treated as 1.
-    DFLEGACY_RANDOM_API int DFLEGACY_RANDOM_CALL dflegacy_rdseed64(
+    DAFLEGACY_RANDOM_API int DAFLEGACY_RANDOM_CALL daflegacy_rdseed64(
         std::uint32_t retry_count,
         std::uint64_t* value) noexcept;
 }
@@ -148,10 +148,10 @@ extern "C"
 
 **接口未变**：两个符号名、参数类型、`noexcept`、返回码语义全部与现版一致。这也是托管侧 `DllImport` 声明（`GameRandomSource.cs:231,240`）不需要跟着改的原因。
 
-### 4.2 `src/dflegacy_random.cpp`
+### 4.2 `src/daflegacy_random.cpp`
 
 ```cpp
-// DFLegacy.RandomNative - the server's optional RDSEED entropy bridge.
+// DAFLegacy.RandomNative - the server's optional RDSEED entropy bridge.
 //
 // Portability notes:
 //   * The interface is architecture independent. On anything that is not x86-64,
@@ -165,20 +165,20 @@ extern "C"
 //     not pushed onto the build: no translation-unit-wide ISA flag (-mrdseed,
 //     /arch) is required on any of the three compilers.
 
-#include "dflegacy_random.h"
+#include "daflegacy_random.h"
 
 #include <algorithm>
 #include <cstdint>
 
 #if defined(__x86_64__) || defined(__amd64__) || defined(_M_X64)
-#define DFLEGACY_RANDOM_ARCH_X86_64 1
+#define DAFLEGACY_RANDOM_ARCH_X86_64 1
 #endif
 
-#if defined(DFLEGACY_RANDOM_ARCH_X86_64)
+#if defined(DAFLEGACY_RANDOM_ARCH_X86_64)
 #if defined(_MSC_VER)
 #include <immintrin.h>
 #include <intrin.h>
-#define DFLEGACY_RDSEED_STEP(value) (_rdseed64_step(value) != 0)
+#define DAFLEGACY_RDSEED_STEP(value) (_rdseed64_step(value) != 0)
 #else
 #include <cpuid.h>
 #include <immintrin.h>
@@ -186,22 +186,22 @@ extern "C"
 // clang ships the Intel-style intrinsic, and its header does not enable the
 // target feature, so the caller has to: without an explicit target annotation
 // _rdseed64_step fails with "requires target feature 'rdseed'".
-#define DFLEGACY_RDSEED_STEP(value) (_rdseed64_step(value) != 0)
-#define DFLEGACY_RDSEED_TARGET __attribute__((target("rdseed")))
+#define DAFLEGACY_RDSEED_STEP(value) (_rdseed64_step(value) != 0)
+#define DAFLEGACY_RDSEED_TARGET __attribute__((target("rdseed")))
 #else
 // GCC needs no annotation: its own rdseedintrin.h wraps the definitions in
 // "#pragma GCC target("rdseed")" guarded by __RDSEED__, so _rdseed64_step is
 // callable from a translation unit built without -mrdseed.
-#define DFLEGACY_RDSEED_STEP(value) (__builtin_ia32_rdseed_di_step(value) != 0)
+#define DAFLEGACY_RDSEED_STEP(value) (__builtin_ia32_rdseed_di_step(value) != 0)
 #endif
 #endif
 #endif
 
-#if !defined(DFLEGACY_RDSEED_TARGET)
-#define DFLEGACY_RDSEED_TARGET
+#if !defined(DAFLEGACY_RDSEED_TARGET)
+#define DAFLEGACY_RDSEED_TARGET
 #endif
 
-#if defined(DFLEGACY_RANDOM_ARCH_X86_64)
+#if defined(DAFLEGACY_RANDOM_ARCH_X86_64)
 
 namespace
 {
@@ -237,10 +237,10 @@ namespace
 
     // The only place the RDSEED instruction is emitted. Kept in its own function
     // so the target feature cannot spread into the exported entry points.
-    DFLEGACY_RDSEED_TARGET bool try_read_sample(std::uint64_t* const value) noexcept
+    DAFLEGACY_RDSEED_TARGET bool try_read_sample(std::uint64_t* const value) noexcept
     {
         unsigned long long candidate = 0;
-        if (!DFLEGACY_RDSEED_STEP(&candidate))
+        if (!DAFLEGACY_RDSEED_STEP(&candidate))
         {
             return false;
         }
@@ -252,10 +252,10 @@ namespace
 
 #endif
 
-extern "C" DFLEGACY_RANDOM_API int DFLEGACY_RANDOM_CALL
-dflegacy_rdseed_supported() noexcept
+extern "C" DAFLEGACY_RANDOM_API int DAFLEGACY_RANDOM_CALL
+daflegacy_rdseed_supported() noexcept
 {
-#if defined(DFLEGACY_RANDOM_ARCH_X86_64)
+#if defined(DAFLEGACY_RANDOM_ARCH_X86_64)
     // CPUID is constant for the lifetime of the process, so probe once.
     static const bool supported = detect_rdseed();
     return supported ? 1 : 0;
@@ -264,15 +264,15 @@ dflegacy_rdseed_supported() noexcept
 #endif
 }
 
-extern "C" DFLEGACY_RANDOM_API int DFLEGACY_RANDOM_CALL
-dflegacy_rdseed64(const std::uint32_t retry_count, std::uint64_t* const value) noexcept
+extern "C" DAFLEGACY_RANDOM_API int DAFLEGACY_RANDOM_CALL
+daflegacy_rdseed64(const std::uint32_t retry_count, std::uint64_t* const value) noexcept
 {
-    if (value == nullptr || dflegacy_rdseed_supported() == 0)
+    if (value == nullptr || daflegacy_rdseed_supported() == 0)
     {
         return 0;
     }
 
-#if defined(DFLEGACY_RANDOM_ARCH_X86_64)
+#if defined(DAFLEGACY_RANDOM_ARCH_X86_64)
     const auto attempts = std::max<std::uint32_t>(1, retry_count);
     for (std::uint32_t attempt = 0; attempt < attempts; ++attempt)
     {
@@ -298,7 +298,7 @@ dflegacy_rdseed64(const std::uint32_t retry_count, std::uint64_t* const value) n
 ```cmake
 cmake_minimum_required(VERSION 3.24)
 
-project(DFLegacy.RandomNative LANGUAGES CXX)
+project(DAFLegacy.RandomNative LANGUAGES CXX)
 
 # RDSEED is an x86-64 ISA feature; it does not exist on ARM64. The target
 # architecture is therefore what decides between the real implementation and the
@@ -308,11 +308,11 @@ project(DFLegacy.RandomNative LANGUAGES CXX)
 # is also true on 64-bit ARM, which is exactly how an ARM64 host would end up
 # with a library that cannot work. (The Visual Studio generator reports AMD64.)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-    set(DFLEGACY_RANDOM_ARCH "x86_64")
+    set(DAFLEGACY_RANDOM_ARCH "x86_64")
 else()
-    set(DFLEGACY_RANDOM_ARCH "stub")
+    set(DAFLEGACY_RANDOM_ARCH "stub")
     message(STATUS
-        "DFLegacy.RandomNative: ${CMAKE_SYSTEM_PROCESSOR} has no RDSEED, "
+        "DAFLegacy.RandomNative: ${CMAKE_SYSTEM_PROCESSOR} has no RDSEED, "
         "building the always-zero stub. Both symbols stay present, so the host "
         "probes and downgrades at run time instead of branching on the "
         "architecture.")
@@ -327,67 +327,67 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-add_library(DFLegacy.RandomNative SHARED
-    include/dflegacy_random.h
-    src/dflegacy_random.cpp)
+add_library(DAFLegacy.RandomNative SHARED
+    include/daflegacy_random.h
+    src/daflegacy_random.cpp)
 
 if(WIN32)
     # The .def pins the exported symbol names on Windows. Elsewhere the export
     # macro plus the hidden default visibility below do the same job.
-    target_sources(DFLegacy.RandomNative PRIVATE src/dflegacy_random.def)
+    target_sources(DAFLegacy.RandomNative PRIVATE src/daflegacy_random.def)
 endif()
 
-target_compile_definitions(DFLegacy.RandomNative PRIVATE
-    DFLEGACY_RANDOM_EXPORTS)
+target_compile_definitions(DAFLegacy.RandomNative PRIVATE
+    DAFLEGACY_RANDOM_EXPORTS)
 
 if(MSVC)
-    target_compile_options(DFLegacy.RandomNative PRIVATE
+    target_compile_options(DAFLegacy.RandomNative PRIVATE
         /W4
         /WX
         /permissive-)
 else()
-    target_compile_options(DFLegacy.RandomNative PRIVATE
+    target_compile_options(DAFLegacy.RandomNative PRIVATE
         -Wall
         -Wextra
         -Werror)
 endif()
 
-target_include_directories(DFLegacy.RandomNative PUBLIC include)
+target_include_directories(DAFLegacy.RandomNative PUBLIC include)
 
 # OUTPUT_NAME holds the base name steady across platforms; CMake's default
-# PREFIX then produces DFLegacy.RandomNative.dll on Windows and
-# libDFLegacy.RandomNative.so / .dylib elsewhere, which is the naming the
+# PREFIX then produces DAFLegacy.RandomNative.dll on Windows and
+# libDAFLegacy.RandomNative.so / .dylib elsewhere, which is the naming the
 # runtimes/<rid>/native/ layout expects.
-set_target_properties(DFLegacy.RandomNative PROPERTIES
-    OUTPUT_NAME "DFLegacy.RandomNative"
+set_target_properties(DAFLegacy.RandomNative PROPERTIES
+    OUTPUT_NAME "DAFLegacy.RandomNative"
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN YES
     DEBUG_POSTFIX "")
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(DFLegacy.RandomNative.Tests
+    add_executable(DAFLegacy.RandomNative.Tests
         tests/random_native_tests.cpp)
     if(MSVC)
-        target_compile_options(DFLegacy.RandomNative.Tests PRIVATE
+        target_compile_options(DAFLegacy.RandomNative.Tests PRIVATE
             /W4
             /WX
             /permissive-)
     else()
-        target_compile_options(DFLegacy.RandomNative.Tests PRIVATE
+        target_compile_options(DAFLegacy.RandomNative.Tests PRIVATE
             -Wall
             -Wextra
             -Werror)
     endif()
-    target_include_directories(DFLegacy.RandomNative.Tests PRIVATE include)
-    target_link_libraries(DFLegacy.RandomNative.Tests PRIVATE DFLegacy.RandomNative)
-    add_test(NAME rdseed_native COMMAND DFLegacy.RandomNative.Tests)
+    target_include_directories(DAFLegacy.RandomNative.Tests PRIVATE include)
+    target_link_libraries(DAFLegacy.RandomNative.Tests PRIVATE DAFLegacy.RandomNative)
+    add_test(NAME rdseed_native COMMAND DAFLegacy.RandomNative.Tests)
 endif()
 ```
 
 三点说明：
 
-- 默认 `PREFIX` 恰好产出设计要的文件名：Windows 无前缀 `DFLegacy.RandomNative.dll`，Linux `libDFLegacy.RandomNative.so`，macOS `libDFLegacy.RandomNative.dylib`——与 [02 · R2](02-portability-contracts.md#r2--原生能力的运行期发现) 的 RID 布局约定一致，无需额外设置。
+- 默认 `PREFIX` 恰好产出设计要的文件名：Windows 无前缀 `DAFLegacy.RandomNative.dll`，Linux `libDAFLegacy.RandomNative.so`，macOS `libDAFLegacy.RandomNative.dylib`——与 [02 · R2](02-portability-contracts.md#r2--原生能力的运行期发现) 的 RID 布局约定一致，无需额外设置。
 - `CXX_VISIBILITY_PRESET hidden` 是必需项：没有它，全部符号（含 `detect_rdseed` 等内部符号）都会导出。实测加上之后导出符号恰好 2 个（§5.3）。
 - Windows 的 `CMAKE_MSVC_RUNTIME_LIBRARY`（静态 CRT）必须保留，且必须在 `add_library` 之前设置才有意义。
 
@@ -407,7 +407,7 @@ endif()
     {
       "name": "linux-x64",
       "displayName": "Linux x64 (real RDSEED implementation)",
-      "description": "Produces libDFLegacy.RandomNative.so with the RDSEED backend.",
+      "description": "Produces libDAFLegacy.RandomNative.so with the RDSEED backend.",
       "binaryDir": "${sourceDir}/../../artifacts/native/random/linux-x64",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
@@ -465,7 +465,7 @@ endif()
 }
 ```
 
-`${sourceDir}/../../` 依赖"项目目录距仓库根两层"这个前提。这与 [01 · 10.1](01-target-architecture.md#101-完整影响清单) 的"`Server/` 与 `src/` 深度相同"是同一条性质，**M0 把目录移到 `Server/DFLegacy.RandomNative/` 后这些路径依旧成立**；但若目录嵌进 `DFLegacy.Server/` 之下（深度变 3），全部失效。
+`${sourceDir}/../../` 依赖"项目目录距仓库根两层"这个前提。这与 [01 · 10.1](01-target-architecture.md#101-完整影响清单) 的"`Server/` 与 `src/` 深度相同"是同一条性质，**M0 把目录移到 `Server/DAFLegacy.RandomNative/` 后这些路径依旧成立**；但若目录嵌进 `DAFLegacy.Server/` 之下（深度变 3），全部失效。
 
 ### 4.5 `tests/random_native_tests.cpp`
 
@@ -481,7 +481,7 @@ endif()
 // always-zero stub: the interface is expected to stay present and to report
 // "no sample" instead of failing to load.
 
-#include "dflegacy_random.h"
+#include "daflegacy_random.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -502,18 +502,18 @@ namespace
 
 int main()
 {
-    const auto supported = dflegacy_rdseed_supported();
+    const auto supported = daflegacy_rdseed_supported();
     check(supported == 0 || supported == 1, "capability query returns 0 or 1");
 
     // A retry count of 0 has to mean one attempt, not "give up immediately".
     // Whether that attempt yields a sample depends on the CPU, so only the
     // return-code contract can be asserted here.
     std::uint64_t value = 0;
-    const auto zero_retry = dflegacy_rdseed64(0, &value);
+    const auto zero_retry = daflegacy_rdseed64(0, &value);
     check(zero_retry == 0 || zero_retry == 1, "zero retry count returns 0 or 1");
 
     // A null destination must be refused rather than dereferenced.
-    check(dflegacy_rdseed64(1, nullptr) == 0, "null destination returns 0");
+    check(daflegacy_rdseed64(1, nullptr) == 0, "null destination returns 0");
 
     if (supported == 0)
     {
@@ -522,11 +522,11 @@ int main()
         // the return code and must not see a stale-looking value.
         constexpr std::uint64_t sentinel = 0x5A5A5A5A5A5A5A5Aull;
         value = sentinel;
-        check(dflegacy_rdseed64(8, &value) == 0, "no sample is reported without RDSEED");
+        check(daflegacy_rdseed64(8, &value) == 0, "no sample is reported without RDSEED");
         check(value == sentinel, "the destination is left untouched without RDSEED");
 
         std::printf(
-            "DFLegacy.RandomNative: RDSEED unavailable, stub contract verified, "
+            "DAFLegacy.RandomNative: RDSEED unavailable, stub contract verified, "
             "%d failure(s).\n",
             failure_count);
         return failure_count == 0 ? 0 : 1;
@@ -535,19 +535,19 @@ int main()
     bool generated = false;
     for (int attempt = 0; attempt < 100 && !generated; ++attempt)
     {
-        generated = dflegacy_rdseed64(8, &value) != 0;
+        generated = daflegacy_rdseed64(8, &value) != 0;
     }
 
     check(generated, "a sample is produced within 100 attempts when RDSEED is available");
 
     std::printf(
-        "DFLegacy.RandomNative: RDSEED available, %d failure(s).\n",
+        "DAFLegacy.RandomNative: RDSEED available, %d failure(s).\n",
         failure_count);
     return failure_count == 0 ? 0 : 1;
 }
 ```
 
-**未改动**：`DFLegacy.RandomNative.vcxproj` 与 `build-native.ps1`。前者列出的源文件集合（头文件、`.cpp`、`.def`、测试）没有变化，MSVC 路径也不需要任何新开关（§3.1），因此无需同步；后者是 Windows 入口，本次保持原状。唯一可选的小同步是把新增的 `CMakePresets.json` 加进 vcxproj 的 `<None>` 项（现有文件已把 `CMakeLists.txt` 与 `build-native.ps1` 列为 `None`），纯 IDE 可见性，不影响构建。
+**未改动**：`DAFLegacy.RandomNative.vcxproj` 与 `build-native.ps1`。前者列出的源文件集合（头文件、`.cpp`、`.def`、测试）没有变化，MSVC 路径也不需要任何新开关（§3.1），因此无需同步；后者是 Windows 入口，本次保持原状。唯一可选的小同步是把新增的 `CMakePresets.json` 加进 vcxproj 的 `<None>` 项（现有文件已把 `CMakeLists.txt` 与 `build-native.ps1` 列为 `None`），纯 IDE 可见性，不影响构建。
 
 ---
 
@@ -561,7 +561,7 @@ int main()
 
 ```bash
 clang++ -target <triple> -ffreestanding -std=c++17 -O2 \
-        -Wall -Wextra -Werror -fPIC -fvisibility=hidden -c dflegacy_random.cpp
+        -Wall -Wextra -Werror -fPIC -fvisibility=hidden -c daflegacy_random.cpp
 ```
 
 | 目标三元组 | 结果 | 导出符号 | `rdseed` 指令 |
@@ -595,8 +595,8 @@ RDSEED 只出现在这一个函数里，两个导出入口没有被抬到含 RDS
 动态库在 `-fvisibility=hidden` 下 `nm -gU` 的结果恰好两个符号，与 `.def` 在 Windows 上声明的集合一致：
 
 ```text
-0000000000000320 T _dflegacy_rdseed64
-0000000000000318 T _dflegacy_rdseed_supported
+0000000000000320 T _daflegacy_rdseed64
+0000000000000318 T _daflegacy_rdseed_supported
 ```
 
 ### 5.4 端到端链接与运行
@@ -627,11 +627,11 @@ x86-64 那行输出是**正确行为而非失败**：本机 CPU 是 Apple M5，�
 
 ```text
 # 仅含 Protocol/Server/SmokeTests 的解决方案      → 构建成功
-# 再放入 DFLegacy.RandomNative.vcxproj            → error MSB4278
+# 再放入 DAFLegacy.RandomNative.vcxproj            → error MSB4278
 #   导入的文件 "$(VCTargetsPath)/Microsoft.Cpp.Default.props" 不存在
 ```
 
-`MSB4278` 的来源是 `.vcxproj` 第 20 行导入的 Visual Studio C++ 组件，`dotnet` CLI 上不存在。**它由"是否出现在项目图里"决定，与代码是否可移植、与所在目录层级都无关。** 所以本提案即使全部落地，`DFLegacy.RandomNative` 也仍然不进 `.slnx`，其构建入口永远是独立的 CMake 步骤。附录已记在 [01 · 3.2/3.3](01-target-architecture.md#32-禁止清单)，此处只作交叉印证。
+`MSB4278` 的来源是 `.vcxproj` 第 20 行导入的 Visual Studio C++ 组件，`dotnet` CLI 上不存在。**它由"是否出现在项目图里"决定，与代码是否可移植、与所在目录层级都无关。** 所以本提案即使全部落地，`DAFLegacy.RandomNative` 也仍然不进 `.slnx`，其构建入口永远是独立的 CMake 步骤。附录已记在 [01 · 3.2/3.3](01-target-architecture.md#32-禁止清单)，此处只作交叉印证。
 
 ---
 
@@ -639,18 +639,18 @@ x86-64 那行输出是**正确行为而非失败**：本机 CPU 是 Apple M5，�
 
 | 文档位置 | 现写法 | 应改为 | 依据 |
 | --- | --- | --- | --- |
-| [01 · 4.4](01-target-architecture.md#44-dflegacyrandomnative服务端可选原生资产可选跨平台化) 阻塞点表、[03 · 4.4](03-build-release-ci.md#44-dflegacyrandomnative-的跨平台化m6可选) | 「Clang/GCC 走 `__cpuid_count` / `__builtin_ia32_rdseed_di_step` / `__builtin_ia32_pause`」 | clang 用 `_rdseed64_step`（无该内建）；GCC 用 `__builtin_ia32_rdseed_di_step`；`_mm_pause()` 三方统一 | §3.2 实测 clang 报 undeclared identifier |
+| [01 · 4.4](01-target-architecture.md#44-daflegacyrandomnative服务端可选原生资产可选跨平台化) 阻塞点表、[03 · 4.4](03-build-release-ci.md#44-daflegacyrandomnative-的跨平台化m6可选) | 「Clang/GCC 走 `__cpuid_count` / `__builtin_ia32_rdseed_di_step` / `__builtin_ia32_pause`」 | clang 用 `_rdseed64_step`（无该内建）；GCC 用 `__builtin_ia32_rdseed_di_step`；`_mm_pause()` 三方统一 | §3.2 实测 clang 报 undeclared identifier |
 | 同上 | 未提及 `_rdseed64_step` 的目标特性要求 | 补一条：clang 必须标注 `__attribute__((target("rdseed")))`，GCC 由其头文件自理，MSVC 无需 | §3.1 实测 |
-| [03 · 4.4](03-build-release-ci.md#44-dflegacyrandomnative-的跨平台化m6可选) | 「CMake 平台判定改写：x64 判定从 `CMAKE_SIZEOF_VOID_P EQUAL 8` 改为检查 `CMAKE_SYSTEM_PROCESSOR`」 | 一致，本提案照此实现（并接受 VS 生成器上报的 `AMD64`） | 已核对 |
-| [03 · 4.4](03-build-release-ci.md#44-dflegacyrandomnative-的跨平台化m6可选) | 「新增跨平台 CMake 预设，现有 `build-native.ps1` 内部改为调用预设」 | 本提案只新增非 Windows 预设，`build-native.ps1` 不动 | 该脚本按已装 VS 版本自动挑生成器并有缓存校验逻辑，固定生成器的预设更脆；改动它会给 Windows 引入回归风险 |
+| [03 · 4.4](03-build-release-ci.md#44-daflegacyrandomnative-的跨平台化m6可选) | 「CMake 平台判定改写：x64 判定从 `CMAKE_SIZEOF_VOID_P EQUAL 8` 改为检查 `CMAKE_SYSTEM_PROCESSOR`」 | 一致，本提案照此实现（并接受 VS 生成器上报的 `AMD64`） | 已核对 |
+| [03 · 4.4](03-build-release-ci.md#44-daflegacyrandomnative-的跨平台化m6可选) | 「新增跨平台 CMake 预设，现有 `build-native.ps1` 内部改为调用预设」 | 本提案只新增非 Windows 预设，`build-native.ps1` 不动 | 该脚本按已装 VS 版本自动挑生成器并有缓存校验逻辑，固定生成器的预设更脆；改动它会给 Windows 引入回归风险 |
 | 未记录 | — | CTest 用例在 Release 下因 `NDEBUG` 空跑 | §3.3 |
 
 ---
 
 ## 7. 落地步骤（若批准）
 
-1. 用 §4 的四份文件替换 `src/DFLegacy.RandomNative/` 下的 `include/dflegacy_random.h`、`src/dflegacy_random.cpp`、`CMakeLists.txt`、`tests/random_native_tests.cpp`，并新增 `CMakePresets.json`。`DFLegacy.RandomNative.vcxproj`、`build-native.ps1`、`src/dflegacy_random.def` 不动。
-2. Linux：`cmake --preset linux-x64 && cmake --build --preset linux-x64-release && ctest --preset linux-x64-release`，期望 `RDSEED available, 0 failure(s).`，产物 `libDFLegacy.RandomNative.so`。
+1. 用 §4 的四份文件替换 `src/DAFLegacy.RandomNative/` 下的 `include/daflegacy_random.h`、`src/daflegacy_random.cpp`、`CMakeLists.txt`、`tests/random_native_tests.cpp`，并新增 `CMakePresets.json`。`DAFLegacy.RandomNative.vcxproj`、`build-native.ps1`、`src/daflegacy_random.def` 不动。
+2. Linux：`cmake --preset linux-x64 && cmake --build --preset linux-x64-release && ctest --preset linux-x64-release`，期望 `RDSEED available, 0 failure(s).`，产物 `libDAFLegacy.RandomNative.so`。
 3. Windows：`build-native.ps1 -Configuration Release -RunTests`，期望 CTest `rdseed_native` 通过，且 `nativeBridge=True` 行为与改动前一致。
-4. 回到 [01 · 4.4](01-target-architecture.md#44-dflegacyrandomnative服务端可选原生资产可选跨平台化) 的阻塞点表逐条勾对，并按 §6 修正文档差异。
+4. 回到 [01 · 4.4](01-target-architecture.md#44-daflegacyrandomnative服务端可选原生资产可选跨平台化) 的阻塞点表逐条勾对，并按 §6 修正文档差异。
 5. **不要**顺手把托管侧改掉：Linux 上要真正用上它，还需要 [M2](04-migration-plan.md) 的 RID 探测与 `SetDllImportResolver`，以及解除 `GameRandomSource.cs:198` 的 `OperatingSystem.IsWindows()` 短路。那是另一个提交。

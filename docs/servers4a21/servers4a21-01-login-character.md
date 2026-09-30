@@ -1,7 +1,7 @@
 # ServerS4A21 已实现协议处理参考 —— 登录 / 选角 / 角色 / 设置 / 体力 / 初始化序列
 
 > - **本册导航**:总览/帧结构/信封/分发架构/已实现 CMD 总表见 [servers4a21-00-overview.md](servers4a21-00-overview.md)。
-> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
+> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DAFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
 
 ## 0. 域综述
 

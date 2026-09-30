@@ -34,10 +34,10 @@ publish_rid() {
     local out="dist/mcp-${rid}"
     echo "[publish-mcp] Publishing DAF-MCP module for ${rid} to ${out} ..."
     rm -rf "${out}"
-    dotnet publish Server/DFLegacy.Mcp/DFLegacy.Mcp.csproj \
+    dotnet publish Server/DAFLegacy.Mcp/DAFLegacy.Mcp.csproj \
         -c Release -r "${rid}" --self-contained false -o "${out}"
     local dll
-    for dll in DFLegacy.Mcp.dll ModelContextProtocol.Core.dll ModelContextProtocol.dll \
+    for dll in DAFLegacy.Mcp.dll ModelContextProtocol.Core.dll ModelContextProtocol.dll \
                ModelContextProtocol.AspNetCore.dll Microsoft.Extensions.AI.Abstractions.dll; do
         if [[ ! -f "${out}/${dll}" ]]; then
             echo "[publish-mcp] Missing module DLL: ${dll}" >&2

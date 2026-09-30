@@ -44,7 +44,7 @@ for va, name in sorted(strings.items()):
     elif '_NOTIPACKET_' in name: fam['NOTI'].append((va, name))
     else: fam['OTHER'].append((va, name))
 print({k: len(v) for k, v in fam.items()})
-json.dump({hex(va): name for va, name in strings.items()}, open(r'E:\github\DFLegacy\tools\packet_strings.json','w'), indent=0)
+json.dump({hex(va): name for va, name in strings.items()}, open(r'E:\github\DAFLegacy\tools\packet_strings.json','w'), indent=0)
 
 # 2) find all dword pointers to any packet string
 ptr_hits = defaultdict(list)  # string_va -> [ptr locations va]
@@ -79,4 +79,4 @@ runs = [r for r in runs if len(r) >= 4]
 print("runs>=4:")
 for r in runs:
     print(" start", hex(r[0][0]), "end", hex(r[-1][0]), "count", len(r), "first", strings.get(r[0][1]))
-json.dump([[hex(l), hex(v), strings.get(v)] for l, v in all_locs], open(r'E:\github\DFLegacy\tools\packet_ptr_hits.json','w'), indent=0)
+json.dump([[hex(l), hex(v), strings.get(v)] for l, v in all_locs], open(r'E:\github\DAFLegacy\tools\packet_ptr_hits.json','w'), indent=0)

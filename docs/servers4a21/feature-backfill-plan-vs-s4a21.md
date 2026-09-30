@@ -1,7 +1,7 @@
-# DFLegacy 未实现功能回填实现方案(参考 ServerS4A21)
+# DAFLegacy 未实现功能回填实现方案(参考 ServerS4A21)
 
 > - **目的**:实现文档先行,评审通过后再动代码。回答三个问题:当前项目哪些功能未实现/桩实现;这些功能能否从 `ServerS4A21\Server\DfoServer` 借鉴;借鉴哪些部分、怎么落地。
-> - **现状依据**:对当前代码逐项核实(下称 DFL,根目录 `Server/DFLegacy.Server`,关键文件 `Protocol/GameProtocolEngine.cs`=GPE、`Network/EntranceService.cs`=ES、`Persistence/JsonGameStore.cs`、`Hosting/CharacterSessionRegistry.cs`),证据均给出 file:line。
+> - **现状依据**:对当前代码逐项核实(下称 DFL,根目录 `Server/DAFLegacy.Server`,关键文件 `Protocol/GameProtocolEngine.cs`=GPE、`Network/EntranceService.cs`=ES、`Persistence/JsonGameStore.cs`、`Hosting/CharacterSessionRegistry.cs`),证据均给出 file:line。
 > - **参考依据**:`ServerS4A21` 的 `Server/DfoServer`(下称 A21,Handlers/Parsers/Builders/Game 分层)。
 > - **协议对照**:继承本目录 [comparison-vs-servers4a21.md](comparison-vs-servers4a21.md) 的结论(两版协议号漂移、载荷布局换代),60A1 侧格式以 [client-packet-enums-60cn.md](../protocol/client-packet-enums-60cn.md) 为准。
 

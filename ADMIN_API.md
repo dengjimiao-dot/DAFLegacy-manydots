@@ -1,14 +1,14 @@
-# DFLegacy 后台管理 API
+# DAFLegacy 后台管理 API
 
-本文档对应当前 `DFLegacy.Server` 源码，路由定义以
-[`Program.cs`](src/DFLegacy.Server/Program.cs) 为准，数据校验和持久化行为以
-[`Server/DFLegacy.Server/Sqlite/SqliteGameStore.cs`](Server/DFLegacy.Server/Sqlite/SqliteGameStore.cs)（领域逻辑在同目录 `GameStoreCore.cs`，落盘为 SQLite）。
+本文档对应当前 `DAFLegacy.Server` 源码，路由定义以
+[`Program.cs`](src/DAFLegacy.Server/Program.cs) 为准，数据校验和持久化行为以
+[`Server/DAFLegacy.Server/Sqlite/SqliteGameStore.cs`](Server/DAFLegacy.Server/Sqlite/SqliteGameStore.cs)（领域逻辑在同目录 `GameStoreCore.cs`，落盘为 SQLite）。
 
 ## 1. 基本约定
 
 ### 1.1 服务地址
 
-后台监听地址由 `server.json` 中的 `DFLegacy.Admin` 决定，默认值是：
+后台监听地址由 `server.json` 中的 `DAFLegacy.Admin` 决定，默认值是：
 
 ```text
 http://127.0.0.1:8081
@@ -25,7 +25,7 @@ $baseUrl = 'http://127.0.0.1:8081'
 当前后台接口没有登录、令牌、权限或 CSRF 校验。默认只监听 `127.0.0.1`，设计目标是
 本机管理及客户端内嵌页面调用。
 
-不要把 `DFLegacy.Admin.Host` 直接改成 `0.0.0.0` 并暴露到不可信网络。确需远程管理时，
+不要把 `DAFLegacy.Admin.Host` 直接改成 `0.0.0.0` 并暴露到不可信网络。确需远程管理时，
 应在反向代理或防火墙层增加身份认证、来源限制和 HTTPS。
 
 ### 1.3 JSON、编码与时间
@@ -89,7 +89,7 @@ Invoke-RestMethod `
 ```json
 {
   "status": "ok",
-  "service": "dflegacy-emulator"
+  "service": "daflegacy-emulator"
 }
 ```
 
@@ -164,7 +164,7 @@ Invoke-RestMethod `
 
 ```json
 {
-  "DFLegacy": {
+  "DAFLegacy": {
     "EnablePacketTracing": true,
     "HexDumpLimit": 4096
   }
@@ -216,11 +216,11 @@ Copy-Item -LiteralPath '.\server.json' -Destination $captureDir
 ```powershell
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 Start-Process `
-    -FilePath '.\DFLegacy.Server.exe' `
+    -FilePath '.\DAFLegacy.Server.exe' `
     -WorkingDirectory $PWD `
     -WindowStyle Hidden `
-    -RedirectStandardOutput ".\DFLegacy.Server-$stamp.stdout.log" `
-    -RedirectStandardError ".\DFLegacy.Server-$stamp.stderr.log"
+    -RedirectStandardOutput ".\DAFLegacy.Server-$stamp.stdout.log" `
+    -RedirectStandardError ".\DAFLegacy.Server-$stamp.stderr.log"
 ```
 
 控制台/重定向日志会记录 TCP 包方向、会话 ID、类型、协议号、长度和十六进制 body，并包含
@@ -376,7 +376,7 @@ GET /api/characters/{characterId}/mail
 ```json
 {
   "id": 123456,
-  "sender": "DFLegacy",
+  "sender": "DAFLegacy",
   "text": "测试邮件",
   "gold": 5000,
   "attachment": {
@@ -419,7 +419,7 @@ POST /api/characters/{characterId}/mail
 
 ```json
 {
-  "sender": "DFLegacy",
+  "sender": "DAFLegacy",
   "text": "邮件正文",
   "gold": 0,
   "attachment": null
@@ -497,7 +497,7 @@ HTTP 创建接口只检查 `itemId` 和 `countOrValue` 非零，不会在返回 
 ```powershell
 $characterId = '替换为角色 GUID'
 $body = @{
-    sender = 'DFLegacy'
+    sender = 'DAFLegacy'
     text = '发放 100 个疲劳恢复药剂。'
     gold = 0
     attachment = @{
@@ -542,7 +542,7 @@ Invoke-RestMethod `
 ```powershell
 $characterId = '替换为角色 GUID'
 $body = @{
-    sender = 'DFLegacy'
+    sender = 'DAFLegacy'
     text = '发放棉布短靴。'
     gold = 0
     attachment = @{
@@ -591,7 +591,7 @@ Avatar 必须这样构造：
 ```powershell
 $characterId = '替换为角色 GUID'
 $body = @{
-    sender = 'DFLegacy'
+    sender = 'DAFLegacy'
     text = '发放永久 Avatar 装扮。'
     gold = 0
     attachment = @{
@@ -620,7 +620,7 @@ Invoke-RestMethod `
 
 ```json
 {
-  "sender": "DFLegacy",
+  "sender": "DAFLegacy",
   "text": "无色小晶块与金币。",
   "gold": 5000,
   "attachment": {

@@ -34,7 +34,7 @@ publish_rid() {
     local rid="$1"
     local out="dist/server-${rid}"
     echo "[publish] Publishing server for ${rid} to ${out} ..."
-    dotnet publish Server/DFLegacy.Server/DFLegacy.Server.csproj \
+    dotnet publish Server/DAFLegacy.Server/DAFLegacy.Server.csproj \
         -c Release -r "${rid}" --self-contained false -o "${out}"
 }
 

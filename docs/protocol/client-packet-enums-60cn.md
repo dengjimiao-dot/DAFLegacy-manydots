@@ -1,7 +1,7 @@
 # 客户端协议枚举状态索引(60A1, IDA 提取)
 
 > 来源: `/60A1/DNF.exe.i64`(对应已脱壳 `DNF.exe`, ImageBase 0x400000)。
-> 枚举名表位于 .rdata: NOTI 表 `0xB54170`(175 项,0-153 命名,其余为 `NOTI_NO_NAME` 占位,槽 175 NULL 结尾), CMD 表 `0xB54430`(184 项,0-162 命名,其余为 `CMD_NO_NAME` 占位,表后紧接 RTTI)。表索引即枚举数值,已用 DFLegacy 已知 ID 逐项验证。
+> 枚举名表位于 .rdata: NOTI 表 `0xB54170`(175 项,0-153 命名,其余为 `NOTI_NO_NAME` 占位,槽 175 NULL 结尾), CMD 表 `0xB54430`(184 项,0-162 命名,其余为 `CMD_NO_NAME` 占位,表后紧接 RTTI)。表索引即枚举数值,已用 DAFLegacy 已知 ID 逐项验证。
 > 提取脚本: `tools/extract_packet_tables.py` / `tools/dump_packet_tables.py`;原始数据 `tools/packet_id_map.json`。
 >
 > **本文档只跟踪协议实现状态**(✅/❌)。具体收发包格式、字节示例与逐字段参数说明在各自独立文档中:
@@ -9,7 +9,7 @@
 > - 帧头/加解密约定: [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md)
 > - 各功能组格式: 分组标题所链 `packet-detail-*-60cn.md`
 >
-> 图例: ✅=DFLegacy 服务端已实现(有应答/发送;指存在实现代码,真机复测状态以各分册与 [CHANGELOG](../../CHANGELOG.md) 为准) ❌=未实现(客户端会收到忽略/无回包)
+> 图例: ✅=DAFLegacy 服务端已实现(有应答/发送;指存在实现代码,真机复测状态以各分册与 [CHANGELOG](../../CHANGELOG.md) 为准) ❌=未实现(客户端会收到忽略/无回包)
 > **文档约定**:凡逆向实现的封包,对应 `packet-detail-*.md` 必须附"客户端调用链"表(格式与交付清单见 [ida-call-chain-convention.md](ida-call-chain-convention.md);范例见 [packet-detail-party-60cn.md](packet-detail-party-60cn.md) 附录),并把新增函数回填 [client-function-register-60cn.md](client-function-register-60cn.md) 登记表。
 > 汇总: NOTI 55/175 已实现; CMD 73/184 已处理(分母含 NO_NAME 占位:NOTI 21 项、CMD 21 项,均未实现)。
 

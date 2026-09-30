@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DFLegacy：把 data/state.json 中的 test 账号导出为 60A1 数据种子 SQL。
+"""DAFLegacy：把 data/state.json 中的 test 账号导出为 60A1 数据种子 SQL。
 
 对应 docs/design/08-sqlite-storage.md §6 的导入规则。工具期一次性实现（Python，
 与 tools/ 下其它脚本同惯例）；服务端内的正式导入器（运行期导入本地完整
@@ -507,7 +507,7 @@ def main() -> int:
         return 1
 
     header = f"""-- ============================================================================
--- DFLegacy 60A1 数据种子（仅 test 账号）
+-- DAFLegacy 60A1 数据种子（仅 test 账号）
 -- 生成工具：tools/export_state_sql.py
 -- 生成时间：{iso_now()}
 -- 数据来源：{state_path}（只保留 username=='{TEST_USERNAME}' 的账号，

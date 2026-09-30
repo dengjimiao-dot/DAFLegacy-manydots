@@ -43,16 +43,16 @@ jobs:
             path=$(printf '%s' "$hit" | tr '\134' '/')
             path=${path#./}
             case "$path" in
-              ''|'Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj') continue ;;
+              ''|'Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj') continue ;;
               *) bad="$bad${bad:+, }$path" ;;
             esac
           done <<< "$hits"
           if [ -n "$bad" ]; then
-            echo "::error::EnableWindowsTargeting 只允许出现在 Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj，发现于：$bad"
+            echo "::error::EnableWindowsTargeting 只允许出现在 Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj，发现于：$bad"
             exit 1
           fi
 
       - name: Build and self-test
         run: |
-          dotnet build .\Server\DFLegacy.Server.SelfTests\DFLegacy.Server.SelfTests.csproj -c Release
-          .\Server\DFLegacy.Server.SelfTests\bin\Release\net10.0\DFLegacy.Server.SelfTests.exe
+          dotnet build .\Server\DAFLegacy.Server.SelfTests\DAFLegacy.Server.SelfTests.csproj -c Release
+          .\Server\DAFLegacy.Server.SelfTests\bin\Release\net10.0\DAFLegacy.Server.SelfTests.exe

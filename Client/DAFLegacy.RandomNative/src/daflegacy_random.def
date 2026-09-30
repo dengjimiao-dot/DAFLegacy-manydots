@@ -1,0 +1,4 @@
+LIBRARY "DAFLegacy.RandomNative.dll"
+EXPORTS
+    daflegacy_rdseed_supported
+    daflegacy_rdseed64

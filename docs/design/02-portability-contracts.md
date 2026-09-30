@@ -11,17 +11,17 @@
 
 **契约**：每个项目属于 Server 层或 Client 层之一，**归属按交付面判定**（随哪个包分发）。**两层互不引用**——Server 层项目不得引用 Client 层项目，也不得使用 `-windows` TFM、WinForms/WPF、`.vcxproj` 引用、无降级分支的 Windows 系统库 P/Invoke；Client 层项目也不得引用 Server 层的任何项目。**跨层引用是两个方向都零。**
 
-**同层不等于可以引用**：原生项目不得被任何托管项目 `ProjectReference`，**位置与构建图成员是两件事**（见 [01 · 3.2](01-target-architecture.md#32-禁止清单)）。这条规则原先的实例是 Server 层的 `Server/DFLegacy.RandomNative`；该模块已按 [06 · 随机源降级为纯托管实现](06-random-source-managed.md) 与服务端解耦并保留至 `Client/DFLegacy.RandomNative/`，**Server 层现在没有任何原生项目**。规则在 Client 层同样生效：`Client/DFLegacy.Ijl15/DFLegacy.Ijl15.vcxproj` 与 `Client/DFLegacy.RandomNative/` 都不被任何托管项目引用（前一引用由 M0 删除）。
+**同层不等于可以引用**：原生项目不得被任何托管项目 `ProjectReference`，**位置与构建图成员是两件事**（见 [01 · 3.2](01-target-architecture.md#32-禁止清单)）。这条规则原先的实例是 Server 层的 `Server/DAFLegacy.RandomNative`；该模块已按 [06 · 随机源降级为纯托管实现](06-random-source-managed.md) 与服务端解耦并保留至 `Client/DAFLegacy.RandomNative/`，**Server 层现在没有任何原生项目**。规则在 Client 层同样生效：`Client/DAFLegacy.Ijl15/DAFLegacy.Ijl15.vcxproj` 与 `Client/DAFLegacy.RandomNative/` 都不被任何托管项目引用（前一引用由 M0 删除）。
 
-**关于"Client 可引用 Server"**：早期版本曾允许一条例外（Client 层引用 `DFLegacy.Protocol`，因为 `DFLegacy.Launcher.csproj` 里确有该 `ProjectReference`）。实测证明**那是死引用**——Launcher 从未使用 Protocol 的任何 public 类型（43 个类型逐个检索，零命中），详见 [01 · 3.0](01-target-architecture.md#30-先修正一处事实launcher-对-protocol-的引用是死引用)。因此例外取消，规则简化为"互不引用"；也正是这个修正使 Protocol 不再需要是独立程序集、可以并入服务端主项目。
+**关于"Client 可引用 Server"**：早期版本曾允许一条例外（Client 层引用 `DAFLegacy.Protocol`，因为 `DAFLegacy.Launcher.csproj` 里确有该 `ProjectReference`）。实测证明**那是死引用**——Launcher 从未使用 Protocol 的任何 public 类型（43 个类型逐个检索，零命中），详见 [01 · 3.0](01-target-architecture.md#30-先修正一处事实launcher-对-protocol-的引用是死引用)。因此例外取消，规则简化为"互不引用"；也正是这个修正使 Protocol 不再需要是独立程序集、可以并入服务端主项目。
 
-**当前**：无分层概念。`.slnx` 把 `.vcxproj` 与 `.csproj` 混在一起，`DFLegacy.Launcher`（Client 层）与 `DFLegacy.Server`（Server 层）在同一个构建图里，且 Launcher 通过 `BuildIjl15` 隐式驱动原生构建。
+**当前**：无分层概念。`.slnx` 把 `.vcxproj` 与 `.csproj` 混在一起，`DAFLegacy.Launcher`（Client 层）与 `DAFLegacy.Server`（Server 层）在同一个构建图里，且 Launcher 通过 `BuildIjl15` 隐式驱动原生构建。
 
 **目标**：见 [01 · 依赖方向规则](01-target-architecture.md#3-依赖方向规则)。
 
 **判定**：**编译器承担绝大部分，只需补一处源码扫描**（Z5）。Z1–Z7 逐条的拦截机制、强度与实测输出统一登记在 [01 · 3.3](01-target-architecture.md#33-强制手段编译器承担绝大部分只补一处源码扫描) 的实测拦截矩阵，此处不重复列录。
 
-**前置约束**：`EnableWindowsTargeting` 不得出现在仓库根或任何共享 props 中，否则 Z2 的 WinForms/WPF 分支会在 Linux 上静默通过。它只属于 `Client/DFLegacy.Launcher/DFLegacy.Launcher.csproj`。
+**前置约束**：`EnableWindowsTargeting` 不得出现在仓库根或任何共享 props 中，否则 Z2 的 WinForms/WPF 分支会在 Linux 上静默通过。它只属于 `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj`。
 
 **早期设计中的 `DFL0001`–`DFL0003` 构建期校验目标已取消**——实测证明编译器已无条件覆盖 Z1/Z2/Z3，自建目标只会重复它、并引入一个可被写错的组件与一份会漂移的 Client 项目清单。
 
@@ -35,9 +35,9 @@
 
 规则本身：Server 层项目对原生二进制的依赖必须是**运行期的、可选失败的**。编译期零 `ProjectReference`（同层也不例外）；库名使用**逻辑名**并由 `SetDllImportResolver` 按 RID 解析，不写死某个平台的文件名；加载失败转换为能力标记，不抛出、不终止进程。
 
-**当前与目标**：这条规则历史上的服务端实例是 `Server/DFLegacy.RandomNative`（RDSEED 硬件熵源桥）。**该模块已与服务端解耦并保留至 `Client/DFLegacy.RandomNative/`**——随机源降级为纯托管的单一实现，理由、备选方案与全部细节见 [06 · 随机源降级为纯托管实现](06-random-source-managed.md)。解耦后：
+**当前与目标**：这条规则历史上的服务端实例是 `Server/DAFLegacy.RandomNative`（RDSEED 硬件熵源桥）。**该模块已与服务端解耦并保留至 `Client/DAFLegacy.RandomNative/`**——随机源降级为纯托管的单一实现，理由、备选方案与全部细节见 [06 · 随机源降级为纯托管实现](06-random-source-managed.md)。解耦后：
 
-- `DFLegacy.Server.csproj` 没有任何指向 `.vcxproj` 的 `ProjectReference`，也没有原生内容项；
+- `DAFLegacy.Server.csproj` 没有任何指向 `.vcxproj` 的 `ProjectReference`，也没有原生内容项；
 - 服务端程序集内不存在 `DllImport`；
 - 发布产物中不存在 `runtimes/*/native/*`；
 - 三个平台走完全相同的托管代码路径，不存在"原生库在不在"这一状态。
@@ -46,8 +46,8 @@
 
 | 检查 | 判据 |
 | --- | --- |
-| 服务端无原生调用 | `git grep "DllImport" Server/DFLegacy.Server/` 无结果 |
-| 构建图无原生节点 | `DFLegacy.Server.csproj` 的 `ProjectReference` 全部指向托管项目 |
+| 服务端无原生调用 | `git grep "DllImport" Server/DAFLegacy.Server/` 无结果 |
+| 构建图无原生节点 | `DAFLegacy.Server.csproj` 的 `ProjectReference` 全部指向托管项目 |
 | 包内无原生库 | 任一发布产物中不存在 `runtimes/` 目录 |
 | 三平台一致 | `dotnet build` 两个服务端 `.csproj` 在三平台均成功（解决方案含 `.vcxproj`，仅 MSBuild 可构建），且启动日志中的随机源字段不随平台变化 |
 
@@ -97,29 +97,29 @@ public static class PathResolver
 **当前**：`Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)` 出现在 **15 处调用点、15 个文件**：
 
 ```text
-Server/DFLegacy.Server/Protocol/PvfArchiveReader.cs
-Server/DFLegacy.Server/Program.cs
-Server/DFLegacy.Server/PvfScript/ScriptFileSystem.cs
-Server/DFLegacy.Server/EntranceService.cs
-Server/DFLegacy.Server/ItemCatalog.cs
-Server/DFLegacy.Server/DungeonCatalog.cs
-Server/DFLegacy.Server/DungeonExperienceCatalog.cs
-Server/DFLegacy.Server/ObjectDropCatalog.cs
-Server/DFLegacy.Server/ClearRewardCatalog.cs
-Server/DFLegacy.Server/AvatarCompoundCatalog.cs
-Server/DFLegacy.Server/CompoundCatalog.cs
-Server/DFLegacy.Server/EquipmentReinforcementCatalog.cs
-Server/DFLegacy.Server/MonsterChampionDropCatalog.cs
-Server/DFLegacy.Server/StaminaRecoveryCatalog.cs
-Server/DFLegacy.Server/WorldMapCatalog.cs
+Server/DAFLegacy.Server/Protocol/PvfArchiveReader.cs
+Server/DAFLegacy.Server/Program.cs
+Server/DAFLegacy.Server/PvfScript/ScriptFileSystem.cs
+Server/DAFLegacy.Server/EntranceService.cs
+Server/DAFLegacy.Server/ItemCatalog.cs
+Server/DAFLegacy.Server/DungeonCatalog.cs
+Server/DAFLegacy.Server/DungeonExperienceCatalog.cs
+Server/DAFLegacy.Server/ObjectDropCatalog.cs
+Server/DAFLegacy.Server/ClearRewardCatalog.cs
+Server/DAFLegacy.Server/AvatarCompoundCatalog.cs
+Server/DAFLegacy.Server/CompoundCatalog.cs
+Server/DAFLegacy.Server/EquipmentReinforcementCatalog.cs
+Server/DAFLegacy.Server/MonsterChampionDropCatalog.cs
+Server/DAFLegacy.Server/StaminaRecoveryCatalog.cs
+Server/DAFLegacy.Server/WorldMapCatalog.cs
 ```
 
-重复注册是幂等的，功能上无害，但"编码契约"因此没有单一归属地，且使 `Server/DFLegacy.Server/PvfScript/` / `Server/DFLegacy.Server/Protocol/` 无法脱离 `Program.cs` 独立使用。
+重复注册是幂等的，功能上无害，但"编码契约"因此没有单一归属地，且使 `Server/DAFLegacy.Server/PvfScript/` / `Server/DAFLegacy.Server/Protocol/` 无法脱离 `Program.cs` 独立使用。
 
 **目标**：收敛到两处——
 
 1. 组合根（`Program.cs`）注册一次，在读取任何配置与脚本之前。
-2. `Server/DFLegacy.Server/PvfScript/` 在被独立使用（测试、工具）时自行注册一次，使该层自足。
+2. `Server/DAFLegacy.Server/PvfScript/` 在被独立使用（测试、工具）时自行注册一次，使该层自足。
 
 **编码用途清单**（搬运时保持不变）：CP949 用于 PVF 路径表；CP936 用于客户端可见文本（`Program.cs` 中以 `ExceptionFallback` 严格模式构造）；`Latin1` 用于无语义字节透传（`ObjectDropCatalog`、`ClearRewardCatalog`、`CharacterStatCatalog`）；`Encoding.Default` 作为 `ReadAllText` 的默认（.NET Core 起全平台为 UTF-8）。
 
@@ -139,7 +139,7 @@ Server/DFLegacy.Server/WorldMapCatalog.cs
 
 ```text
 1. 命令行参数  --home <path>
-2. 环境变量    DFLEGACY_HOME
+2. 环境变量    DAFLEGACY_HOME
 3. 默认        AppContext.BaseDirectory
 ```
 
@@ -151,7 +151,7 @@ Server/DFLegacy.Server/WorldMapCatalog.cs
 
 **兼容性**：Windows 上不设环境变量时行为与现在完全一致。
 
-**判定**：`DFLEGACY_HOME=/tmp/dflegacy-linux dotnet DFLegacy.Server.dll` 时，配置从 `/tmp/dflegacy-linux/server.json` 读取、`state.json` 写入 `/tmp/dflegacy-linux/data/`。
+**判定**：`DAFLEGACY_HOME=/tmp/daflegacy-linux dotnet DAFLegacy.Server.dll` 时，配置从 `/tmp/daflegacy-linux/server.json` 读取、`state.json` 写入 `/tmp/daflegacy-linux/data/`。
 
 ---
 
@@ -176,8 +176,8 @@ Server/DFLegacy.Server/WorldMapCatalog.cs
 | 集成点 | 当前状态 | 目标 |
 | --- | --- | --- |
 | Windows 事件日志 | 已在 `Program.cs` 通过 `builder.Logging.ClearProviders()` 规避（注释说明"缺管理员权限时事件源创建会失败"） | 保留该决定，并在日志中说明降级原因 |
-| 进程终止 | `stop.bat` 使用 `taskkill` 结束 `DFLegacy.Server.exe` | 服务端须正确响应 `SIGTERM` 优雅退出（`IHostedService` + `stoppingToken` 已具备机制，需实测确认）；`stop.bat` 保留，另提供 Unix 用法说明 |
-| 子进程启动 | `DFLegacy.Launcher/ClientProcessLauncher.cs` 启动客户端 | Client 层，不在契约范围 |
+| 进程终止 | `stop.bat` 使用 `taskkill` 结束 `DAFLegacy.Server.exe` | 服务端须正确响应 `SIGTERM` 优雅退出（`IHostedService` + `stoppingToken` 已具备机制，需实测确认）；`stop.bat` 保留，另提供 Unix 用法说明 |
+| 子进程启动 | `DAFLegacy.Launcher/ClientProcessLauncher.cs` 启动客户端 | Client 层，不在契约范围 |
 | 注册表 / 服务注册 | 无使用 | 保持无使用 |
 | 文件权限 / ACL | 无使用 | 保持无使用 |
 
@@ -225,7 +225,7 @@ warn: CharacterStatCatalog … built-in base attributes will be used.
 ```text
 Unhandled exception. System.IO.FileNotFoundException:
   Creature experience table 'creature/exptable.tbl' was not found in …
-  at DFLegacy.Server.CreatureExperienceCatalog.LoadThresholds()
+  at DAFLegacy.Server.CreatureExperienceCatalog.LoadThresholds()
   at Program.<Main>$(String[] args) in Program.cs:line 112
 ```
 
@@ -244,7 +244,7 @@ Unhandled exception. System.IO.FileNotFoundException:
 
 **契约**：Server 层的测试必须在 `win-x64`、`linux-x64`、`osx-arm64` 三个平台上全部通过；测试不得依赖仓库外的数据文件。
 
-**当前**：自测项目（现为 `tests/DFLegacy.SmokeTests`，12 个文件；M0 后迁至 `Server/DFLegacy.Server.SelfTests/`）实测在 macOS 上通过（`All DFLegacy protocol smoke tests passed.`），但不覆盖 PVF 读取、编码解码、路径归一、随机源降级这四类跨平台风险点。`Script.pvf` 不在仓库内，且体积与版权都不适合入库。
+**当前**：自测项目（现为 `tests/DAFLegacy.SmokeTests`，12 个文件；M0 后迁至 `Server/DAFLegacy.Server.SelfTests/`）实测在 macOS 上通过（`All DAFLegacy protocol smoke tests passed.`），但不覆盖 PVF 读取、编码解码、路径归一、随机源降级这四类跨平台风险点。`Script.pvf` 不在仓库内，且体积与版权都不适合入库。
 
 **目标**：
 
@@ -275,7 +275,7 @@ Unhandled exception. System.IO.FileNotFoundException:
 | **Launcher CLI** | `--no-dialog`、`--self-test`、`--install-ijl15`、`--check-d3d9`、`--account-index <N>`、`--account <名>` | 6 | M0 解耦 ijl15 时，容易以为"和 ijl15 相关"的无界面模式可以一并删——`--install-ijl15` 是**无 GUI 安装 ijl15 的唯一入口** |
 | **Admin API** | 25 个 API 端点（含 8 个 `/api/admin/*`）+ 6 个静态页面路由 | 31 | 分层不涉及路由，但组合根改动必须保证注册集合不变 |
 | **后台服务** | 6 个 `IHostedService`：`EntranceService`、`CharacterDatagramService`、`GameplayDatagramService`、`ProbeService`、`FatigueResetService`、`WeaknessRecoveryService` | 6 | 已在本设计中逐项覆盖（[01 · 4.2](01-target-architecture.md#42-模块职责要点)） |
-| **原生测试** | CTest 用例 `ijl15_compatibility` | 1 | 已覆盖（[03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构) 补上 `RUN_TESTS`）；原 `rdseed_native` 随 `DFLegacy.RandomNative` 移至 Client 层（不进流水线） |
+| **原生测试** | CTest 用例 `ijl15_compatibility` | 1 | 已覆盖（[03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构) 补上 `RUN_TESTS`）；原 `rdseed_native` 随 `DAFLegacy.RandomNative` 移至 Client 层（不进流水线） |
 | **数据源模式** | `Script.pvf` 直读 + `SkillScriptPath` 目录回退 | 2 | 已覆盖（`PvfScript/` 的目录回退） |
 | **子系统开关** | `server.json` 中 `Entrance` / `CharacterDatagram` / `GameplayDatagram` / `GameProbe` / `Drop` 的 `Enabled` | 5 | 键名与语义不变（[01 · 8.4](01-target-architecture.md#84-两个运行时配置文件归位)） |
 
@@ -292,7 +292,7 @@ POST  /api/admin/characters/{id}/mail         PUT   /api/admin/characters/{id}/d
 
 （比对时已把路由约束 `{characterId:guid}` 归一为 `{characterId}`；文档侧没有多出的端点。）
 
-**因此不能把 `ADMIN_API.md` 当作功能面的权威清单**——它是不完整的。权威清单是 `Server/DFLegacy.Server/Program.cs` 里的 31 个 `Map*` 注册。本设计不修改 `ADMIN_API.md`，但建议单独补齐那 8 个端点。
+**因此不能把 `ADMIN_API.md` 当作功能面的权威清单**——它是不完整的。权威清单是 `Server/DAFLegacy.Server/Program.cs` 里的 31 个 `Map*` 注册。本设计不修改 `ADMIN_API.md`，但建议单独补齐那 8 个端点。
 
 **判定**：不能只看静态计数，要看**运行期可达性**——
 
@@ -315,7 +315,7 @@ POST  /api/admin/characters/{id}/mail         PUT   /api/admin/characters/{id}/d
 | R2 | 原生能力运行期发现 | 编译期引用 + 硬编码路径 | ✅ 原生模块与服务端解耦（保留至 Client 层），规则保留为零实例约束 |
 | R3 | 路径契约 | 配置含 `\`，多处散乱 Replace | ✅ 引入 `PathResolver`，配置改 `/` |
 | R4 | 编码契约 | 15 处注册散落 15 个文件 | ✅ 收敛到 2 处 |
-| R5 | 配置与数据锚点 | 固定 `AppContext.BaseDirectory` | ✅ 支持 `DFLEGACY_HOME` / `--home` |
+| R5 | 配置与数据锚点 | 固定 `AppContext.BaseDirectory` | ✅ 支持 `DAFLEGACY_HOME` / `--home` |
 | R6 | 网络绑定 | 已全部 `IPAddress.Parse` | ➖ 保持，作为回归契约 |
 | R7 | 外部进程与系统集成 | 已规避事件日志；SIGTERM 未验证 | ⚠️ 验证优雅退出 |
 | R8 | 文件系统大小写 | 目录回退模式大小写敏感 | ✅ 改启动时建索引 |

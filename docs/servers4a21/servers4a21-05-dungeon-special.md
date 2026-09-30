@@ -1,7 +1,7 @@
 # 特殊副本与副本机制(ServerS4A21)
 
 > - **本册导航**:总览/帧结构/信封/分发架构/已实现 CMD 总表见 [servers4a21-00-overview.md](servers4a21-00-overview.md)。
-> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
+> - 仅写 A21(`ServerS4A21\Server\DfoServer`)侧实现,供 DAFLegacy 回填参考。路径相对 `DfoServer` 根;行号为整理时点状态。
 本域覆盖死亡塔、地狱派对、许可副本(许可证地下城)、神秘商店、副本机制小命令(血祭祭坛/锦标赛/时空螺旋/海战小游戏等)与特殊入场(异次元裂缝/圆环/连续副本)。主流程(入场选本、START_MAP、过图、翻牌结算)见主流程册,交叉处仅一句带过。
 
 ## 域综述:特殊副本如何挂接主流程

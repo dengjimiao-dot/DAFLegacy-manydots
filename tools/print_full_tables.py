@@ -1,5 +1,5 @@
 import json
-res = json.load(open(r'E:\github\DFLegacy\tools\packet_id_map.json'))
+res = json.load(open(r'E:\github\DAFLegacy\tools\packet_id_map.json'))
 print("===== NOTI (server -> client) =====")
 for i in range(145):
     n = res["noti"].get(str(i), "---")

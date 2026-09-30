@@ -4,14 +4,14 @@
   - **D4 取舍改为「内存树 + 账号级 diff 单事务落盘」**，不逐方法行级事务——见 §4 D4 与 §10.1；
   - **§6 一次性 `state.json` 导入整体取消**——不转换旧档，见 §10.2；
   - **基线 schema 三处修正**（可空标量列、`characters.name` 唯一范围、`character_mail.mail_id` 取号），见 §10.3；
-  - 基线文件随模块落到 `Server/DFLegacy.Server/Sqlite/act1_schema.sql`，是全仓唯一定名来源；库默认路径 `Data/game.db`；
+  - 基线文件随模块落到 `Server/DAFLegacy.Server/Sqlite/act1_schema.sql`，是全仓唯一定名来源；库默认路径 `Data/game.db`；
   - `JsonGameStore` / `JsonStateFile` 已删除，`ServerOptions.DataPath` 已移除，随之删掉两个只为旧 JSON 存在的兼容字段（`AccountRecord.LegacyBlackDiamondExpireAt`、`CharacterRecord.LegacyIsWeakened`）与其启动迁移，`AccountRecord.Cash` 由可空改为非空默认 0。
 
 - 日期：2026-09-28
 - 上级文档：[04 · 迁移计划](04-migration-plan.md)（§5 Q6 的遗留议题）、[01 · 目标架构](01-target-architecture.md)
 - 关联文档：
   - [02 · 可移植性契约](02-portability-contracts.md)（R5 数据锚点、R7 状态完整落盘）
-  - [Server/DFLegacy.Server/Sqlite/act1_schema.sql](../../Server/DFLegacy.Server/Sqlite/act1_schema.sql)（**基线 schema 唯一定名来源**：表设计模式取自 86S4A21，功能面上限兼容早期草案；命名统称 60A1；随发布拷到输出目录 `Sqlite/`）
+  - [Server/DAFLegacy.Server/Sqlite/act1_schema.sql](../../Server/DAFLegacy.Server/Sqlite/act1_schema.sql)（**基线 schema 唯一定名来源**：表设计模式取自 86S4A21，功能面上限兼容早期草案；命名统称 60A1；随发布拷到输出目录 `Sqlite/`）
   - [docs/sql/86S4A21_schema.sql](../sql/86S4A21_schema.sql)（参照项目 ServerS4A21 的 schema；**表设计模式参考基准**，仅取模式不搬功能）
   - [feature-backfill-plan-vs-s4a21](../servers4a21/feature-backfill-plan-vs-s4a21.md) §2.3（存储层结构性差异对照）
 
@@ -30,7 +30,7 @@
 - 无增量演进的版本机制，兼容迁移以「启动时 9 个 `Migrate*Locked` 重写整个 JSON」实现。
 
 参照项目 ServerS4A21 已采用 SQLite（`Microsoft.Data.Sqlite`），其连接管理、基线+增量迁移、
-事务边界模型可直接借鉴。本文档定义 DFLegacy 的 SQLite 存储方案与一次性数据迁移设计。
+事务边界模型可直接借鉴。本文档定义 DAFLegacy 的 SQLite 存储方案与一次性数据迁移设计。
 
 目标：
 
@@ -100,7 +100,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 
 | 参照做法 | 本项目决策 | 理由 |
 |---|---|---|
-| 52 个仓储类 + 手工组合根 | **不搬**：保持 `SqliteGameStore` 单类同签名 | DFLegacy 持久化入口唯一、数据量小；分仓储只增加改动面（G3） |
+| 52 个仓储类 + 手工组合根 | **不搬**：保持 `SqliteGameStore` 单类同签名 | DAFLegacy 持久化入口唯一、数据量小；分仓储只增加改动面（G3） |
 | 高频域脏标记 + 分钟级批量刷盘 | **不搬**：每个 Store 方法一个事务直接提交 | 60 版写频率（每客户端操作一次）远低于 86 版背包场景；直写消除「内存与库不一致」窗口 |
 | `item_core` 99 字节 BLOB 物品模型 | **不搬**：扁平列（见 §4 D6） | 60 版物品字段少且稳定，BLOB 引入编解码层纯属过度设计 |
 | 86 版过渡功能表（佣兵/公会/活动/PvP 战报/协议模板表等） | **不搬** | 低版本不存在这些功能（§4 D7） |

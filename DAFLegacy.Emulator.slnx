@@ -1,0 +1,21 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Server/DAFLegacy.Server/DAFLegacy.Server.csproj" />
+  <!-- DAF-MCP 模块：Server 编译期零引用，运行期由 McpModuleLoader 按开关加载
+       （docs/design/09-mcp-packet-tap.md）。 -->
+  <Project Path="Server/DAFLegacy.Mcp/DAFLegacy.Mcp.csproj" />
+  <Project Path="Server/DAFLegacy.Server.SelfTests/DAFLegacy.Server.SelfTests.csproj" />
+  <Project Path="Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj" />
+  <!-- 原生项目仅作 IDE 可见性成员：构建统一走 patch.bat（docs/design/03 · 4.5），
+       不参与解决方案配置矩阵（Ijl15 仅 Win32，RandomNative 仅 x64）。 -->
+  <Project Path="Client/DAFLegacy.Ijl15/DAFLegacy.Ijl15.vcxproj">
+    <Build Project="false" />
+  </Project>
+  <Project Path="Client/DAFLegacy.RandomNative/DAFLegacy.RandomNative.vcxproj" Id="414afaaa-2b3d-4d08-959c-10c4208e65b0">
+    <Build Project="false" />
+  </Project>
+</Solution>

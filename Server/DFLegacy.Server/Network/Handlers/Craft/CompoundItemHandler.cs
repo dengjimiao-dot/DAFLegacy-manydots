@@ -10,7 +10,6 @@ namespace DFLegacy.Server;
 public sealed class CompoundItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     CompoundCatalog compoundCatalog,
-    ILogger<CompoundItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -37,7 +36,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
         {
             var error = CraftPacketBuilders.CreateCompoundItemFailure(
                 (byte)CompoundItemFailure.InvalidRecipe);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -50,25 +49,25 @@ public sealed class CompoundItemHandler(JsonGameStore store,
                 var conflict =
                     CraftPacketBuilders.CreateCompoundItemFailure(
                         (byte)CompoundItemFailure.SequenceConflict);
-                await context.Outbound.SendAsync(conflict, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(conflict, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Rejected compound sequence {Sequence} reused by a different request.",
                     compoundItemCommand.Sequence);
                 return;
             }
 
-            await context.Outbound.SendAsync(replay.Reply, Name, cancellationToken);
+            await context.Queue.SendAsync(replay.Reply, Name, cancellationToken);
             var replayRefresh = builders.CreateMainInventoryPacket(
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(replayRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(replayRefresh, Name, cancellationToken);
             if (replay.RefreshWarehouse)
             {
                 await senders.SendWarehouseStateAsync(context, cancellationToken);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Replayed compound acknowledgement for duplicate sequence {Sequence}.",
                 compoundItemCommand.Sequence);
             return;
@@ -93,8 +92,8 @@ public sealed class CompoundItemHandler(JsonGameStore store,
         {
             var error = CraftPacketBuilders.CreateCompoundItemFailure(
                 (byte)compoundItemFailure);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected compound recipe source={SourceType}:{SourceValue}, count={CraftCount}: {Failure}.",
                 compoundItemCommand.SourceIsItemId ? "item" : "slot",
                 compoundItemCommand.SourceValue,
@@ -115,8 +114,8 @@ public sealed class CompoundItemHandler(JsonGameStore store,
         {
             var error = CraftPacketBuilders.CreateCompoundItemFailure(
                 (byte)CompoundItemFailure.InvalidRecipe);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected stale compound commit for sequence {Sequence}, recipe {RecipeItemId}.",
                 compoundItemCommand.Sequence,
                 compoundItemPlan.RecipeItemId);
@@ -159,7 +158,7 @@ public sealed class CompoundItemHandler(JsonGameStore store,
                 compoundItemReply,
                 refreshWarehouse));
         session.Inventory.CompoundReplayOrder.Enqueue(compoundItemCommand.Sequence);
-        await context.Outbound.SendAsync(compoundItemReply, Name, cancellationToken);
+        await context.Queue.SendAsync(compoundItemReply, Name, cancellationToken);
         // DF2008 does not reliably apply the CMD27 delta when
         // a consumed recipe slot is immediately reused by the
         // crafted result. Always follow the acknowledgement
@@ -168,14 +167,14 @@ public sealed class CompoundItemHandler(JsonGameStore store,
             session.Currency.Gold,
             session.Currency.VictoryPoints,
             session.Inventory.Main.Values);
-        await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
 
         if (refreshWarehouse)
         {
             await senders.SendWarehouseStateAsync(context, cancellationToken);
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Compounded recipe {RecipeItemId} from {SourceType}:{SourceValue}: count={CraftCount}, recipeType={RecipeType}, goldCost={GoldCost}, consumedSlots={ConsumedCount}, createdSlots={CreatedCount}, gold={Gold}.",
             compoundItemPlan.RecipeItemId,
             compoundItemCommand.SourceIsItemId ? "item" : "slot",

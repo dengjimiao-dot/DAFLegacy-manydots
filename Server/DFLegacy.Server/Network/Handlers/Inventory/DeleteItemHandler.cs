@@ -10,8 +10,8 @@ public sealed class DeleteItemHandler(
     ServerOptions options,
     RuntimeState runtime,
     JsonGameStore store,
-    ItemCatalog itemCatalog,
-    ILogger<DeleteItemHandler> logger) : IGameCommandHandler
+    ItemCatalog itemCatalog
+    ) : IGameCommandHandler
 {
 
     public ushort ProtocolId => (byte)CmdPacketType.DELETE_ITEM;
@@ -44,7 +44,7 @@ public sealed class DeleteItemHandler(
                 out var requestedConsumptions)
             || listType != 0)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Rejected consume-items transaction session.Character.Active={HasCharacter}, body={Body}.",
                 session.Character.Active is not null,
                 Convert.ToHexString(request.Body));
@@ -65,7 +65,7 @@ public sealed class DeleteItemHandler(
                 || requestedConsumption.ItemId != inventoryItem.ItemId
                 || itemCatalog.IsEquipment(inventoryItem.ItemId))
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Consume-items transaction has an invalid entry operation={Operation}, slot={Slot}, requestedItem={RequestedItemId}, actualItem={ActualItemId}, requested={RequestedCount}.",
                     requestedConsumption.Operation,
                     requestedConsumption.Slot,
@@ -81,7 +81,7 @@ public sealed class DeleteItemHandler(
             accumulated += requestedConsumption.RequestedCount;
             if (accumulated > inventoryItem.CountOrValue)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Consume-items transaction exceeds slot={Slot} stack item={ItemId}, requestedTotal={RequestedTotal}, current={CurrentCount}.",
                     requestedConsumption.Slot,
                     inventoryItem.ItemId,
@@ -105,7 +105,7 @@ public sealed class DeleteItemHandler(
                 InventoryPacketBuilders.CreateDeleteItemError(
                     listType,
                     errorCode: 0x11);
-            await context.Outbound.SendAsync(deleteItemError, Name, cancellationToken);
+            await context.Queue.SendAsync(deleteItemError, Name, cancellationToken);
             return;
         }
 
@@ -139,7 +139,7 @@ public sealed class DeleteItemHandler(
 
         foreach (var requestedConsumption in requestedConsumptions)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Consumed material listType={ListType}, operation={Operation}, slot={Slot}, item={ItemId}, consumed={ConsumedCount}, remaining={RemainingCount}.",
                 listType,
                 requestedConsumption.Operation,
@@ -157,6 +157,6 @@ public sealed class DeleteItemHandler(
             InventoryPacketBuilders.CreateDeleteItemReply(
                 listType,
                 completionEntries);
-        await context.Outbound.SendAsync(deleteItemReply, Name, cancellationToken);
+        await context.Queue.SendAsync(deleteItemReply, Name, cancellationToken);
     }
 }

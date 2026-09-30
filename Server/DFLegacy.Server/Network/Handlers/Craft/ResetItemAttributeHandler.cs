@@ -10,7 +10,6 @@ namespace DFLegacy.Server;
 public sealed class ResetItemAttributeHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     ResealCatalog resealCatalog,
-    ILogger<ResetItemAttributeHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -36,7 +35,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
             var error =
                 CraftPacketBuilders.CreateResetItemAttributeFailure(
                     (byte)ItemAttributeModificationFailure.InvalidTarget);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -55,8 +54,8 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
             var error =
                 CraftPacketBuilders.CreateResetItemAttributeFailure(
                     (byte)modificationFailure);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected item-attribute modification for item {ItemId} at slot {Slot} with material slot {MaterialSlot}: {Failure}.",
                 resetCommand.TargetItemId,
                 resetCommand.TargetSlot,
@@ -79,7 +78,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
             var error =
                 CraftPacketBuilders.CreateResetItemAttributeFailure(
                     (byte)ItemAttributeModificationFailure.InvalidTarget);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -97,7 +96,7 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
                 modificationPlan.MaterialSlot,
                 modificationPlan.MaterialRemaining,
                 (ushort)modificationPlan.Operation);
-        await context.Outbound.SendAsync(modificationReply, Name, cancellationToken);
+        await context.Queue.SendAsync(modificationReply, Name, cancellationToken);
 
         var adjustedItem = modificationPlan.TargetListType == 3
             ? session.Inventory.Equipped[modificationPlan.TargetSlot]
@@ -106,9 +105,9 @@ public sealed class ResetItemAttributeHandler(JsonGameStore store,
             InventoryPacketBuilders.CreateUpdateItemList(
                 modificationPlan.TargetListType,
                 [builders.ToGameInventoryEntry(adjustedItem)]);
-        await context.Outbound.SendAsync(targetUpdate, Name, cancellationToken);
+        await context.Queue.SendAsync(targetUpdate, Name, cancellationToken);
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Completed item-attribute operation {Operation} for item {ItemId} at {ListType}:{Slot}: material={MaterialItemId}x{MaterialConsumed}, remaining={MaterialRemaining}, quality={PreviousSeed}->{NewSeed}, reseals={PreviousResealCount}->{NewResealCount}.",
             modificationPlan.Operation,
             modificationPlan.TargetItemId,

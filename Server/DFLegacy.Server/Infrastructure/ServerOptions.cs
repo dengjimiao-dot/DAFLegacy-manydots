@@ -79,6 +79,7 @@ public sealed class AdminOptions
 /// </summary>
 public sealed class LoggingOptions
 {
+    /// <summary>仅门控文件日志器（logs/server.log），默认关闭；控制台日志无开关、始终输出，不受本项影响。</summary>
     public bool Enabled { get; set; }
 
     public string Directory { get; set; } = "logs";

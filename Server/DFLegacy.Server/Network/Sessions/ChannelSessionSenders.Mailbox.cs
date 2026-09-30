@@ -26,7 +26,7 @@ public sealed partial class ChannelSessionSenders
             mails.Select(builders.ToGameMailEntry).ToArray());
         foreach (var packet in mailboxPackets)
         {
-            await context.Outbound.SendAsync(packet, "MAILBOX_STATE", cancellationToken);
+            await context.Queue.SendAsync(packet, "MAILBOX_STATE", cancellationToken);
         }
 
         if (notifyNewMail)
@@ -57,7 +57,7 @@ public sealed partial class ChannelSessionSenders
 
         var alarm = MailboxPacketBuilders.CreateMailboxAlarm(
             checked((short)Math.Min(newMailCount, short.MaxValue)));
-        await context.Outbound.SendAsync(alarm, "MAILBOX_ALARM", cancellationToken);
+        await context.Queue.SendAsync(alarm, "MAILBOX_ALARM", cancellationToken);
         await store.AcknowledgeCharacterMailNotificationsAsync(
             context.State.Character.Active.Id,
             cancellationToken);

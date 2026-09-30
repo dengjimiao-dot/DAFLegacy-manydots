@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// One mounted command handler owning exactly one protocol id (07 §4.6).
 /// Handlers are thin orchestrations: parse the request, call Game/ domain
-/// functions, enqueue replies through <see cref="ConnectionContext.Outbound"/>.
+/// functions, enqueue replies through <see cref="ConnectionContext.Queue"/>.
 /// They must not hold cross-connection state; shared dependencies are
 /// constructor-injected read-only catalogs or stores only.
 /// </summary>

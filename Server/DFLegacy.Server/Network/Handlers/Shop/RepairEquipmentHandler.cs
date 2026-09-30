@@ -8,8 +8,8 @@ namespace DFLegacy.Server;
 /// REPAIR_EQUIPMENT (CMD 25): repair quote and settlement for worn equipment (07 §5 group 10).
 /// </summary>
 public sealed class RepairEquipmentHandler(JsonGameStore store,
-    ItemCatalog itemCatalog,
-    ILogger<RepairEquipmentHandler> logger) : IGameCommandHandler
+    ItemCatalog itemCatalog
+    ) : IGameCommandHandler
 {
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -34,7 +34,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 0x11);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -108,7 +108,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     0x11);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 return;
             }
 
@@ -126,7 +126,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 10);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -154,7 +154,7 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -167,8 +167,8 @@ public sealed class RepairEquipmentHandler(JsonGameStore store,
                 checked((uint)session.Currency.Gold),
                 itemSpace,
                 repairSlot);
-        await context.Outbound.SendAsync(repairReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(repairReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Repaired {RepairCount} equipment item(s) at {ItemSpace}:{Slot}; cost={Cost}, gold={Gold}, dungeonRate={DungeonRate}",
             repairTargets.Count,
             itemSpace,

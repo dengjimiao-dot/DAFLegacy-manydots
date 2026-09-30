@@ -11,8 +11,8 @@ namespace DFLegacy.Server;
 /// which selects the normal character-list path in this client build.
 /// </summary>
 public sealed class LoginHandler(
-    JsonGameStore store,
-    ILogger<LoginHandler> logger) : IGameCommandHandler
+    JsonGameStore store
+    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.LOGIN;
 
@@ -37,8 +37,8 @@ public sealed class LoginHandler(
             var malformedLoginError = ConnectionPacketBuilders.CreateCommandError(
                 frame,
                 errorCode: 2);
-            await context.Outbound.SendAsync(malformedLoginError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(malformedLoginError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected malformed login command for channel session {SessionId}.",
                 context.Runtime.Id);
             return;
@@ -55,7 +55,7 @@ public sealed class LoginHandler(
             var loginError = ConnectionPacketBuilders.CreateCommandError(
                 frame,
                 errorCode: 2);
-            await context.Outbound.SendAsync(loginError, Name, cancellationToken);
+            await context.Queue.SendAsync(loginError, Name, cancellationToken);
             return;
         }
 
@@ -63,6 +63,6 @@ public sealed class LoginHandler(
         context.State.Login.AccountUid = authenticated.AccountUid;
 
         var reply = FallbackCommandReplies.TryCreateReply(frame, ReadOnlySpan<byte>.Empty)!;
-        await context.Outbound.SendAsync(reply, Name, cancellationToken);
+        await context.Queue.SendAsync(reply, Name, cancellationToken);
     }
 }

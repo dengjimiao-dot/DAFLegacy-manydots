@@ -43,7 +43,7 @@ public sealed class SetUserAreaHandler(JsonGameStore store,
             session.Character.TownId,
             session.Character.AreaId,
             townUser);
-        await context.Outbound.SendAsync(userArea, Name, cancellationToken);
+        await context.Queue.SendAsync(userArea, Name, cancellationToken);
 
         // USER_AREA deliberately ignores the local user;
         // AREA_USERS commits the local scene transition but
@@ -54,7 +54,7 @@ public sealed class SetUserAreaHandler(JsonGameStore store,
             session.Character.TownId,
             session.Character.AreaId,
             [townUser]);
-        await context.Outbound.SendAsync(areaUsers, Name, cancellationToken);
+        await context.Queue.SendAsync(areaUsers, Name, cancellationToken);
         session.Character.AreaRosterInitialized = true;
         await senders.SendTownFatigueStateAsync(context, cancellationToken);
         await senders.SendTownAppearanceAsync(context, waitForTownActor: true, cancellationToken);

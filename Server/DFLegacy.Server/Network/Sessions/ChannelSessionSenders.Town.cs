@@ -31,7 +31,7 @@ public sealed partial class ChannelSessionSenders
         equippedCreatureLevel: CharacterPacketBuilders.GetEquippedCreatureLevel(
             context.State.Inventory.Creature),
         staminaRecoveryPercentage: GetProjectedStaminaRecovery(context));
-    await context.Outbound.SendAsync(equipment, "CHARACTER_DETAILS", cancellationToken);
+    await context.Queue.SendAsync(equipment, "CHARACTER_DETAILS", cancellationToken);
     context.State.Character.LastProjectedCombatStats = projectedStats;
     }
 
@@ -67,7 +67,7 @@ public sealed partial class ChannelSessionSenders
         context.State.Inventory.Equipped.Values,
         context.State.Inventory.Creature.Values,
         HasActivePremiumService(context, GameProtocolConstants.BlackDiamondServiceType));
-    await context.Outbound.SendAsync(appearance, "TOWN_APPEARANCE", cancellationToken);
+    await context.Queue.SendAsync(appearance, "TOWN_APPEARANCE", cancellationToken);
 
     // Mode zero is the compact town-actor appearance
     // projection: Avatar slots 0..8, weapon slot 9, plus the
@@ -104,7 +104,7 @@ public sealed partial class ChannelSessionSenders
         await SendCurrentEquipmentStateAsync(context, validation.Expected, cancellationToken);
     }
 
-    logger.LogInformation(
+    RuntimeLogger.Info(
         "Validated PVF character attributes after {Reason} for {CharacterId}; level={Level}, job={Job}, growType={GrowType}, awakening={AwakeningType}, correctionRequired={CorrectionRequired}, mismatches={Mismatches}.",
         reason,
         context.State.Character.Active.Id,
@@ -132,7 +132,7 @@ public sealed partial class ChannelSessionSenders
     // projection; active black diamond always projects full stamina.
     var stamina = StaminaPacketBuilders.CreateStamina(
         GetProjectedStaminaRecovery(context));
-    await context.Outbound.SendAsync(stamina, "STAMINA_NOTI", cancellationToken);
+    await context.Queue.SendAsync(stamina, "STAMINA_NOTI", cancellationToken);
     context.State.Weakness.StaminaStateInitialized = true;
     }
 
@@ -162,7 +162,7 @@ public sealed partial class ChannelSessionSenders
             action: GameProtocolConstants.PremiumServiceUpdateAction,
             serviceType,
             remainSeconds);
-    await context.Outbound.SendAsync(premiumNotification, "PREMIUM_INFO", cancellationToken);
+    await context.Queue.SendAsync(premiumNotification, "PREMIUM_INFO", cancellationToken);
 
     if (serviceType == GameProtocolConstants.BlackDiamondServiceType
         && context.State.Character.Active is not null
@@ -175,7 +175,7 @@ public sealed partial class ChannelSessionSenders
             context.State.Inventory.Creature.Values,
             HasActivePremiumService(context,
                 GameProtocolConstants.BlackDiamondServiceType));
-        await context.Outbound.SendAsync(appearance, "PREMIUM_INFO", cancellationToken);
+        await context.Queue.SendAsync(appearance, "PREMIUM_INFO", cancellationToken);
         await SendTownFatigueStateAsync(context, cancellationToken);
     }
     }
@@ -187,7 +187,7 @@ public sealed partial class ChannelSessionSenders
     // AREA_USERS constructs the town HUD. EVENT_INFO then selects
     // and initializes its normal/premium fatigue-bar resources.
     var eventInfo = StaminaPacketBuilders.CreateEventInfo();
-    await context.Outbound.SendAsync(eventInfo, "TOWN_STAMINA", cancellationToken);
+    await context.Queue.SendAsync(eventInfo, "TOWN_STAMINA", cancellationToken);
 
     var premiumFatigue = HasActivePremiumService(
             context,
@@ -202,7 +202,7 @@ public sealed partial class ChannelSessionSenders
             maximumFatigue),
         maximumFatigue: maximumFatigue,
         premiumFatigue: premiumFatigue);
-    await context.Outbound.SendAsync(fatigue, "TOWN_STAMINA", cancellationToken);
+    await context.Queue.SendAsync(fatigue, "TOWN_STAMINA", cancellationToken);
     }
 
     // ---- Town presence and scene-transition senders (migrated verbatim
@@ -247,7 +247,7 @@ public sealed partial class ChannelSessionSenders
     // local actor has been constructed by AREA_USERS.
     var gameWorldComplete =
         ConnectionPacketBuilders.CreateEnterGameWorldComplete();
-    await context.Outbound.SendAsync(gameWorldComplete, "TOWN_NOTI", cancellationToken);
+    await context.Queue.SendAsync(gameWorldComplete, "TOWN_NOTI", cancellationToken);
     }
 
     public async Task SendSilentTownStaminaStateAsync(
@@ -271,7 +271,7 @@ public sealed partial class ChannelSessionSenders
                 context.State.Character.Active.WeaknessRecovery)
             : DungeonPacketBuilders.CreateFailClearDungeon(
                 DungeonWeaknessPolicy.FullStamina);
-    await context.Outbound.SendAsync(stamina, "TOWN_NOTI", cancellationToken);
+    await context.Queue.SendAsync(stamina, "TOWN_NOTI", cancellationToken);
     }
 
     // ---- Dungeon flow helpers (migrated verbatim for R5: return-to-town,
@@ -290,14 +290,14 @@ public sealed partial class ChannelSessionSenders
             }
 
             var stamina = StaminaPacketBuilders.CreateStamina(recovery);
-            await context.Outbound.SendAsync(stamina, "STAMINA_NOTI", context.Disconnecting);
+            await context.Queue.SendAsync(stamina, "STAMINA_NOTI", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Could not send weakness recovery notification to character {CharacterId}.",
                 context.State.Character.Active?.Id);

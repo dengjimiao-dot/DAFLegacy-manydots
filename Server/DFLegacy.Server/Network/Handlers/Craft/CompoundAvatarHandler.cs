@@ -9,7 +9,6 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class CompoundAvatarHandler(JsonGameStore store,
     AvatarCompoundCatalog avatarCompoundCatalog,
-    ILogger<CompoundAvatarHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -34,7 +33,7 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
         {
             var error =
                 CraftPacketBuilders.CreateCompoundAvatarFailure();
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -55,8 +54,8 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
         {
             var error =
                 CraftPacketBuilders.CreateCompoundAvatarFailure();
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected avatar compound for job {Job}, material slot {MaterialSlot}, items {FirstItemId}/{SecondItemId}, slots {FirstSlot}/{SecondSlot}, option {Option}: {Failure}.",
                 session.Character.Active.Job,
                 compoundCommand.MaterialSlot,
@@ -84,7 +83,7 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
         {
             var error =
                 CraftPacketBuilders.CreateCompoundAvatarFailure();
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -122,18 +121,18 @@ public sealed class CompoundAvatarHandler(JsonGameStore store,
                 compoundPlan.ResultItemId,
                 remainingSeconds: 0,
                 selectedOption: compoundPlan.SelectedOption);
-        await context.Outbound.SendAsync(compoundReply, Name, cancellationToken);
+        await context.Queue.SendAsync(compoundReply, Name, cancellationToken);
 
         var inventoryRefresh = builders.CreateMainInventoryPacket(
             session.Currency.Gold,
             session.Currency.VictoryPoints,
             session.Inventory.Main.Values);
-        await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
 
         var avatarRefresh =
             builders.CreateAvatarInventoryPacket(session.Inventory.Avatar.Values);
-        await context.Outbound.SendAsync(avatarRefresh, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(avatarRefresh, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Compounded avatars for job {Job}, part {Part}: items {FirstItemId}/{SecondItemId} at {FirstSlot}/{SecondSlot} -> {ResultItemId} at {ResultSlot}, option={Option}, rare={Rare}, rate={RareRate}/{RateUpperBound}, material={MaterialItemId}x{MaterialCount}, remaining={MaterialRemaining}.",
             session.Character.Active.Job,
             compoundPlan.ResultPart,

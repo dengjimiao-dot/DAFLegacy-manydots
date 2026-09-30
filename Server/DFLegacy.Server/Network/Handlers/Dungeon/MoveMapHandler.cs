@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// MOVE_MAP (CMD 48): in-dungeon room transition (07 §5 group 13).
 /// </summary>
-public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
+public sealed class MoveMapHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.MOVE_MAP;
@@ -36,8 +36,8 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                     ConnectionPacketBuilders.CreateCommandError(
                         request,
                         errorCode: 4);
-                await context.Outbound.SendAsync(duplicateMoveError, Name, cancellationToken);
-                logger.LogDebug(
+                await context.Queue.SendAsync(duplicateMoveError, Name, cancellationToken);
+                RuntimeLogger.Debug(
                     "Rejected duplicate MOVE_MAP for current dungeon {DungeonId} room ({RoomX},{RoomY}).",
                     session.Dungeon.CurrentDungeonId,
                     targetX,
@@ -56,7 +56,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                 var moveReply = ConnectionPacketBuilders.CreateCommandReply(
                     request,
                     success: true);
-                await context.Outbound.SendAsync(moveReply, Name, cancellationToken);
+                await context.Queue.SendAsync(moveReply, Name, cancellationToken);
 
                 // Ground items belong to their originating room. Moving
                 // rooms must not synthesize NOTI 39: DNF 1.0.1.9 treats
@@ -125,7 +125,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                         roomStateFlag: session.Dungeon.Run.RoomStateFlag,
                         hellPartyMode: session.Dungeon.Run.CurrentHellPartyMode);
                 }
-                await context.Outbound.SendAsync(nextMap, Name, cancellationToken);
+                await context.Queue.SendAsync(nextMap, Name, cancellationToken);
                 if (transition.FirstVisit)
                 {
                     await senders.ConsumeDungeonRoomFatigueAsync(context, 
@@ -134,7 +134,7 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                 }
                 await senders.EnableEmptyBossRoomSettlementAsync(context, 
                     session.Dungeon.Room);
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Dungeon {DungeonId} moved to room ({RoomX},{RoomY}), map {MapId}, monsters={MonsterCount}, champions={ChampionCount}, mapChampionBase={MapChampionBase}, clientSeed={ClientSeed}, firstVisit={FirstVisit}, reuseClientRoomState={ReuseClientRoomState}, hellPartyMode={HellPartyMode}, hellRoomClearedOnExit={HellRoomClearedOnExit}.",
                     session.Dungeon.CurrentDungeonId,
                     targetX,
@@ -155,8 +155,8 @@ public sealed class MoveMapHandler(    ILogger<MoveMapHandler> logger,
                 var moveError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 4);
-                await context.Outbound.SendAsync(moveError, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(moveError, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Dungeon {DungeonId} rejected disconnected or unavailable room ({RoomX},{RoomY})",
                     session.Dungeon.CurrentDungeonId,
                     targetX,

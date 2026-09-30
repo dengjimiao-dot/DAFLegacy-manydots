@@ -6,8 +6,8 @@ namespace DFLegacy.Server;
 /// <summary>
 /// USE_COIN (CMD 44): revival coin consumption inside the dungeon (07 §5 group 13).
 /// </summary>
-public sealed class UseCoinHandler(    JsonGameStore store,
-    ILogger<UseCoinHandler> logger) : IGameCommandHandler
+public sealed class UseCoinHandler(    JsonGameStore store
+    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.USE_COIN;
 
@@ -72,13 +72,13 @@ public sealed class UseCoinHandler(    JsonGameStore store,
                 var reviveState = DungeonPacketBuilders.CreateDieState(
                     useCoinCommand.TargetUserId,
                     isAlive: true);
-                await context.Outbound.SendAsync(reviveState, Name, cancellationToken);
+                await context.Queue.SendAsync(reviveState, Name, cancellationToken);
 
                 var useCoinReply =
                     DungeonPacketBuilders.CreateUseCoinReply(
                         useCoinCommand.TargetUserId);
-                await context.Outbound.SendAsync(useCoinReply, Name, cancellationToken);
-                logger.LogInformation(
+                await context.Queue.SendAsync(useCoinReply, Name, cancellationToken);
+                RuntimeLogger.Info(
                     "User {UserId} revived in dungeon {DungeonId}; revival coins remaining={RemainingCoins}.",
                     session.Character.LocalUserId,
                     session.Dungeon.CurrentDungeonId,
@@ -92,8 +92,8 @@ public sealed class UseCoinHandler(    JsonGameStore store,
         var error = ConnectionPacketBuilders.CreateCommandError(
             request,
             errorCode!.Value);
-        await context.Outbound.SendAsync(error, Name, cancellationToken);
-        logger.LogWarning(
+        await context.Queue.SendAsync(error, Name, cancellationToken);
+        RuntimeLogger.Warn(
             "Rejected USE_COIN for user {UserId}, target={TargetUserId}, error={ErrorCode}.",
             session.Character.LocalUserId,
             useCoinCommand.TargetUserId,

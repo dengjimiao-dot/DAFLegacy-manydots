@@ -10,7 +10,6 @@ namespace DFLegacy.Server;
 public sealed class BuyItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     CharacterSessionRegistry characterSessions,
-    ILogger<BuyItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -35,14 +34,14 @@ public sealed class BuyItemHandler(JsonGameStore store,
                 out var countOrQualitySeed))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
         if (!itemCatalog.TryGetDefinition(itemId, out var itemDefinition))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -52,8 +51,8 @@ public sealed class BuyItemHandler(JsonGameStore store,
         if (!itemCatalog.TryGetPurchasePrice(itemId, out var unitPrice))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected NPC-shop purchase of item {ItemId}: its cached item definition disappeared during request processing.",
                 itemId);
             return;
@@ -63,7 +62,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
         if (session.Currency.Gold < totalPrice)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -167,7 +166,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
                  or InventoryPlacementFailure.UnsupportedCategory)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
         else
@@ -196,7 +195,7 @@ public sealed class BuyItemHandler(JsonGameStore store,
         if (savedCharacter is null)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -223,32 +222,32 @@ public sealed class BuyItemHandler(JsonGameStore store,
             slot: destinationSlot ?? ushort.MaxValue,
             itemId: purchasedItem.ItemId,
             countOrValue: purchasedItem.CountOrValue);
-        await context.Outbound.SendAsync(buyReply, Name, cancellationToken);
+        await context.Queue.SendAsync(buyReply, Name, cancellationToken);
         var mainRefresh = builders.CreateMainInventoryPacket(
             session.Currency.Gold,
             session.Currency.VictoryPoints,
             session.Inventory.Main.Values,
             preferredLastSlot: destinationSlot);
-        await context.Outbound.SendAsync(mainRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(mainRefresh, Name, cancellationToken);
         if (destinationListType == 1)
         {
             var avatarRefresh = builders.CreateAvatarInventoryPacket(
                 session.Inventory.Avatar.Values);
-            await context.Outbound.SendAsync(avatarRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(avatarRefresh, Name, cancellationToken);
         }
         else if (destinationListType == 7)
         {
             foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creatureRefresh, Name, cancellationToken);
+                await context.Queue.SendAsync(creatureRefresh, Name, cancellationToken);
             }
         }
         if (warehouseCapacityChanged || isWarehouseUpgradeItem)
         {
             await senders.SendWarehouseStateAsync(context, cancellationToken);
         }
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Bought item {ItemId} x{Count} for {UnitPrice} each ({TotalPrice} total); listType={ListType}, slot={Slot}, overflowMail={OverflowMail}, gold={Gold}",
             itemId,
             count,

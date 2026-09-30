@@ -6,8 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// GIVEUP_QUEST (CMD 34): removes a giveup-able quest and refreshes the acceptable list (07 §5 group 7).
 /// </summary>
-public sealed class GiveupQuestHandler(
-    ILogger<GiveupQuestHandler> logger,JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
+public sealed class GiveupQuestHandler(JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.GIVEUP_QUEST;
 
@@ -23,7 +22,7 @@ public sealed class GiveupQuestHandler(
         if (session.Character.Active is null || request.Body.Length < 4)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 19);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -33,7 +32,7 @@ public sealed class GiveupQuestHandler(
         if (questIndex < 0)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 19);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -41,7 +40,7 @@ public sealed class GiveupQuestHandler(
             && !definition.CanGiveup)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 20);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -54,8 +53,8 @@ public sealed class GiveupQuestHandler(
             cancellationToken) ?? session.Character.Active;
 
         var giveupQuestReply = QuestPacketBuilders.CreateGiveupQuestReply(questId);
-        await context.Outbound.SendAsync(giveupQuestReply, Name, cancellationToken);
+        await context.Queue.SendAsync(giveupQuestReply, Name, cancellationToken);
         await senders.SendAcceptableQuestListAsync(context, cancellationToken);
-        logger.LogInformation("Gave up quest {QuestId}.", questId);
+        RuntimeLogger.Info("Gave up quest {QuestId}.", questId);
     }
 }

@@ -21,7 +21,7 @@ public sealed class FinishLoadingHandler(
     {
         var session = context.State;
         var loadingReply = ConnectionPacketBuilders.CreateCommandReply(request, success: true);
-        await context.Outbound.SendAsync(loadingReply, Name, cancellationToken);
+        await context.Queue.SendAsync(loadingReply, Name, cancellationToken);
 
         // Command 40 tells the server that the local town
         // scene has finished loading. DNF 1.0.1.9 then
@@ -29,7 +29,7 @@ public sealed class FinishLoadingHandler(
         // town-side managers. This build's handler consumes
         // no notification payload.
         var loadingNotification = DungeonPacketBuilders.CreateFinishLoading();
-        await context.Outbound.SendAsync(loadingNotification, Name, cancellationToken);
+        await context.Queue.SendAsync(loadingNotification, Name, cancellationToken);
         // FinishLoading reconstructs the local map actor.
         // Replay a persisted zero-stomach death marker for
         // dungeon scenes even if this connection already

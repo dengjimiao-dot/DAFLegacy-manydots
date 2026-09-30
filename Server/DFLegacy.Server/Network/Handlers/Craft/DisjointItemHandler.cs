@@ -10,7 +10,6 @@ namespace DFLegacy.Server;
 public sealed class DisjointItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     DisjointCatalog disjointCatalog,
-    ILogger<DisjointItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -32,7 +31,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -61,8 +60,8 @@ public sealed class DisjointItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected equipment disjoint at slot {SourceSlot}, itemSpace={ItemSpace}: {Failure}.",
                 sourceSlot,
                 itemSpace,
@@ -98,7 +97,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -108,17 +107,17 @@ public sealed class DisjointItemHandler(JsonGameStore store,
             disjointPlan.SourceSlot,
             disjointPlan.ItemSpace,
             disjointPlan.ResponseRewards);
-        await context.Outbound.SendAsync(disjointReply, Name, cancellationToken);
+        await context.Queue.SendAsync(disjointReply, Name, cancellationToken);
         if (warehouseCapacityChanged || hasDisjointWarehouseUpgrade)
         {
             var inventoryRefresh = builders.CreateMainInventoryPacket(
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
             await senders.SendWarehouseStateAsync(context, cancellationToken);
         }
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Disjointed item {SourceItemId} at slot {SourceSlot}; additionalRoll={AdditionalRoll}, jackpotRoll={JackpotRoll}, rewards={Rewards}.",
             disjointPlan.SourceItemId,
             sourceSlot,

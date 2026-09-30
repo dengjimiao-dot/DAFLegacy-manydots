@@ -8,7 +8,6 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class SortItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<SortItemHandler> logger,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
 
@@ -32,8 +31,8 @@ public sealed class SortItemHandler(JsonGameStore store,
         {
             var errorReply = InventoryPacketBuilders.CreateSortItemError(
                 itemSpace);
-            await context.Outbound.SendAsync(errorReply, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(errorReply, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected item sort for item space {ItemSpace}; active character: {HasCharacter}, parsed: {Parsed}.",
                 itemSpace,
                 session.Character.Active is not null,
@@ -67,8 +66,8 @@ public sealed class SortItemHandler(JsonGameStore store,
         {
             var errorReply = InventoryPacketBuilders.CreateSortItemError(
                 itemSpace);
-            await context.Outbound.SendAsync(errorReply, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(errorReply, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Could not persist item sort for character {CharacterId} in item space {ItemSpace}.",
                 session.Character.Active.Id,
                 itemSpace);
@@ -81,7 +80,7 @@ public sealed class SortItemHandler(JsonGameStore store,
         session.Inventory.Creature = arrangedCreature;
 
         var sortReply = InventoryPacketBuilders.CreateSortItemReply(itemSpace);
-        await context.Outbound.SendAsync(sortReply, Name, cancellationToken);
+        await context.Queue.SendAsync(sortReply, Name, cancellationToken);
 
         // The 60CN client's incremental item path (listType
         // != 3) ignores 0xFFFF tombstones and announces adds,
@@ -103,10 +102,10 @@ public sealed class SortItemHandler(JsonGameStore store,
         };
         foreach (var sortedItems in sortedPackets)
         {
-            await context.Outbound.SendAsync(sortedItems, Name, cancellationToken);
+            await context.Queue.SendAsync(sortedItems, Name, cancellationToken);
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Sorted item space {ItemSpace} for character {CharacterId}.",
             itemSpace,
             session.Character.Active.Id);

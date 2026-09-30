@@ -10,7 +10,7 @@ namespace DFLegacy.Server;
 /// their own registered gate semantics inside <see cref="IGameCommandHandler.HandleAsync"/>
 /// so they remain self-contained once the legacy chain is retired.
 /// </summary>
-public sealed class GameCommandDispatcher(ILogger logger)
+public sealed class GameCommandDispatcher
 {
     public async ValueTask<bool> TryDispatchAsync(
         ConnectionContext context,
@@ -26,7 +26,7 @@ public sealed class GameCommandDispatcher(ILogger logger)
         if (handler.RequiredPhase != CommandPhase.Any
             && context.State.CurrentPhase < handler.RequiredPhase)
         {
-            logger.LogDebug(
+            RuntimeLogger.Debug(
                 "Gate refused {Handler} (protocol {ProtocolId}) at phase {Phase}.",
                 handler.Name,
                 handler.ProtocolId,

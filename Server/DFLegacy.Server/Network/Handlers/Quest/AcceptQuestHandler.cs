@@ -6,8 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// ACCEPT_QUEST (CMD 33): validates the three-quest slot limit, dependency-item grants and persists the acceptance transaction (07 §5 group 7).
 /// </summary>
-public sealed class AcceptQuestHandler(
-    ILogger<AcceptQuestHandler> logger,JsonGameStore store,
+public sealed class AcceptQuestHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
@@ -27,7 +26,7 @@ public sealed class AcceptQuestHandler(
         if (session.Character.Active is null || request.Body.Length < 4)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 23);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -36,7 +35,7 @@ public sealed class AcceptQuestHandler(
         if (session.Quest.Current.Count >= 3)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -45,7 +44,7 @@ public sealed class AcceptQuestHandler(
             || !questCatalog.TryGetDefinition(questId, out var definition))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 18);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -57,8 +56,8 @@ public sealed class AcceptQuestHandler(
         if (!acceptancePlan.Success)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected quest {QuestId} because dependency item grants failed: {Failure} ({Error})",
                 questId,
                 acceptancePlan.Failure,
@@ -97,8 +96,8 @@ public sealed class AcceptQuestHandler(
         if (savedQuestProgress is null)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 18);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected quest {QuestId} because the quest and dependency-item transaction could not be persisted.",
                 questId);
             return;
@@ -122,10 +121,10 @@ public sealed class AcceptQuestHandler(
                     item.ItemId,
                     item.CountOrSeed))
                 .ToArray());
-        await context.Outbound.SendAsync(acceptQuestReply, Name, cancellationToken);
+        await context.Queue.SendAsync(acceptQuestReply, Name, cancellationToken);
         if (definition.DeleteNpcIndex >= 0)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Quest {QuestId} accepted with trigger {Trigger}; client delete-NPC index is {NpcIndex}.",
                 questId, acceptedQuest.Trigger, definition.DeleteNpcIndex);
         }
@@ -134,7 +133,7 @@ public sealed class AcceptQuestHandler(
             await senders.SendDungeonPermissionsAsync(context, cancellationToken);
         }
         await senders.SendAcceptableQuestListAsync(context, cancellationToken);
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Accepted quest {QuestId} and granted {Count} dependency-item slot updates: {Items}.",
             questId,
             acceptancePlan.InsertedItems.Count,

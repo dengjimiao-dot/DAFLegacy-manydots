@@ -7,8 +7,8 @@ namespace DFLegacy.Server;
 
 public sealed class GameplayDatagramService(
     ServerOptions options,
-    RuntimeState runtime,
-    ILogger<GameplayDatagramService> logger) : BackgroundService
+    RuntimeState runtime
+) : BackgroundService
 {
     private readonly ConcurrentDictionary<Guid, GameplaySession> _sessions = new();
     private readonly ConcurrentDictionary<string, IPEndPoint> _observedByAddress = new();
@@ -73,7 +73,7 @@ public sealed class GameplayDatagramService(
             SetDatagramEndpoint(session, endpoint);
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "UDP endpoint registered for channel session {SessionId}: nat={NatType} local={LocalAddress} public={PublicAddress}:{PublicPort} mtu={Mtu} target={Target}",
             sessionId,
             report.NatType,
@@ -168,7 +168,7 @@ public sealed class GameplayDatagramService(
             options.HexDumpLimit,
             protocolId: (byte)GameDatagramProtocol.SetActiveObjectHpProtocol);
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "UDP protocol 12 sent to {Endpoint}: sequence={Sequence} sender={Sender} object={ObjectType}:{ObjectId} hp={Hp} secondary={Secondary}",
             endpoint,
             sequence,
@@ -184,7 +184,7 @@ public sealed class GameplayDatagramService(
     {
         if (!options.GameplayDatagram.Enabled)
         {
-            logger.LogWarning("Gameplay datagram listener is disabled.");
+            RuntimeLogger.Warn("Gameplay datagram listener is disabled.");
             return;
         }
 
@@ -209,7 +209,7 @@ public sealed class GameplayDatagramService(
             options.GameplayDatagram.SecondaryPort);
         _primary = new UdpClient(primaryEndpoint);
         _secondary = new UdpClient(secondaryEndpoint);
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Gameplay UDP primary/secondary listeners ready at {Primary} and {Secondary}",
             primaryEndpoint,
             secondaryEndpoint);
@@ -255,7 +255,7 @@ public sealed class GameplayDatagramService(
                 await listener.SendAsync(response, remote, cancellationToken);
                 TraceDatagram(remote, datagram, "RX-UDP-NAT");
                 TraceDatagram(remote, response, "TX-UDP-NAT", countReceived: false);
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Gameplay UDP NAT probe (type {ProbeType}) on {Listener} from {Remote}{FirstContact}",
                     datagram[0],
                     listenerName,
@@ -268,7 +268,7 @@ public sealed class GameplayDatagramService(
             {
                 ObserveEndpoint(remote);
                 TraceDatagram(remote, datagram, "RX-UDP-NAT-KEEPALIVE");
-                logger.LogDebug(
+                RuntimeLogger.Debug(
                     "Handled gameplay UDP NAT keepalive on {Listener} from {Remote}",
                     listenerName,
                     remote);
@@ -276,7 +276,7 @@ public sealed class GameplayDatagramService(
             }
 
             TraceDatagram(remote, datagram, "RX-UDP");
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Gameplay UDP datagram from {Remote}: {Length} bytes, head {Head}",
                 remote,
                 datagram.Length,
@@ -302,7 +302,7 @@ public sealed class GameplayDatagramService(
                 EndpointKey(remote),
                 out var senderSessionId))
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Gameplay UDP datagram from {Remote} could not be attributed to a session; not relaying.",
                 remote);
             return;
@@ -311,7 +311,7 @@ public sealed class GameplayDatagramService(
         var peers = _relayResolver(senderSessionId);
         if (peers is null)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Gameplay UDP datagram from session {SenderSessionId} has no relay peers (not in a party).",
                 senderSessionId);
             return;
@@ -338,7 +338,7 @@ public sealed class GameplayDatagramService(
 
             _ = listener.SendAsync(datagram, endpoint, cancellationToken);
             Interlocked.Increment(ref peer.Runtime.SentPackets);
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Relayed a {Length}-byte gameplay datagram (head {Head}) from session {SenderSessionId} to {Endpoint}.",
                 datagram.Length,
                 Convert.ToHexString(datagram, 0, Math.Min(datagram.Length, 8)),
@@ -455,7 +455,7 @@ public sealed class GameplayDatagramService(
                     out var consumed)
                 || consumed <= 0)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Ignored malformed gameplay UDP datagram from {Remote} at offset {Offset}; length={Length}",
                     remote,
                     offset,
@@ -473,7 +473,7 @@ public sealed class GameplayDatagramService(
                     frame.Application,
                     out var application))
             {
-                logger.LogDebug(
+                RuntimeLogger.Debug(
                     "RX gameplay UDP from {Remote}: block={BlockType} sequence={Sequence} sender={Sender} flag={Flag} protocol={ProtocolId} payload={PayloadLength}",
                     remote,
                     frame.BlockType,
@@ -485,7 +485,7 @@ public sealed class GameplayDatagramService(
             }
             else
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Gameplay UDP application from {Remote} failed CRC or cipher validation.",
                     remote);
             }

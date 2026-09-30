@@ -27,7 +27,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -36,7 +36,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -57,7 +57,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 7);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 return;
             }
 
@@ -71,7 +71,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 7);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 return;
             }
 
@@ -82,7 +82,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 7);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 return;
             }
 
@@ -121,7 +121,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 7);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -151,7 +151,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -161,7 +161,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
         var sendReply = ConnectionPacketBuilders.CreateCommandReply(
             request,
             success: true);
-        await context.Outbound.SendAsync(sendReply, Name, cancellationToken);
+        await context.Queue.SendAsync(sendReply, Name, cancellationToken);
 
         var senderUpdates = new List<GameInventoryEntry>();
         if (sendRequest.Gold != 0)
@@ -189,7 +189,7 @@ public sealed class MailboxSendHandler(JsonGameStore store,
             var inventoryUpdate = InventoryPacketBuilders.CreateUpdateItemList(
                 0,
                 senderUpdates);
-            await context.Outbound.SendAsync(inventoryUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(inventoryUpdate, Name, cancellationToken);
         }
 
         // The registry callback enqueues the mail alarm event for the target

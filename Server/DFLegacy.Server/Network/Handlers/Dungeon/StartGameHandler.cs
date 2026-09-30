@@ -9,7 +9,6 @@ namespace DFLegacy.Server;
 public sealed class StartGameHandler(
     JsonGameStore store,    WorldMapCatalog worldMapCatalog,
     GameplayDatagramService gameplayDatagram,
-    ILogger<StartGameHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.START_GAME;
@@ -38,8 +37,8 @@ public sealed class StartGameHandler(
                     maximumFatigue)))
         {
             var fatigueError = StaminaPacketBuilders.CreateEnterDungeonSelectionInsufficientFatigueReply();
-            await context.Outbound.SendAsync(fatigueError, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(fatigueError, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected dungeon-selection entry for user {UserId}: used fatigue {UsedFatigue}/{MaximumFatigue}.",
                 session.Character.LocalUserId,
                 session.Character.Active?.UsedFatigue ?? 0,
@@ -66,7 +65,7 @@ public sealed class StartGameHandler(
         var dungeonState = CharactersPacketBuilders.CreateUserState(
             session.Character.LocalUserId,
             state: 1);
-        await context.Outbound.SendAsync(dungeonState, Name, cancellationToken);
+        await context.Queue.SendAsync(dungeonState, Name, cancellationToken);
 
         var peerInfo = gameplayDatagram.TryGetPeerInfo(
             context.Runtime.Id,
@@ -76,10 +75,10 @@ public sealed class StartGameHandler(
                 ? new[] { localPeer }
                 : [];
         var udpPeers = PartyPacketBuilders.CreateUdpPeerInfo(peerInfo);
-        await context.Outbound.SendAsync(udpPeers, Name, cancellationToken);
+        await context.Queue.SendAsync(udpPeers, Name, cancellationToken);
 
         var udpHost = PartyPacketBuilders.CreateUdpHost();
-        await context.Outbound.SendAsync(udpHost, Name, cancellationToken);
+        await context.Queue.SendAsync(udpHost, Name, cancellationToken);
 
         await senders.SendDungeonPermissionsAsync(context, cancellationToken);
 

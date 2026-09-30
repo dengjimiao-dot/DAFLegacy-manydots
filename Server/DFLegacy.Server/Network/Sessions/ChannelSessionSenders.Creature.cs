@@ -43,9 +43,9 @@ public sealed partial class ChannelSessionSenders
     }
 
     var died = PetsPacketBuilders.CreateDiedCreature(context.State.Character.LocalUserId);
-    await context.Outbound.SendAsync(died, "CREATURE_DIED", cancellationToken);
+    await context.Queue.SendAsync(died, "CREATURE_DIED", cancellationToken);
     context.State.Weakness.CreatureDeathNotificationsSent.Add(creatureUid);
-    logger.LogInformation(
+    RuntimeLogger.Info(
         "Sent DIED_CREATURE for Creature uid {CreatureUid}, area user {UserId}.",
         creatureUid,
         context.State.Character.LocalUserId);
@@ -71,7 +71,7 @@ public sealed partial class ChannelSessionSenders
             (int)(equippedCreature.CreatureStomach ?? 100),
             0,
             CreatureHungerPlanner.MaximumStomach));
-    await context.Outbound.SendAsync(creatureState, "CREATURE_STATE", cancellationToken);
+    await context.Queue.SendAsync(creatureState, "CREATURE_STATE", cancellationToken);
     await SendEquippedCreatureDeathAsync(context, forceDeathNotification, cancellationToken);
     }
 
@@ -88,7 +88,7 @@ public sealed partial class ChannelSessionSenders
 
     var creatureResponse =
         PetsPacketBuilders.CreateCreatureResponse(context.State.Character.LocalUserId);
-    await context.Outbound.SendAsync(creatureResponse, "CREATURE_RESPONSE", cancellationToken);
+    await context.Queue.SendAsync(creatureResponse, "CREATURE_RESPONSE", cancellationToken);
     }
 
     public async Task SendInventoryMoveNoOpAsync(
@@ -106,7 +106,7 @@ public sealed partial class ChannelSessionSenders
         movedCount: 0,
         destinationListType,
         destinationSlot);
-    await context.Outbound.SendAsync(noOpReply, "INVENTORY_DELTA", cancellationToken);
+    await context.Queue.SendAsync(noOpReply, "INVENTORY_DELTA", cancellationToken);
 
     if (sourceListType == 0 || destinationListType == 0)
     {
@@ -114,7 +114,7 @@ public sealed partial class ChannelSessionSenders
             context.State.Currency.Gold,
             context.State.Currency.VictoryPoints,
             context.State.Inventory.Main.Values);
-        await context.Outbound.SendAsync(mainRefresh, "INVENTORY_DELTA", cancellationToken);
+        await context.Queue.SendAsync(mainRefresh, "INVENTORY_DELTA", cancellationToken);
     }
 
     if (sourceListType == 2 || destinationListType == 2)
@@ -122,14 +122,14 @@ public sealed partial class ChannelSessionSenders
         var warehouseRefresh = builders.CreateWarehousePacket(
             context.State.Inventory.Warehouse.Values,
             context.State.Inventory.WarehouseCapacity);
-        await context.Outbound.SendAsync(warehouseRefresh, "INVENTORY_DELTA", cancellationToken);
+        await context.Queue.SendAsync(warehouseRefresh, "INVENTORY_DELTA", cancellationToken);
     }
 
     if (sourceListType == 1 || destinationListType == 1)
     {
         var avatarRefresh = builders.CreateAvatarInventoryPacket(
             context.State.Inventory.Avatar.Values);
-        await context.Outbound.SendAsync(avatarRefresh, "INVENTORY_DELTA", cancellationToken);
+        await context.Queue.SendAsync(avatarRefresh, "INVENTORY_DELTA", cancellationToken);
     }
 
     if (sourceListType == 7 || destinationListType == 7)
@@ -137,7 +137,7 @@ public sealed partial class ChannelSessionSenders
         foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
                      context.State.Inventory.Creature.Values))
         {
-            await context.Outbound.SendAsync(creatureRefresh, "INVENTORY_DELTA", cancellationToken);
+            await context.Queue.SendAsync(creatureRefresh, "INVENTORY_DELTA", cancellationToken);
         }
     }
 
@@ -148,7 +148,7 @@ public sealed partial class ChannelSessionSenders
         await SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
     }
 
-    logger.LogInformation(
+    RuntimeLogger.Info(
         "Completed rejected inventory move as a no-op from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}: {Reason}.",
         sourceListType,
         sourceSlot,
@@ -170,7 +170,7 @@ public sealed partial class ChannelSessionSenders
             ? builders.ToGameInventoryEntry(item)
             : new GameInventoryEntry(slot, ushort.MaxValue, 0);
         var update = InventoryPacketBuilders.CreateUpdateItemList(0, [entry]);
-        await context.Outbound.SendAsync(update, "INVENTORY_DELTA", cancellationToken);
+        await context.Queue.SendAsync(update, "INVENTORY_DELTA", cancellationToken);
     }
     }
 

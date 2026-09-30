@@ -10,8 +10,7 @@ namespace DFLegacy.Server;
 /// so the parsers read fields from offset 2.
 /// </summary>
 public sealed class PartyHandlerCore(
-    PartyCoordinator partyCoordinator,
-    ILogger<PartyHandlerCore> logger)
+    PartyCoordinator partyCoordinator)
 {
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
@@ -34,7 +33,7 @@ public sealed class PartyHandlerCore(
             var identityError = PartyPacketBuilders.CreatePeerCommandError(
                 request,
                 errorCode: 0);
-            await context.Outbound.SendAsync(identityError, "PARTY", cancellationToken);
+            await context.Queue.SendAsync(identityError, "PARTY", cancellationToken);
             return;
         }
 
@@ -78,7 +77,7 @@ public sealed class PartyHandlerCore(
         }
         catch (Exception exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Party command {ProtocolId} from {CharacterId} threw; replying failure.",
                 request.ProtocolId,
@@ -110,10 +109,10 @@ public sealed class PartyHandlerCore(
                     partyErrorCode);
         }
 
-        await context.Outbound.SendAsync(partyReply, "PARTY", cancellationToken);
+        await context.Queue.SendAsync(partyReply, "PARTY", cancellationToken);
         if (!partyResult.Ok)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Rejected party command {ProtocolId} for {CharacterId}: {Reason}.",
                 request.ProtocolId,
                 partyIdentity.CharacterId,

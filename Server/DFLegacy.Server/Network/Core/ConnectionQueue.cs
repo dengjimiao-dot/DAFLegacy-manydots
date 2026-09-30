@@ -9,7 +9,7 @@ namespace DFLegacy.Server;
 /// Backpressure blocks the sender when the bounded queue is full — packets
 /// are never dropped or reordered.
 /// </summary>
-public interface IOutboundQueue : IAsyncDisposable
+public interface IConnectionQueue : IAsyncDisposable
 {
     ValueTask SendAsync(GameServerPacket packet, string traceLabel = "", CancellationToken cancellationToken = default);
 
@@ -33,18 +33,17 @@ internal readonly record struct OutboundItem(
 /// Closing completes the channel, drains already queued frames, then stops —
 /// the stream never receives a torn packet.
 /// </summary>
-public sealed class OutboundQueue : IOutboundQueue, IAsyncDisposable
+public sealed class ConnectionQueue : IConnectionQueue, IAsyncDisposable
 {
     private const int DefaultCapacity = 256;
 
     private readonly Channel<OutboundItem> _channel;
     private readonly Task _pumpTask;
 
-    public OutboundQueue(
+    public ConnectionQueue(
         Stream stream,
         RuntimeSession session,
         Action<GameServerPacket> reportSent,
-        ILogger logger,
         CancellationToken disconnecting = default,
         int capacity = DefaultCapacity)
     {
@@ -52,7 +51,7 @@ public sealed class OutboundQueue : IOutboundQueue, IAsyncDisposable
         {
             SingleReader = true,
         });
-        _pumpTask = PumpAsync(stream, session, reportSent, logger, disconnecting);
+        _pumpTask = PumpAsync(stream, session, reportSent, disconnecting);
     }
 
     public async ValueTask SendAsync(
@@ -99,7 +98,6 @@ public sealed class OutboundQueue : IOutboundQueue, IAsyncDisposable
         Stream stream,
         RuntimeSession session,
         Action<GameServerPacket> reportSent,
-        ILogger logger,
         CancellationToken disconnecting)
     {
         try
@@ -119,7 +117,7 @@ public sealed class OutboundQueue : IOutboundQueue, IAsyncDisposable
                 }
                 catch (Exception exception)
                 {
-                    logger.LogWarning(
+                    RuntimeLogger.Warn(
                         exception,
                         "Could not deliver outbound packet {ProtocolId} on session {SessionId}.",
                         item.Packet.ProtocolId,

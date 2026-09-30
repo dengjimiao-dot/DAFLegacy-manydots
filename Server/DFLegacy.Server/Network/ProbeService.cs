@@ -10,8 +10,8 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class ProbeService(
     ServerOptions options,
-    RuntimeState runtime,
-    ILogger<ProbeService> logger) : BackgroundService
+    RuntimeState runtime
+) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -22,7 +22,7 @@ public sealed class ProbeService(
 
         var listener = new TcpListener(IPAddress.Parse(options.GameProbe.Host), options.GameProbe.Port);
         listener.Start();
-        logger.LogInformation("Game packet probe ready at {Host}:{Port}", options.GameProbe.Host, options.GameProbe.Port);
+        RuntimeLogger.Info("Game packet probe ready at {Host}:{Port}", options.GameProbe.Host, options.GameProbe.Port);
 
         try
         {
@@ -53,7 +53,7 @@ public sealed class ProbeService(
                 {
                     runtime.CountPacket(session);
                     session.LastProtocolId = packet.ProtocolId;
-                    logger.LogInformation(
+                    RuntimeLogger.Info(
                         "PROBE {SessionId} protocol={Protocol} length={Length} crc={Crc:X8} valid={Valid} body={Body}",
                         session.Id, packet.ProtocolId, packet.TotalLength, packet.DeclaredCrc32,
                         packet.HasValidCrc32,
@@ -62,7 +62,7 @@ public sealed class ProbeService(
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                logger.LogWarning(exception, "Game probe session {SessionId} ended.", session.Id);
+                RuntimeLogger.Warn(exception, "Game probe session {SessionId} ended.", session.Id);
             }
             finally
             {

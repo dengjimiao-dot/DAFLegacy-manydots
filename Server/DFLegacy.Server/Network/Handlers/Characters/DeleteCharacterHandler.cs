@@ -39,14 +39,14 @@ public sealed class DeleteCharacterHandler(
         var deleteReply = deleted
             ? CharactersPacketBuilders.CreateDeleteCharacterReply(slot)
             : ConnectionPacketBuilders.CreateCommandError(frame, errorCode: 2);
-        await context.Outbound.SendAsync(deleteReply, Name, cancellationToken);
+        await context.Queue.SendAsync(deleteReply, Name, cancellationToken);
 
         if (deleted)
         {
             var userInfo = await builders.CreateUserInfoAsync(
                 context.State.Login.AccountUid,
                 cancellationToken);
-            await context.Outbound.SendAsync(userInfo, Name, cancellationToken);
+            await context.Queue.SendAsync(userInfo, Name, cancellationToken);
         }
     }
 }

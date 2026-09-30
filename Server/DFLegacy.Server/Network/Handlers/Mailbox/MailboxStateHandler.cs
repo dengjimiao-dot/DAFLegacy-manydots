@@ -27,7 +27,7 @@ public sealed class MailboxStateHandler(JsonGameStore store) : IGameCommandHandl
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -43,7 +43,7 @@ public sealed class MailboxStateHandler(JsonGameStore store) : IGameCommandHandl
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 10);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 return;
             }
 
@@ -59,13 +59,13 @@ public sealed class MailboxStateHandler(JsonGameStore store) : IGameCommandHandl
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
         var stateReply = MailboxPacketBuilders.CreateMailboxStateReply(
             mailId,
             mailState);
-        await context.Outbound.SendAsync(stateReply, Name, cancellationToken);
+        await context.Queue.SendAsync(stateReply, Name, cancellationToken);
     }
 }

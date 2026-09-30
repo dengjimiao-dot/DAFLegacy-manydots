@@ -10,8 +10,6 @@ namespace DFLegacy.Server;
 public sealed class UpgradeItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     EquipmentReinforcementCatalog reinforcementCatalog,
-
-    ILogger<UpgradeItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -37,7 +35,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 (byte)EquipmentReinforcementFailure.InvalidTarget);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -57,8 +55,8 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 (byte)reinforcementFailure);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected equipment reinforcement for item {ItemId} at slot {Slot} with material slot {MaterialSlot}: {Failure}.",
                 upgradeCommand.TargetItemId,
                 upgradeCommand.TargetSlot,
@@ -80,7 +78,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 (byte)EquipmentReinforcementFailure.InvalidTarget);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -104,7 +102,7 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values,
                 preferredLastSlot: reinforcementPlan.TargetSlot);
-            await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
         }
 
         var reinforcementReply =
@@ -114,8 +112,8 @@ public sealed class UpgradeItemHandler(JsonGameStore store,
                 reinforcementPlan.ResultCode,
                 reinforcementPlan.NewLevel,
                 reinforcementPlan.TargetSlot);
-        await context.Outbound.SendAsync(reinforcementReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(reinforcementReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Reinforced item {ItemId} at {ListType}:{Slot}: level={PreviousLevel}->{NewLevel}, result={ResultCode}, destroyed={Destroyed}, material={MaterialItemId}x{MaterialCount}, goldCost={GoldCost}, gold={Gold}, roll={Roll}/{RollUpperBound}.",
             reinforcementPlan.TargetItemId,
             reinforcementPlan.TargetListType,

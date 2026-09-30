@@ -9,7 +9,6 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<MoveItemSpaceHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders,
     PremiumBenefitCatalog premiumBenefitCatalog) : IGameCommandHandler
@@ -115,7 +114,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         itemToMoveIntoEmptySlot.CountOrValue,
                         destinationListType,
                         destinationSlot);
-                await context.Outbound.SendAsync(reverseMoveReply, Name, cancellationToken);
+                await context.Queue.SendAsync(reverseMoveReply, Name, cancellationToken);
 
                 if (EntranceService.ShouldUseIncrementalMainMoveRefresh(
                         sourceListType,
@@ -138,10 +137,10 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         session.Currency.VictoryPoints,
                         session.Inventory.Main.Values,
                         preferredLastSlot: sourceSlot);
-                    await context.Outbound.SendAsync(refreshMain, Name, cancellationToken);
+                    await context.Queue.SendAsync(refreshMain, Name, cancellationToken);
                 }
 
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Moved item {ItemId} from empty-target encoded 0:{DestinationSlot} to 0:{SourceSlot}",
                     itemToMoveIntoEmptySlot.ItemId,
                     destinationSlot,
@@ -188,11 +187,11 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         avatarToMove.CountOrValue,
                         destinationListType,
                         destinationSlot);
-                await context.Outbound.SendAsync(reverseAvatarReply, Name, cancellationToken);
+                await context.Queue.SendAsync(reverseAvatarReply, Name, cancellationToken);
 
                 var refreshAvatar = builders.CreateAvatarInventoryPacket(
                     session.Inventory.Avatar.Values);
-                await context.Outbound.SendAsync(refreshAvatar, Name, cancellationToken);
+                await context.Queue.SendAsync(refreshAvatar, Name, cancellationToken);
                 return;
             }
 
@@ -246,11 +245,11 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         avatarToUnequip.CountOrValue,
                         destinationListType,
                         destinationSlot);
-                await context.Outbound.SendAsync(avatarUnequipReply, Name, cancellationToken);
+                await context.Queue.SendAsync(avatarUnequipReply, Name, cancellationToken);
 
                 var refreshAvatar = builders.CreateAvatarInventoryPacket(
                     session.Inventory.Avatar.Values);
-                await context.Outbound.SendAsync(refreshAvatar, Name, cancellationToken);
+                await context.Queue.SendAsync(refreshAvatar, Name, cancellationToken);
 
                 await Task.Delay(
                     TimeSpan.FromMilliseconds(100),
@@ -264,7 +263,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     await senders.SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
                 }
 
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Unequipped Avatar item {ItemId} from 3:{WornSlot} to 1:{BagSlot}.",
                     avatarToUnequip.ItemId,
                     destinationSlot,
@@ -364,7 +363,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         withdrawnCount,
                         destinationListType,
                         destinationSlot);
-                await context.Outbound.SendAsync(withdrawReply, Name, cancellationToken);
+                await context.Queue.SendAsync(withdrawReply, Name, cancellationToken);
 
                 foreach (var refresh in new[]
                          {
@@ -378,10 +377,10 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                                  session.Inventory.WarehouseCapacity)
                          })
                 {
-                    await context.Outbound.SendAsync(refresh, Name, cancellationToken);
+                    await context.Queue.SendAsync(refresh, Name, cancellationToken);
                 }
 
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Withdrew item {ItemId} from reverse-encoded cargo slot {CargoSlot}; main destination starts at {MainSlot}.",
                     itemToWithdraw.ItemId,
                     destinationSlot,
@@ -429,7 +428,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         itemToUnequip.CountOrValue,
                         destinationListType,
                         destinationSlot);
-                await context.Outbound.SendAsync(unequipReply, Name, cancellationToken);
+                await context.Queue.SendAsync(unequipReply, Name, cancellationToken);
 
                 // Protocol 14 treats every added record as
                 // newly acquired and displays a loot notice.
@@ -440,7 +439,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     session.Currency.VictoryPoints,
                     session.Inventory.Main.Values,
                     preferredLastSlot: sourceSlot);
-                await context.Outbound.SendAsync(refreshBag, Name, cancellationToken);
+                await context.Queue.SendAsync(refreshBag, Name, cancellationToken);
 
                 // Do not free the worn object in the same UI
                 // tick. Once the drag controller releases
@@ -466,7 +465,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     await senders.SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
                 }
 
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Unequipped item {ItemId} from 3:{SourceSlot} to 0:{DestinationSlot}",
                     itemToUnequip.ItemId,
                     destinationSlot,
@@ -487,7 +486,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
             else
             {
                 var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
             }
 
             if (session.Character.Active is not null
@@ -499,7 +498,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                     session.Currency.Gold,
                     session.Currency.VictoryPoints,
                     session.Inventory.Main.Values);
-                await context.Outbound.SendAsync(refreshMain, Name, cancellationToken);
+                await context.Queue.SendAsync(refreshMain, Name, cancellationToken);
             }
 
             return;
@@ -609,7 +608,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 sourceItem.CountOrValue,
                 destinationListType,
                 destinationSlot);
-            await context.Outbound.SendAsync(noOpReply, Name, cancellationToken);
+            await context.Queue.SendAsync(noOpReply, Name, cancellationToken);
             return;
         }
 

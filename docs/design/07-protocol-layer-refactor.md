@@ -119,7 +119,7 @@ UDP(NAT 探测/保活/血量同步)
 ├─ Session State ──────────────────────────────────────────┐
 │   ChannelSessionState(Login/Roster/Character/Inventory/   │
 │   Skill/Quest/Dungeon/Town/Mailbox 分域)                  │
-├─ Outbound ───────────────────────────────────────────────┤
+├─ ConnectionQueue ───────────────────────────────────────────────┤
 │   Channel<OutboundFrame>(有界) → 单写者泵 → stream        │
 └───────────────────────────────────────────────────────────┘
 ```
@@ -135,7 +135,7 @@ public sealed class ConnectionContext
     public IPEndPoint? Remote { get; }
     public bool IsChannelPort { get; }                  // 现场保留 isChannelPort 语义
     public ChannelSessionState State { get; }           // 会话状态(4.3)
-    public IOutboundQueue Outbound { get; }             // 发送入队(4.4)
+    public IConnectionQueue Queue { get; }                // 发送入队(4.4)
     public IConnectionTimers Timers { get; }            // 定时器注册(4.5)
     public IServiceProvider Services { get; }           // 目录/存储/领域服务(泵层与装配期使用;handler 依赖走构造注入,见 4.7)
     public ILogger Logger { get; }
@@ -172,7 +172,7 @@ public sealed class ChannelSessionState
 > **参照 S4A21(变体)**:其每会话 `SemaphoreSlim(1,1)` 发送锁 + 批量发送部分写语义,是"跨会话推送直接入锁即发"的机制化样板;本项目改为有界 Channel + 单写者泵——机制等价,但补上其缺失的背压语义(信号量方案队列无界,内存无上限)。
 
 ```csharp
-public interface IOutboundQueue
+public interface IOConnectionQueue
 {
     ValueTask SendAsync(GameServerPacket packet, string traceLabel = "", CancellationToken ct = default);
     ValueTask SendBatchAsync(IReadOnlyList<GameServerPacket> packets, CancellationToken ct = default);
@@ -182,8 +182,8 @@ public interface IOutboundQueue
 - 每连接一个**有界** `Channel<OutboundFrame>`(容量如 256)+ 一个泵 task:`await channel.Reader.ReadAsync()` → `frame.WriteAsync(stream)` → 计数/trace。
 - **背压策略 = 阻塞发送方**:channel 满时 `SendAsync` 等待,等价于现状"读循环被慢写阻塞",不丢包、不乱序。
 - 关闭语义:连接取消 → 完成 channel → 泵排空已入队帧 → 关流(消灭"半包")。
-- 现有 5 个 Interlocked 标志改为后台服务入队,读循环每帧处理完统一排空——语义与现状一致,但入口唯一。合法入队路径仅两条:纯发送(无会话逻辑)直接入 `Outbound`;需要会话状态参与逻辑的入 `State.Events`,由本连接泵处理后发送。
-- **跨会话推送硬规则**:跨会话代码(小喇叭、邮件提醒等)只允许向**目标会话的 `State.Events`** 入队,由目标连接的泵自行执行发送;禁止跨会话直调目标 `Outbound.SendAsync`——有界 channel 满时阻塞的是发送方线程,会把慢客户端的背压传导给无关会话(P2 裂缝的机制化封口)。
+- 现有 5 个 Interlocked 标志改为后台服务入队,读循环每帧处理完统一排空——语义与现状一致,但入口唯一。合法入队路径仅两条:纯发送(无会话逻辑)直接入 `Queue`;需要会话状态参与逻辑的入 `State.Events`,由本连接泵处理后发送。
+- **跨会话推送硬规则**:跨会话代码(小喇叭、邮件提醒等)只允许向**目标会话的 `State.Events`** 入队,由目标连接的泵自行执行发送;禁止跨会话直调目标 `Queue.SendAsync`——有界 channel 满时阻塞的是发送方线程,会把慢客户端的背压传导给无关会话(P2 裂缝的机制化封口)。
 
 ### 4.5 定时器与后台事件
 
@@ -222,7 +222,7 @@ public interface IGameCommandHandler
 
 public sealed class GameCommandRegistry
 {
-    public void Register(string group, IGameCommandHandler handler);  // 重复 → 启动失败(带 组名/协议/名称)
+    public void Register(string group, IGameCommandHandler handler);  // 重复 → 启动失败(带 组名/协议/名称);handler 职责与协议号以注册点行上注释简述,不入数据
     public bool TryGet(ushort protocolId, out IGameCommandHandler handler);
     public IReadOnlyCollection<ushort> Registered { get; }            // 启动时打印清单
 }
@@ -251,9 +251,9 @@ public sealed class MailboxOpenHandler(...) : IGameCommandHandler
     public ushort ProtocolId => (byte)CmdPacketType.MAILBOX_OPEN;
     public async ValueTask HandleAsync(ConnectionContext ctx, PacketFrame frame, CancellationToken ct)
     {
-        if (!MailboxParsers.TryParseOpen(frame)) { await ctx.Outbound.SendAsync(...error...); return; }
+        if (!MailboxParsers.TryParseOpen(frame)) { await ctx.Queue.SendAsync(...error...); return; }
         var snapshot = MailboxProjector.BuildSnapshot(ctx.State.Mailbox, ctx.State.Character);
-        await ctx.Outbound.SendAsync(MailboxPacketBuilders.CreateMailboxSnapshot(snapshot));
+        await ctx.Queue.SendAsync(MailboxPacketBuilders.CreateMailboxSnapshot(snapshot));
     }
 }
 ```
@@ -273,7 +273,7 @@ public sealed class MailboxOpenHandler(...) : IGameCommandHandler
 | U1 帧与解密 | 读帧、CRC/种子解密、坏帧断连 | 泵层(`Protocol/` 冻结,N2) |
 | U2 分发 | 注册表查表;同号多义与族内分派按 4.6 约定 | `GameCommandRegistry` |
 | U3 状态门槛 | handler 声明所需会话阶段与端口,分发器统一校验 | 分发器前置(下述) |
-| U4 出站计账 | 发送、SentPackets 计数、LogPacket 收进单点 | `IOutboundQueue.SendAsync`(4.4) |
+| U4 出站计账 | 发送、SentPackets 计数、LogPacket 收进单点 | `IOConnectionQueue.SendAsync`(4.4) |
 | U5 未注册路径 | WARN + hex dump + 协议名反查 | 4.6 |
 
 U3 的门槛模型(接口成员已并入 4.6 的 `IGameCommandHandler`):
@@ -540,7 +540,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | `ConnectionContext` 暂无 `Services` 成员(§4.2) | handler 依赖走构造注入,无 DI 容器可挂;出现真实消费者(泵层/装配期)再加 |
 | U3 阶段门槛:迁移期由分发器执行,门槛不合格**回落旧分支**(按原拒绝路径应答);handler 内同时保留登记的门槛语义 | 迁移期字节保真最稳妥;清退旧分支(R6)后 handler 自含成为唯一权威 |
 | 注册表在 `ExecuteAsync` 监听器启动前装配,而非类型构造期 | 装配依赖实例字段(构建器等);失败仍在启动期抛出(§3 I5 不变) |
-| 基建目录 `Network/{Dispatch,Sessions,Outbound,Timers,Parsers,Builders,Core,Protocol}` | §4.1 分层图的落地名;4.8.3 映射表只覆盖 handler 组目录,此处登记防歧义。`Core`=通用工具(加解密/协议号枚举与报文名反查/包基元/PVF 读取/Tap 接口/日志队列;字段级解码器 `PacketPlainText` 留存未接入,见 §11.5),`Protocol`=协议核心(分帧/游戏与入口引擎/UDP 数据报协议),镜参考项目 `Network/{Core,Protocol}` 两极 |
+| 基建目录 `Network/{Dispatch,Sessions,Timers,Parsers,Builders,Core,Protocol}` | §4.1 分层图的落地名;4.8.3 映射表只覆盖 handler 组目录,此处登记防歧义。`Core`=通用工具(加解密/协议号枚举与报文名反查/包基元/PVF 读取/Tap 接口/日志队列/每连接出站队列 `ConnectionQueue`;字段级解码器 `PacketPlainText` 留存未接入,见 §11.5),`Protocol`=协议核心(分帧/游戏与入口引擎/UDP 数据报协议),镜参考项目 `Network/{Core,Protocol}` 两极 |
 | `CompoundItemReplayEntry` 从 EntranceService 私有嵌套记录迁至 `Game/Compound/`(public) | 状态域类需引用;属组织层搬迁,字节语义不变 |
 | 状态域以**公共字段**而非属性承载 | §4.3"字段一一对应"的字面落地;ref 排空语义所需 |
 
@@ -571,7 +571,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 - **`ChannelSessionSenders` 按功能块拆为 partial**(2026-09-29):2,697 行单文件拆为 10 个 partial(36-619 行,均低于 §4.7 上限)——主文件(共享状态读取与内容缓存)与 Social/Mailbox/Quest/Skill/Inventory/Creature/Town/Dungeon/DungeonRewards 九块;类名与全部调用点零改动。附记:其中的纯规划器(精灵移动规划簇、库存空间校验族)为 `Game/<域>/` 规划的候选归位对象,待后续触及相应域时再迁,当前以 partial 形态保持零改动。
 - **R6 增量**(2026-09-29):旧 ANTIBOT 分支与兜底三元死路径清除;5 个跨线程 `Interlocked` 标志全部改为 `session.Events` 事件入队(租约回调生产、泵层原排空点按事件分派),对应状态字段自 Mailbox/Premium/Weakness 域移除。`EntranceService.cs` 14,832 → 1,918 行;注册表 74 项(71 协议 + 组队族 5 壳)。
 - **R6 遗留(唯一未完成项)**:4 处 `Task.WhenAny(读帧, Task.Delay(deadline))` 定时点收编 `ConnectionTimerScheduler` 并归并为泵层单调度点(07 §4.5);该变更改变运行时定时触发路径,按 §7.5/§8 要求须在真机上做 premium 到期/翻牌截止/选择与死亡倒计时的时序对拍后方可视为完成。
-- **统一日志系统 + 逐包捕获 + 工具拆分**(2026-09-29,自参考项目 `FileLogger.cs`/`PacketFileLogger.cs`/`BoundedAsyncLogQueue.cs` 迁移,变体:DI 而非全局静态——回应 §10.3 对全局静态 FileLogger 的批评):`Network/Core/BoundedQueueFileLoggerProvider`(ILoggerProvider,有界队列 8192 + 单后台消费者 + 排空退出)统一落盘 `logs/server.log`,与简单控制台共享同一批 ILogger 事件;`Network/Core/PacketFileLogSink`(IPacketTapSink,默认关闭,`DFLegacy:PacketCapture` 配置,64MB 轮转)挂既有 Tap 漏斗;漏斗扩为多端口并集(`RuntimeState.AddTapSink/RemoveTapSink`,MCP hub 与包捕获并存);`HexDump.ToSpacedHex` 自 LogPacket 拆出为 Core 共享工具(加解密/明文解码工具已在 Core,日志层仅做排版);`LoggingOptions`/`PacketCaptureOptions` 入 `Infrastructure/ServerOptions`;新自测套件 `file-logger`(队列丢包/落盘/轮转/捕获/多端口分发)。**后续调整**:`DFLegacy:Logging.Enabled` 默认改为 `false`——关闭时组合根不注册提供器、不建日志目录与后台消费任务(见 `CHANGELOG.md` ADD-08)。
+- **统一日志系统 + 逐包捕获 + 工具拆分**(2026-09-29,自参考项目 `FileLogger.cs`/`PacketFileLogger.cs`/`BoundedAsyncLogQueue.cs` 迁移,变体:DI 而非全局静态——回应 §10.3 对全局静态 FileLogger 的批评):`Network/Core/BoundedQueueFileLoggerProvider`(ILoggerProvider,有界队列 8192 + 单后台消费者 + 排空退出)统一落盘 `logs/server.log`,与简单控制台共享同一批 ILogger 事件;`Network/Core/PacketFileLogSink`(IPacketTapSink,默认关闭,`DFLegacy:PacketCapture` 配置,64MB 轮转)挂既有 Tap 漏斗;漏斗扩为多端口并集(`RuntimeState.AddTapSink/RemoveTapSink`,MCP hub 与包捕获并存);`HexDump.ToSpacedHex` 自 LogPacket 拆出为 Core 共享工具(加解密/明文解码工具已在 Core,日志层仅做排版);`LoggingOptions`/`PacketCaptureOptions` 入 `Infrastructure/ServerOptions`;新自测套件 `file-logger`(队列丢包/落盘/轮转/捕获/多端口分发)。**后续调整**:`DFLegacy:Logging.Enabled` 默认改为 `false`——关闭时组合根不注册提供器、不建日志目录与后台消费任务(见 `CHANGELOG.md` ADD-08)。**2026-09-30 口径定案**:该开关仅门控文件日志器,控制台日志无开关、始终输出(`Program.cs` 组合根无条件挂 `AddSimpleConsole`),开关保留不撤。
 - **`Hosting/` 并入 `Infrastructure/`,会话注册表入 `Game/Session/`**(2026-09-29,镜参考项目 `Infrastructure/` 与 `Game/Session/SessionDirectory`):`ServerOptions`/`PathResolver`/`AdminApiModels` → `Infrastructure/`;`CharacterSessionRegistry` → `Game/Session/`;空目录 `Hosting/` 移除。命名空间不变,调用点零改动。`Properties/` 为 SDK/IDE 约定(`AssemblyInfo.cs` 的 InternalsVisibleTo 与 launchSettings.json),不动;`Services/`(疲劳重置/虚弱恢复后台循环)已随后并入 `Infrastructure/`(见下条)。
 - **共享助手归口**:ChannelSessionSenders 承接库存移动发送器/精灵移动规划簇/库存空间校验族(FindFreeInventorySlot/TryGetInventorySpace/IsInventorySlotValid/兼容槽与部分堆叠搜索)、SendPremiumServiceInfo/SendTownFatigueState;CreatureInventoryMovePlan 迁至 Game/Inventory/。
 - **提交内变动记录**:耗时最长的 MOVE(CMD 19)分支约 1,100 行整体迁入 MoveItemSpaceHandler;其后的按子流程拆分已于同轮完成(四个 partial,见 §11.4)。
@@ -596,6 +596,18 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
   | —(原已语义化,未动) | `EntranceMetadata` | 入口频道元数据载荷构建 |
 
   协议号常量本身早在同轮迁入 `CmdPacketType` / `NotiPacketType`(见上条),故"引擎"里已无协议号表。整批改动 = 44 个文件的 360 处引用改写(插入与删除行数相等,纯改名)+ `GameProtocolEngine` 一拆二(101 行 → `GameProtocolConstants` 41 行 + `FallbackCommandReplies` 79 行)+ `EntranceProtocolEngine` 改名,命名空间与字节行为不变;全量重建 0 错误 0 告警,SelfTests 21 套件全绿。历史记录(CHANGELOG 日期条目、§11 早期各条、`docs/servers4a21/*` 的行号引证)保留旧名不改——它们记录的是当时的事实,按本表翻译即可。
+- **`LogPacket` 拆出为 `Network/Core/PacketTraceLogger`**(2026-09-30,续本节工具拆分):`EntranceService` 的两个 `LogPacket` 重载(`PacketFrame` / `GameServerPacket`)逐字迁入 Core,依赖改主构造函数注入——无条件收集部分(`RuntimeState` Tap 漏斗 + 管理快照)、门卫与截断(`ServerOptions.EnablePacketTracing` / `HexDumpLimit`)与输出用 `ILogger`;`EntranceService` 改持单实例字段 `_packetTrace`,11 处调用点仅改接收方,控制台 hex 与 Tap 漏斗行为一字不变。`HexDump.cs` 头注释中已失效的 `EntranceService.LogPacket` 出处引用同步改为现居位置。
+- **`EntranceService` 死代码清理**(2026-09-30,续上条):迁移完成后逐一核对文件内成员引用,删除 21 个无调用的私有转发壳(背包/邮件/精灵包构建、库存空间校验等对 `_characterPacketBuilders` / `_sessionSenders` 的纯委托,及 `ToIncreaseStatusWireAmount` / `IsEquipmentItem` / `TryReadLengthPrefixedBytes` 等单体副本)与同批孤儿——15 个物品/疲劳/喇叭类常量、`DebugSwordmanSkills` / `InitialSkillsByJob` 初始技能表、`ClientEncoding` 字段及其唯一消费者 `CreateClientEncoding`、`_contentGate`;顺带清除指向已迁走代码的「Party block」注释与两处合计约 60 行的历史遗留空行块,修正两行缩进,删除 `System.Buffers.Binary` / `System.Collections.Concurrent` / `System.Text` 三个无消费者 using。`LoadContent`(入口握手消费)与 `ShouldUseIncrementalMainMoveRefresh`(internal,`MoveItemSpaceHandler` 与自测引用)核实存活保留。文件 1,337 → 1,081 行;重建 0 错误 0 告警,SelfTests 21 套件全绿。
+- **注册统一为直接构造,日志收敛为 `RuntimeLogger` 静态门面**(2026-09-30):`registry.Register` 收敛为唯一形态 `Register(组名, new XHandler(领域依赖))`——当日早先引入的泛型工厂重载(`Register<THandler>(string, Func<ILogger<THandler>, THandler>)`)按评审撤销,54 处带 logger 的注册调用点不再出现任何日志实参;54 个 handler 删除 `ILogger<T>` 构造参数与日志字段,handler 体内直接调用静态门面 `RuntimeLogger.Debug/Info/Warn/Error(...)`(当日先经 `CreateLogger(Type)` 字段自建一版,再按评审收敛为纯静态门面)。新增 `Network/Core/RuntimeLogger`:静态工具类,组合根在构造任何 handler 之前调用一次 `RuntimeLogger.Configure(loggerFactory)` 完成唯一一次内部 logger 初始化(分类固定 `DFLegacy.Server`),未配置时以 NullLogger 兜底(自测直接调用时免装配)。**登记偏差**:①对 §10.3「日志走 DI、不做全局静态」决议的有意收窄——静态面为门面四方法,FileLogger 管线本身仍走 DI,`Configure` 先于全部 handler 构造与监听器启动;②日志分类由逐 handler 全类型名折叠为单一 `DFLegacy.Server`,控制台与文件日志的类别列随之变化(现网无按 handler 分类的过滤配置,无功能性影响)。`GameCommandDispatcher` 同批改造:删除 `ILogger` 构造参数,门内拒绝日志改走 `RuntimeLogger.Debug`,构造点(EntranceService 字段初始化器与 SelfTests)改无参构造。**同日扩面(2026-09-30 第二批):门面收敛至 `Network/` 全域**——`PartyCoordinator`、`GameplayDatagramService`、`CharacterDatagramService`、`ProbeService`(三者 BackgroundService 走 DI 自动装配,去参即可)、`PartyHandlerCore`、`ChannelSessionSenders`(主文件 + 6 个 partial)、`ConnectionContext`(参数与 `Logger` 属性一并移除,唯一读取点 `ConnectionTimerScheduler` 改走门面)、`ConnectionQueue`(构造与泵参数)、`PacketTraceLogger`、`EntranceService` 本体(主构造 `ILogger<EntranceService>` 删除,`loggerFactory` 仅余 `RuntimeLogger.Configure` 一个消费者)全部去显式 logger,约 50 处调用改门面;`Network/` 内现仅余 `BoundedQueueFileLoggerProvider`(日志管线本体)与 `RuntimeLogger` 内部字段两处 `ILogger` 类型引用。SelfTests 金样本与组队冒烟的 `ConnectionQueue`/`ConnectionContext`/`GameplayDatagramService`/`PartyCoordinator` 构造同步去 NullLogger 实参。各注册点行上以 `//` 注释简述 handler 职责与协议号(功能描述与 `CMD n (0xHH) ENUM_CMDPACKET_*` 合并单行)——描述不入运行时数据(不设 description 参数、字典与启动清单字段)。重建 0 错误 0 告警,SelfTests 21 套件全绿。
+- **`OutboundQueue` 语义化为 `ConnectionQueue` 并入 `Network/Core`**(2026-09-30,续上条):每连接出站队列(有界 256 + 单写者泵 + 排空关闭,§4.4)类型按语义化改名,文件自单文件目录 `Network/Outbound/` 移入 Core——循 `SerializedWriteStream` 先例,每连接传输管道归 Core,空目录 `Outbound/` 移除;命名空间不变,handler/sender 侧 354 处发送入口与 SelfTests 机械改写,功能零变化;内部记录 `OutboundItem` 未动。**旧名 → 新名对照(§4.4 规范章节已按此表翻译;§11 早期各条与 CHANGELOG 历史记录保留旧名,按表翻译即可)**:
+
+  | 旧名(2026-09-30 前) | 现名 |
+  | --- | --- |
+  | `IOutboundQueue` | `IConnectionQueue` |
+  | `OutboundQueue` | `ConnectionQueue` |
+  | `ConnectionContext.Outbound` 属性 | `ConnectionContext.Queue` |
+
+  全量重建 0 错误 0 告警,SelfTests 21 套件全绿。
 
 ### 11.4 遗留项
 
@@ -603,7 +615,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 
 - **协议迁移**:已全部完成(71/71 协议挂载;2026-09-29 另补 CMD 66 点券刷新查询入 `economy.shop`,注册表现 75 项——`grep -c "registry.Register(" Network/EntranceService.cs`,见下条与 `CHANGELOG.md` ADD-09);纯规划器已归位 `Game/Inventory/`(空间校验族 + 精灵移动规划簇,senders 留薄委托);`MoveItemSpaceHandler` 已按子流程拆为四个 partial 文件(742/155/195/134 行,均低于 §4.7 上限)。**2026-09-29 首轮真机冒烟修正**:R1 迁移 `SelectCharacterHandler` 时装备归位循环 4 处 `continue;` 被误写为 `return;`,R3 迁移 `CeraShopBuyHandler` 时同源误写 7 处,均按旧实现改回(根因、抓包证据与遗留见 `CHANGELOG.md` FIX-03)——§11 各条"逐字迁移"表述应读作"以旧实现快照为基线并逐段对拍核对",不以行数相等自证。
 - **CMD 66(点券刷新查询)挂载**(2026-09-29,`economy.shop`):`Network/Handlers/Shop/CeraQueryHandler.cs` —— 请求体仅 seq(抓包恒 2B),应答复用既有 `ShopPacketBuilders.CreateCeraUpdate` 推送 NOTI 53(`[u8 flag][u32 cera]`),不产生命令型回包;未选角时静默忽略。客户端侧证据:发送器 `sub_85E1E0`(`BeginPacket(66)`→`EndPacket`)由按钮 `sub_864E10` 调用,NOTI 53 case `0x4255BA` 按同一布局读值(登记见 `client-function-register-60cn.md` §1/§5)。自测:`protocol-golden` 增三条断言(未选角不回包、选角后回包字节与既有推送同源)。
-- **R6 定时器收编(唯一未完成的机制项)**:现状实现在 `Network/EntranceService.cs` 泵层读循环顶部(L1247 起的 `while` 内,`pendingPacketRead` 同一段 `if/else-if` 链),四处形状相同——`await Task.WhenAny(pendingPacketRead, Task.Delay(remaining, serverToken))`,超时后 `request` 保持 null,执行到期动作再 `continue` 重新武装:
+- **R6 定时器收编(唯一未完成的机制项)**:现状实现在泵层读循环顶部(L700 起的 `while` 内,`pendingPacketRead` 同一段 `if/else-if` 链),四处形状相同——超时后 `request` 保持 null,执行到期动作再 `continue` 重新武装。**2026-09-30 封装迁址(行为保持,已实施;当日早先的 `ConnectionDeadlineWait` 等待原语方案按评审撤销删除,四分支还原内联 `WhenAny`)**:`HandleClientAsync` 整方法封装为 `Network/Timers/ClientWhenAnyHandler`(`ClientWhenAnyHandler.HandleClientWhenAny(client, localPort, ct)`),12 项依赖(选项/运行态/存储/会话注册表/组队协调器/玩法数据报服务/物品与副本目录/派发表/分发器/senders/逐包追踪)主构造函数注入,ExecuteAsync 在注册表与 senders 装配后构造单实例,AcceptLoop 改经其派发;EntranceService 相应瘦身至 507 行,失去消费者的 `LoadContent` 薄委托一并删除。WhenAny 定时链随方法原样迁移,等待语义不变;**完整收编(下述 §4.5 调度器方案)仍按原门槛待真机对拍,未实施**:
 
   | # | 位置(2026-09-29 时点) | 触发状态(写入点) | 到期动作 |
   | --- | --- | --- | --- |

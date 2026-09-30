@@ -9,7 +9,6 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class RenameCreatureHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<RenameCreatureHandler> logger,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -51,8 +50,8 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
                 PetsPacketBuilders.CreateRenameCreatureReply(
                     success: false,
                     errorCode: 4);
-            await context.Outbound.SendAsync(renameError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(renameError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected Creature rename itemSpace={ItemSpace}, cardSlot={CardSlot}, parsed={Parsed}: {Failure}.",
                 renameItemSpace,
                 renameCardSlot,
@@ -80,8 +79,8 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
                 PetsPacketBuilders.CreateRenameCreatureReply(
                     success: false,
                     errorCode: 2);
-            await context.Outbound.SendAsync(renameError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(renameError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Could not persist Creature rename using card slot {CardSlot} for character {CharacterId}.",
                 renameCardSlot,
                 renamingCharacter.Id);
@@ -98,21 +97,21 @@ public sealed class RenameCreatureHandler(JsonGameStore store,
                     session.Inventory.Creature[
                         CharacterCreatureInventoryLayout
                             .EquippedCreatureSlot].ItemId));
-        await context.Outbound.SendAsync(renameNotification, Name, cancellationToken);
+        await context.Queue.SendAsync(renameNotification, Name, cancellationToken);
 
         var renameReply =
             PetsPacketBuilders.CreateRenameCreatureReply(
                 success: true,
                 renameCardSlot,
                 renameItemSpace);
-        await context.Outbound.SendAsync(renameReply, Name, cancellationToken);
+        await context.Queue.SendAsync(renameReply, Name, cancellationToken);
         foreach (var creaturePacket in builders.CreateCreatureInventoryPackets(
                      session.Inventory.Creature.Values))
         {
-            await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
+            await context.Queue.SendAsync(creaturePacket, Name, cancellationToken);
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Renamed equipped Creature uid={CreatureUid} to {CreatureName} using card slot {CardSlot} for character {CharacterId}.",
             renamePlan.CreatureUid,
             renamePlan.CreatureName,

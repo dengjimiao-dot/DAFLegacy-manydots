@@ -8,8 +8,8 @@ namespace DFLegacy.Server;
 /// ITEMTRADE_STATE (CMD 26): the NPC item-trade lock state used by shops (07 §5 group 10).
 /// </summary>
 public sealed class ItemTradeStateHandler(JsonGameStore store,
-    ItemCatalog itemCatalog,
-    ILogger<ItemTradeStateHandler> logger) : IGameCommandHandler
+    ItemCatalog itemCatalog
+    ) : IGameCommandHandler
 {
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -45,7 +45,7 @@ public sealed class ItemTradeStateHandler(JsonGameStore store,
                 out var unitSellPrice))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 0x11);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -82,16 +82,16 @@ public sealed class ItemTradeStateHandler(JsonGameStore store,
             ShopPacketBuilders.CreateSetItemTradeStateReply(
                 item.ItemId,
                 listType);
-        await context.Outbound.SendAsync(stateReply, Name, cancellationToken);
+        await context.Queue.SendAsync(stateReply, Name, cancellationToken);
 
         var sellReply = ShopPacketBuilders.CreateSellItemReply(
             updatedGold: checked((uint)session.Currency.Gold),
             itemSpace: listType,
             slot,
             soldCount: checked((ushort)soldCount));
-        await context.Outbound.SendAsync(sellReply, Name, cancellationToken);
+        await context.Queue.SendAsync(sellReply, Name, cancellationToken);
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Sold item {ItemId} x{SoldCount} through item-trade state at {ListType}:{Slot}; unitPrice={UnitPrice}, durability={Durability}, gold={Gold}",
             item.ItemId,
             soldCount,

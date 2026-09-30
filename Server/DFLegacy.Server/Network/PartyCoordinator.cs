@@ -42,8 +42,7 @@ public sealed record PartyPresenceUpdate(
 public sealed class PartyCoordinator(
     ServerOptions options,
     CharacterSessionRegistry characterSessions,
-    GameplayDatagramService gameplayDatagram,
-    ILogger<PartyCoordinator> logger)
+    GameplayDatagramService gameplayDatagram)
 {
     private readonly PartyManager _parties = new();
     private readonly object _presenceLock = new();
@@ -74,7 +73,7 @@ public sealed class PartyCoordinator(
             // client echoes the capacity stored in its own party record
             // (0x7D6327) when the create window is reopened on an existing
             // party, which the radios can never produce.
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "SET_PARTY_INFO from character {CharacterId} carried capacity {RequestedUserMax} outside 2..4; applied {AppliedUserMax}.",
                 member.CharacterId,
                 settings.UserMax,
@@ -443,7 +442,7 @@ public sealed class PartyCoordinator(
         }
         else
         {
-            logger.LogDebug(
+            RuntimeLogger.Debug(
                 "Party cleanup for session {SessionId}: {Reason}.",
                 sessionId,
                 result.Reason);
@@ -712,7 +711,7 @@ public sealed class PartyCoordinator(
             return true;
         }
 
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Dropped a {ProtocolId} packet for session {SessionId}: the connection is gone.",
             packet.ProtocolId,
             sessionId);

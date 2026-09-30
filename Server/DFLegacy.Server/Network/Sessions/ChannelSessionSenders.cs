@@ -5,7 +5,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// Session-state senders and coarse state readers shared across handler
 /// groups (07 §4.7/§4.8.2: cross-domain flows keep one canonical
-/// implementation; sends go through <see cref="IOutboundQueue"/> so every
+/// implementation; sends go through <see cref="IConnectionQueue"/> so every
 /// frame passes the single-writer pump, 07 §4.4). Split into partial files
 /// by functional block: Social, Mailbox, Quest, Skill, Inventory, Creature,
 /// Town, Dungeon, DungeonRewards; this file keeps the shared state readers
@@ -24,8 +24,8 @@ public sealed partial class ChannelSessionSenders(
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
     PvpExperienceCatalog pvpExperienceCatalog,
-    CharacterPacketBuilders builders,
-    ILogger<ChannelSessionSenders> logger)
+    CharacterPacketBuilders builders
+)
 {
     // Entrance content cache (migrated with LoadContent; single instance
     // shared with the pump's entrance-port path).
@@ -88,7 +88,7 @@ public sealed partial class ChannelSessionSenders(
             }
             else
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "{VirtualPath} is missing from {Source}; protocol 9 download is disabled.",
                     virtualPath,
                     scripts.SourceDescription);

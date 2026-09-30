@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// EPLP (CMD 75): end-of-play result handshake (07 §5 group 13).
 /// </summary>
-public sealed class EplpHandler(    ILogger<EplpHandler> logger,
+public sealed class EplpHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.EPLP_COMMAND;
@@ -22,7 +22,7 @@ public sealed class EplpHandler(    ILogger<EplpHandler> logger,
         var session = context.State;
         if (session.Dungeon.TutorialActive)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Ignored normal EPLP settlement command during the tutorial.");
             return;
         }
@@ -42,7 +42,7 @@ public sealed class EplpHandler(    ILogger<EplpHandler> logger,
             if (!await senders.TryAutomaticallySelectFreeCardAsync(context, 
                 "eplp-fallback"))
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Deferred dungeon {DungeonId} EPLP completion because automatic free-card settlement failed for user {UserId}",
                     session.Dungeon.CurrentDungeonId,
                     session.Character.LocalUserId);
@@ -52,7 +52,7 @@ public sealed class EplpHandler(    ILogger<EplpHandler> logger,
 
         var eplpReply =
             DungeonPacketBuilders.CreateEplpReply(state, option);
-        await context.Outbound.SendAsync(eplpReply, Name, cancellationToken);
+        await context.Queue.SendAsync(eplpReply, Name, cancellationToken);
 
         if (state == 1)
         {

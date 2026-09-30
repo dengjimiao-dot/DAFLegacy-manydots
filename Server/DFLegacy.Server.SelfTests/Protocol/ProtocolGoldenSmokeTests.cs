@@ -25,7 +25,7 @@ internal static class ProtocolGoldenSmokeTests
 
         // 注册表语义(07 §4.6):一号一 handler,重复注册启动期失败。
         var registry = new GameCommandRegistry();
-        var exitHandler = new ExitHandler(NullLogger<ExitHandler>.Instance);
+        var exitHandler = new ExitHandler();
         registry.Register("session.connection", exitHandler);
         check(registry.TryGet((byte)CmdPacketType.EXIT, out var mounted)
             && ReferenceEquals(mounted, exitHandler),
@@ -35,7 +35,7 @@ internal static class ProtocolGoldenSmokeTests
         try
         {
             registry.Register("session.connection",
-                new ExitHandler(NullLogger<ExitHandler>.Instance));
+                new ExitHandler());
             check(false, "duplicate registration must fail startup");
         }
         catch (InvalidOperationException)
@@ -57,7 +57,7 @@ internal static class ProtocolGoldenSmokeTests
             "clearing the dungeon returns the phase to the pre-dungeon value");
 
         // 端口门槛(07 §4.8.1 U3):频道口专属 handler 拒绝入口口帧。
-        var dispatcher = new GameCommandDispatcher(NullLogger.Instance);
+        var dispatcher = new GameCommandDispatcher();
         var (entranceContext, entranceStream) = CreateTestContext(isChannelPort: false);
         check(!await dispatcher.TryDispatchAsync(
                 entranceContext, exitFrame, exitHandler, CancellationToken.None),
@@ -126,7 +126,7 @@ internal static class ProtocolGoldenSmokeTests
         check(await dispatcher.TryDispatchAsync(
                 ceraContext,
                 ceraFrame,
-                new CeraQueryHandler(NullLogger<CeraQueryHandler>.Instance),
+                new CeraQueryHandler(),
                 CancellationToken.None),
             "CERA (CMD 66) dispatches through the pipeline");
         check(ceraStream.Length == 0,
@@ -143,7 +143,7 @@ internal static class ProtocolGoldenSmokeTests
         check(await dispatcher.TryDispatchAsync(
                 ceraContext,
                 ceraFrame,
-                new CeraQueryHandler(NullLogger<CeraQueryHandler>.Instance),
+                new CeraQueryHandler(),
                 CancellationToken.None),
             "CERA (CMD 66) dispatches for a selected character");
         var expectedCera = ShopPacketBuilders.CreateCeraUpdate(success: true, value: 108_740u).Encode();
@@ -158,18 +158,18 @@ internal static class ProtocolGoldenSmokeTests
             ConnectionPacketBuilders.CreateCommandReply(exitFrame, success: false),
         };
         var (batchContext, batchStream) = CreateTestContext(isChannelPort: true);
-        await batchContext.Outbound.SendBatchAsync(batch);
+        await batchContext.Queue.SendBatchAsync(batch);
         var expectedBatch = batch.SelectMany(packet => packet.Encode()).ToArray();
         check(batchStream.ToArray().SequenceEqual(expectedBatch),
             "outbound pump preserves strict FIFO byte order for batched sends");
         check(batchContext.Runtime.SentPackets == batch.Count,
             "outbound pump counts every delivered packet at the single accounting point");
 
-        await entranceContext.Outbound.DisposeAsync();
-        await gatedContext.Outbound.DisposeAsync();
-        await exitContext.Outbound.DisposeAsync();
-        await channelContext.Outbound.DisposeAsync();
-        await batchContext.Outbound.DisposeAsync();
+        await entranceContext.Queue.DisposeAsync();
+        await gatedContext.Queue.DisposeAsync();
+        await exitContext.Queue.DisposeAsync();
+        await channelContext.Queue.DisposeAsync();
+        await batchContext.Queue.DisposeAsync();
     }
 
     private static (ConnectionContext Context, MemoryStream Stream) CreateTestContext(bool isChannelPort)
@@ -181,18 +181,17 @@ internal static class ProtocolGoldenSmokeTests
             RemoteEndpoint = "test",
         };
         var stream = new MemoryStream();
-        var outbound = new OutboundQueue(
+        var outbound = new ConnectionQueue(
             stream,
             session,
-            _ => { },
-            NullLogger.Instance);
+            _ => { }
+            );
         var context = new ConnectionContext(
             session,
             null,
             isChannelPort,
             new ChannelSessionState(),
             outbound,
-            NullLogger.Instance,
             CancellationToken.None);
         return (context, stream);
     }

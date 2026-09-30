@@ -1,8 +1,5 @@
-using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using DFLegacy.Protocol;
 
 namespace DFLegacy.Server;
@@ -38,78 +35,20 @@ public sealed class EntranceService(
     ClearRewardGenerator clearRewardGenerator,
     GameplayDatagramService gameplayDatagram,
     ScriptFileSystem scripts,
-    ILoggerFactory loggerFactory,
-    ILogger<EntranceService> logger) : BackgroundService
+    ILoggerFactory loggerFactory
+) : BackgroundService
 {
-    private const ushort RiverLetheItemId = 3;
-    private const ushort RiverLetheBellItemId = 28;
-    private const ushort ServerMegaphoneItemId = 36;
-    private const ushort ChannelMegaphoneItemId = 37;
-    private const ushort FatigueRecoveryItemId = 7_518;
-    private const ushort LevelUpCouponItemId = 7_519;
-    private const ushort FatigueRecoveryUseThreshold = 126;
-    private const ushort FatigueRecoveryAmount = 30;
-    private const ushort BoboCreatureItemId = 63_023;
-    private const ushort EquippedTitleSlot = 10;
-    private const int CompoundReplayCapacity = 256;
-    private static readonly TimeSpan ClearRewardCardSelectionTimeout =
-        TimeSpan.FromSeconds(4);
-    private const string FatigueRecoveryRejectedMessage =
-        "疲劳值低于126点时才可以使用";
-    private const string LevelUpCouponSuccessMessage = "Lv上升";
-    private const string LevelUpCouponLevelLimitMessage = "角色已达到最大Lv上限";
     private readonly List<TcpListener> _listeners = [];
-    private readonly object _contentGate = new();
     // Protocol-layer dispatch (07 §4.6): mounted command handlers take over
     // their protocol exclusively; unmounted ids keep flowing through the
     // legacy branch chain until their group migrates.
     private GameCommandRegistry _gameCommands = null!;
-    private readonly GameCommandDispatcher _gameCommandDispatcher = new(logger);
+    private readonly GameCommandDispatcher _gameCommandDispatcher = new();
+    private readonly PacketTraceLogger _packetTrace = new(runtime, options);
+    private ClientWhenAnyHandler _clientWhenAny = null!;
     private readonly CharacterPacketBuilders _characterPacketBuilders =
         new(store, itemCatalog, pvpExperienceCatalog, ceraShopCatalog);
     private ChannelSessionSenders _sessionSenders = null!;
-    private static readonly Encoding ClientEncoding = CreateClientEncoding();
-    private static readonly GameSkillEntry[] DebugSwordmanSkills =
-    [
-        new(5, 20), new(8, 20), new(11, 20), new(6, 20),
-        new(13, 15), new(18, 8), new(25, 10), new(36, 20),
-        new(41, 10), new(44, 20), new(46, 8), new(16, 20),
-        new(17, 5), new(28, 1), new(29, 1), new(30, 10)
-    ];
-    private static readonly IReadOnlyDictionary<int, GameSkillEntry[]> InitialSkillsByJob =
-        new Dictionary<int, GameSkillEntry[]>
-        {
-            // Script/character/*/*.chr -> [initial value] / [skill].
-            [0] =
-            [
-                new(181, 2, 102), new(182, 2, 103), new(184, 1, 104),
-                new(173, 1, 105), new(179, 5, 106),
-                new(5, 1, 0), new(46, 1, 1)
-            ],
-            [1] =
-            [
-                new(181, 3, 102), new(182, 3, 103), new(184, 1, 104),
-                new(172, 1, 105), new(179, 5, 106),
-                new(5, 1, 0), new(46, 1, 1)
-            ],
-            [2] =
-            [
-                new(181, 2, 102), new(184, 1, 103), new(185, 1, 104),
-                new(179, 5, 105), new(4, 1, 0), new(47, 1, 1)
-            ],
-            [3] =
-            [
-                new(181, 3, 102), new(182, 3, 103), new(184, 2, 104),
-                new(187, 1, 105), new(179, 5, 106),
-                new(11, 1, 0), new(12, 1, 1)
-            ],
-            [4] =
-            [
-                new(181, 1, 102), new(182, 1, 103), new(184, 1, 104),
-                new(179, 5, 105), new(173, 1, 106),
-                new(1, 1, 0), new(51, 1, 1)
-            ]
-        };
     // Assembly of the dispatch table (07 §4.6): handler construction is
     // manual because every dependency is already a constructor parameter
     // here; a duplicate registration throws before any listener starts.
@@ -117,61 +56,66 @@ public sealed class EntranceService(
         ServerOptions options,
         ILoggerFactory loggerFactory)
     {
+        RuntimeLogger.Configure(loggerFactory);
         var registry = new GameCommandRegistry();
+        // 连接有效性检查 CMD 0 (0x00) ENUM_CMDPACKET_CHECK_CONNECTION
         registry.Register("session.connection", new CheckConnectionHandler(options));
-        registry.Register("session.connection", new ExitHandler(loggerFactory.CreateLogger<ExitHandler>()));
-        registry.Register("session.connection", new AntibotHandler(loggerFactory.CreateLogger<AntibotHandler>()));
+        // 客户端退出通知 CMD 3 (0x03) ENUM_CMDPACKET_EXIT
+        registry.Register("session.connection", new ExitHandler());
+        // 反外挂探测上报 CMD 161 (0xA1) ENUM_CMDPACKET_ANTIBOT
+        registry.Register("session.connection", new AntibotHandler());
+        // 物品合成 CMD 27 (0x1B) ENUM_CMDPACKET_COMPOUND_ITEM
         registry.Register("economy.craft", new CompoundItemHandler(
             store,
             itemCatalog,
             compoundCatalog,
-            loggerFactory.CreateLogger<CompoundItemHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 物品分解 CMD 28 (0x1C) ENUM_CMDPACKET_DISJOINT_ITEM
         registry.Register("economy.craft", new DisjointItemHandler(
             store,
             itemCatalog,
             disjointCatalog,
-            loggerFactory.CreateLogger<DisjointItemHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 使用抽奖类道具 CMD 29 (0x1D) ENUM_CMDPACKET_USE_LOTTERY_ITEM
         registry.Register("economy.craft", new UseLotteryItemHandler(
             store,
             itemCatalog,
-            loggerFactory.CreateLogger<UseLotteryItemHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 装备强化 CMD 83 (0x53) ENUM_CMDPACKET_UPGRADE_ITEM
         registry.Register("economy.craft", new UpgradeItemHandler(
             store,
             itemCatalog,
             reinforcementCatalog,
-            loggerFactory.CreateLogger<UpgradeItemHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 装备属性重置(解封) CMD 84 (0x54) ENUM_CMDPACKET_RESET_ITEM_ATTR
         registry.Register("economy.craft", new ResetItemAttributeHandler(
             store,
             itemCatalog,
             resealCatalog,
-            loggerFactory.CreateLogger<ResetItemAttributeHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 时装合成 CMD 102 (0x66) ENUM_CMDPACKET_COMPOUND_AVATAR
         registry.Register("economy.craft", new CompoundAvatarHandler(
             store: store,
             avatarCompoundCatalog: avatarCompoundCatalog,
-            logger: loggerFactory.CreateLogger<CompoundAvatarHandler>(),
             builders: _characterPacketBuilders,
             senders: _sessionSenders));
+        // 丢弃物品 CMD 50 (0x32) ENUM_CMDPACKET_DROP_ITEM
         registry.Register("economy.craft", new DropItemHandler(
             store: store,
-            itemCatalog: itemCatalog,
-            logger: loggerFactory.CreateLogger<DropItemHandler>()));
+            itemCatalog: itemCatalog));
+        // 拾取掉落物品 CMD 46 (0x2E) ENUM_CMDPACKET_GET_ITEM
         registry.Register("economy.craft", new GetItemHandler(
             store: store,
             itemCatalog: itemCatalog,
             characterStatCatalog: characterStatCatalog,
-            logger: loggerFactory.CreateLogger<GetItemHandler>(),
             builders: _characterPacketBuilders,
             senders: _sessionSenders));
+        // 点券商城购买 CMD 67 (0x43) ENUM_CMDPACKET_BUY_CERASHOP_ITEM
         registry.Register("economy.shop", new CeraShopBuyHandler(
             store,
             itemCatalog,
@@ -179,69 +123,69 @@ public sealed class EntranceService(
             options,
             runtime,
             characterSessions,
-            loggerFactory.CreateLogger<CeraShopBuyHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 金币购买商店物品 CMD 21 (0x15) ENUM_CMDPACKET_BUY_ITEM
         registry.Register("economy.shop", new BuyItemHandler(
             store,
             itemCatalog,
             characterSessions,
-            loggerFactory.CreateLogger<BuyItemHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 出售物品 CMD 24 (0x18) ENUM_CMDPACKET_SELL_ITEM
         registry.Register("economy.shop", new SellItemHandler(
             store: store,
-            itemCatalog: itemCatalog,
-            logger: loggerFactory.CreateLogger<SellItemHandler>()));
+            itemCatalog: itemCatalog));
+        // 修理装备耐久 CMD 25 (0x19) ENUM_CMDPACKET_REPAIR_EQUIPMENT
         registry.Register("economy.shop", new RepairEquipmentHandler(
             store: store,
-            itemCatalog: itemCatalog,
-            logger: loggerFactory.CreateLogger<RepairEquipmentHandler>()));
+            itemCatalog: itemCatalog));
+        // 交易锁定状态设置 CMD 26 (0x1A) ENUM_CMDPACKET_SET_ITEMTRADE_STATE
         registry.Register("economy.shop", new ItemTradeStateHandler(
             store: store,
-            itemCatalog: itemCatalog,
-            logger: loggerFactory.CreateLogger<ItemTradeStateHandler>()));
-        registry.Register("economy.shop", new GenerateCeraTicketHandler(
-            loggerFactory.CreateLogger<GenerateCeraTicketHandler>()));
-        registry.Register("economy.shop", new CeraQueryHandler(
-            loggerFactory.CreateLogger<CeraQueryHandler>()));
+            itemCatalog: itemCatalog));
+        // 生成点券票据 CMD 68 (0x44) ENUM_CMDPACKET_GEN_CERATICKET
+        registry.Register("economy.shop", new GenerateCeraTicketHandler());
+        // 点券余额刷新查询 CMD 66 (0x42) ENUM_CMDPACKET_CERA
+        registry.Register("economy.shop", new CeraQueryHandler());
+        // 疲劳恢复 CMD 9 (0x09) ENUM_CMDPACKET_RECOVER_STAMINA
         registry.Register("progression.stamina", new RecoverStaminaHandler(
             store: store,
-            staminaRecoveryCatalog: staminaRecoveryCatalog,
-            logger: loggerFactory.CreateLogger<RecoverStaminaHandler>()));
+            staminaRecoveryCatalog: staminaRecoveryCatalog));
+        // 进入副本开始游戏 CMD 15 (0x0F) ENUM_CMDPACKET_START_GAME
         registry.Register("combat.dungeon", new StartGameHandler(
             store: store,
             worldMapCatalog: worldMapCatalog,
             gameplayDatagram: gameplayDatagram,
-            logger: loggerFactory.CreateLogger<StartGameHandler>(),
             senders: _sessionSenders));
+        // 副本内返回城镇 CMD 142 (0x8E) ENUM_CMDPACKET_BACK_2_VILLAGE
         registry.Register("combat.dungeon", new BackToVillageHandler(
-            logger: loggerFactory.CreateLogger<BackToVillageHandler>(),
             senders: _sessionSenders));
+        // 选择副本 CMD 16 (0x10) ENUM_CMDPACKET_SELECT_DUNGEON
         registry.Register("combat.dungeon", new SelectDungeonHandler(
             store: store,
             questCatalog: questCatalog,
             dungeonCatalog: dungeonCatalog,
-            logger: loggerFactory.CreateLogger<SelectDungeonHandler>(),
             builders: _characterPacketBuilders,
             senders: _sessionSenders));
+        // 使用技能 CMD 41 (0x29) ENUM_CMDPACKET_USE_SKILL
         registry.Register("combat.dungeon", new UseSkillHandler(
             runtime: runtime,
             options: options,
-            skillCatalog: skillCatalog,
-            logger: loggerFactory.CreateLogger<UseSkillHandler>()));
+            skillCatalog: skillCatalog));
+        // 副本内移动 CMD 48 (0x30) ENUM_CMDPACKET_MOVE_MAP
         registry.Register("combat.dungeon", new MoveMapHandler(
-            logger: loggerFactory.CreateLogger<MoveMapHandler>(),
             senders: _sessionSenders));
-        registry.Register("combat.dungeon", new BossDieCheckHandler(
-            logger: loggerFactory.CreateLogger<BossDieCheckHandler>()));
-        registry.Register("combat.dungeon", new AllDieMonsterHandler(
-            logger: loggerFactory.CreateLogger<AllDieMonsterHandler>()));
-        registry.Register("combat.dungeon", new DieCharacterHandler(
-            logger: loggerFactory.CreateLogger<DieCharacterHandler>()));
+        // 领主死亡判定 CMD 127 (0x7F) ENUM_CMDPACKET_BOSS_DIE_CHECK
+        registry.Register("combat.dungeon", new BossDieCheckHandler());
+        // 全部怪物死亡通报 CMD 148 (0x94) ENUM_CMDPACKET_ALLDIE_MONSTER
+        registry.Register("combat.dungeon", new AllDieMonsterHandler());
+        // 角色死亡处理 CMD 43 (0x2B) ENUM_CMDPACKET_DIE_CHARACTER
+        registry.Register("combat.dungeon", new DieCharacterHandler());
+        // 使用复活币 CMD 44 (0x2C) ENUM_CMDPACKET_USE_COIN
         registry.Register("combat.dungeon", new UseCoinHandler(
-            store: store,
-            logger: loggerFactory.CreateLogger<UseCoinHandler>()));
+            store: store));
+        // 怪物死亡结算(经验与掉落) CMD 42 (0x2A) ENUM_CMDPACKET_DIE_MONSTER
         registry.Register("combat.dungeon", new DieMonsterHandler(
             dungeonExperienceCatalog: dungeonExperienceCatalog,
             hellDropCatalog: hellDropCatalog,
@@ -252,8 +196,8 @@ public sealed class EntranceService(
             dungeonCatalog: dungeonCatalog,
             experienceCatalog: experienceCatalog,
             dropGenerator: dropGenerator,
-            logger: loggerFactory.CreateLogger<DieMonsterHandler>(),
             senders: _sessionSenders));
+        // 副本通关结算 CMD 49 (0x31) ENUM_CMDPACKET_SET_PLAY_RESULT
         registry.Register("combat.dungeon", new SetPlayResultHandler(
             dungeonExperienceCatalog: dungeonExperienceCatalog,
             store: store,
@@ -263,74 +207,84 @@ public sealed class EntranceService(
             spCatalog: spCatalog,
             clearRewardGenerator: clearRewardGenerator,
             characterSessions: characterSessions,
-            logger: loggerFactory.CreateLogger<SetPlayResultHandler>(),
             senders: _sessionSenders));
+        // 计分卷轴状态查询 CMD 72 (0x48) ENUM_CMDPACKET_SCORE_SCROLL_STATE
         registry.Register("combat.dungeon", new ScoreScrollStateHandler(
-            senders: _sessionSenders,
-            logger: loggerFactory.CreateLogger<ScoreScrollStateHandler>()));
+            senders: _sessionSenders));
+        // 教学关完成标记 CMD 153 (0x99) ENUM_CMDPACKET_CHANGE_TUTORIAL_FLAG
         registry.Register("combat.dungeon", new TutorialCompletionHandler(
             senders: _sessionSenders));
-        registry.Register("combat.dungeon", new CardSelectRightStateHandler(
-            logger: loggerFactory.CreateLogger<CardSelectRightStateHandler>()));
+        // 翻牌权状态查询 CMD 73 (0x49) ENUM_CMDPACKET_CARD_SELECT_RIGHT_STATE
+        registry.Register("combat.dungeon", new CardSelectRightStateHandler());
+        // 通关翻牌选择 CMD 74 (0x4A) ENUM_CMDPACKET_SELECT_CARD
         registry.Register("combat.dungeon", new SelectCardHandler(
-            logger: loggerFactory.CreateLogger<SelectCardHandler>(),
             senders: _sessionSenders));
+        // 放弃副本 CMD 45 (0x2D) ENUM_CMDPACKET_GIVEUP_GAME
         registry.Register("combat.dungeon", new GiveupGameHandler(
-            logger: loggerFactory.CreateLogger<GiveupGameHandler>(),
             senders: _sessionSenders));
+        // 副本结算握手(EPLP) CMD 75 (0x4B) ENUM_CMDPACKET_EPLP_COMMAND
         registry.Register("combat.dungeon", new EplpHandler(
-            logger: loggerFactory.CreateLogger<EplpHandler>(),
             senders: _sessionSenders));
+        // 副本加载完成通知 CMD 40 (0x28) ENUM_CMDPACKET_FINISH_LOADING
         registry.Register("combat.dungeon", new FinishLoadingHandler(
             senders: _sessionSenders));
+        // 精灵改名 CMD 103 (0x67) ENUM_CMDPACKET_RENAME_CREATURE
         registry.Register("world.pets", new RenameCreatureHandler(
             store,
             itemCatalog,
-            loggerFactory.CreateLogger<RenameCreatureHandler>(),
             _characterPacketBuilders));
+        // 精灵孵化 CMD 105 (0x69) ENUM_CMDPACKET_HATCH_CREATURE
         registry.Register("world.pets", new HatchCreatureHandler(
             store,
             itemCatalog,
-            loggerFactory.CreateLogger<HatchCreatureHandler>(),
             _characterPacketBuilders));
+        // 精灵信息应答 CMD 104 (0x68) ENUM_CMDPACKET_RESPONSE_CREATURE
         registry.Register("world.pets", new ResponseCreatureHandler(_sessionSenders));
+        // 城镇位置同步 CMD 37 (0x25) ENUM_CMDPACKET_SET_USER_POSITION
         registry.Register("world.town", new SetUserPositionHandler(
             partyCoordinator: partyCoordinator,
             senders: _sessionSenders));
+        // 城镇区域切换 CMD 38 (0x26) ENUM_CMDPACKET_SET_USER_AREA
         registry.Register("world.town", new SetUserAreaHandler(
             store: store,
             senders: _sessionSenders));
+        // 个人商店列表轮询 CMD 82 (0x52) ENUM_CMDPACKET_CALL_MEMER_LIST
         registry.Register("world.town", new PrivateStorePollHandler());
+        // 交换服角色信息应答 CMD 130 (0x82) ENUM_CMDPACKET_REQUEST_BLACKLIST
         registry.Register("world.town", new ExchangeServerCharacterInfoHandler());
         {
             // Party family (07 §4.6 族接管): one shared core, five thin shells.
-            var partyCore = new PartyHandlerCore(
-                partyCoordinator,
-                loggerFactory.CreateLogger<PartyHandlerCore>());
+            var partyCore = new PartyHandlerCore(partyCoordinator);
+            // 组队邀请请求 CMD 10 (0x0A) ENUM_CMDPACKET_REQUEST_PEER
             registry.Register("social.party", new RequestPeerHandler(partyCore));
+            // 组队邀请应答 CMD 11 (0x0B) ENUM_CMDPACKET_RESPONSE_PEER
             registry.Register("social.party", new ResponsePeerHandler(partyCore));
+            // 队伍信息设置 CMD 12 (0x0C) ENUM_CMDPACKET_SET_PARTY_INFO
             registry.Register("social.party", new SetPartyInfoHandler(partyCore));
+            // 主动退队 CMD 13 (0x0D) ENUM_CMDPACKET_LEAVE_PARTY
             registry.Register("social.party", new LeavePartyHandler(partyCore));
+            // 队长移除队员 CMD 14 (0x0E) ENUM_CMDPACKET_WALKOUT_PARTY_MEMBER
             registry.Register("social.party", new WalkoutPartyMemberHandler(partyCore));
         }
+        // 整理背包 CMD 20 (0x14) ENUM_CMDPACKET_SORT_ITEM
         registry.Register("economy.inventory", new SortItemHandler(
             store,
             itemCatalog,
-            loggerFactory.CreateLogger<SortItemHandler>(),
             _characterPacketBuilders));
+        // 物品跨栏位移动(背包/仓库/装扮/精灵) CMD 19 (0x13) ENUM_CMDPACKET_MOVE_ITEMSPACE
         registry.Register("economy.inventory", new MoveItemSpaceHandler(
             store,
             itemCatalog,
-            loggerFactory.CreateLogger<MoveItemSpaceHandler>(),
             _characterPacketBuilders,
             _sessionSenders,
             premiumBenefitCatalog));
+        // 删除物品 CMD 18 (0x12) ENUM_CMDPACKET_DELETE_ITEM
         registry.Register("economy.inventory", new DeleteItemHandler(
             options: options,
             runtime: runtime,
             store: store,
-            itemCatalog: itemCatalog,
-            logger: loggerFactory.CreateLogger<DeleteItemHandler>()));
+            itemCatalog: itemCatalog));
+        // 使用可堆叠道具 CMD 47 (0x2F) ENUM_CMDPACKET_USE_STACKABLE
         registry.Register("economy.inventory", new UseStackableItemHandler(
             options,
             runtime,
@@ -340,50 +294,49 @@ public sealed class EntranceService(
             experienceCatalog,
             pvpExperienceCatalog,
             characterSessions,
-            loggerFactory.CreateLogger<UseStackableItemHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
+        // 装备耐久扣减 CMD 51 (0x33) ENUM_CMDPACKET_DECREASE_DURABILITY
         registry.Register("economy.inventory", new DecreaseDurabilityHandler(
             store: store,
-            itemCatalog: itemCatalog,
-            logger: loggerFactory.CreateLogger<DecreaseDurabilityHandler>()));
+            itemCatalog: itemCatalog));
+        // 状态点分配 CMD 32 (0x20) ENUM_CMDPACKET_INCREASE_STATUS
         registry.Register("progression.skill", new IncreaseStatusHandler(
-            loggerFactory.CreateLogger<IncreaseStatusHandler>(),
             store,
             itemCatalog,
             skillCatalog,
             spCatalog,
             experienceCatalog,
             _sessionSenders));
+        // 购买技能 CMD 31 (0x1F) ENUM_CMDPACKET_BUY_SKILL
         registry.Register("progression.skill", new BuySkillHandler(
-            loggerFactory.CreateLogger<BuySkillHandler>(),
             store,
             skillCatalog,
             premiumBenefitCatalog,
             _sessionSenders));
+        // 技能快速槽互换 CMD 30 (0x1E) ENUM_CMDPACKET_CHANGE_SKILLSLOT
         registry.Register("progression.skill", new ChangeSkillSlotHandler(
             store,
-            skillCatalog,
-            loggerFactory.CreateLogger<ChangeSkillSlotHandler>()));
+            skillCatalog));
+        // 接受任务 CMD 33 (0x21) ENUM_CMDPACKET_ACCEPT_QUEST
         registry.Register("progression.quest", new AcceptQuestHandler(
-            logger: loggerFactory.CreateLogger<AcceptQuestHandler>(),
             store: store,
             itemCatalog: itemCatalog,
             questCatalog: questCatalog,
             dungeonCatalog: dungeonCatalog,
             senders: _sessionSenders));
+        // 放弃任务 CMD 34 (0x22) ENUM_CMDPACKET_GIVEUP_QUEST
         registry.Register("progression.quest", new GiveupQuestHandler(
-            loggerFactory.CreateLogger<GiveupQuestHandler>(),
             store,
             questCatalog,
             _sessionSenders));
+        // 任务触发条件上报 CMD 35 (0x23) ENUM_CMDPACKET_SET_QUEST_TRIGGER
         registry.Register("progression.quest", new SetQuestTriggerHandler(
-            loggerFactory.CreateLogger<SetQuestTriggerHandler>(),
             store,
             questCatalog,
             _sessionSenders));
+        // 完成任务结算奖励 CMD 36 (0x24) ENUM_CMDPACKET_FINISH_QUEST
         registry.Register("progression.quest", new FinishQuestHandler(
-            loggerFactory.CreateLogger<FinishQuestHandler>(),
             characterSessions,
             store,
             itemCatalog,
@@ -394,36 +347,46 @@ public sealed class EntranceService(
             spCatalog,
             _characterPacketBuilders,
             _sessionSenders));
+        // 打开邮箱 CMD 99 (0x63) ENUM_CMDPACKET_MAILBOX_OPEN
         registry.Register("social.mailbox", new MailboxOpenHandler(_sessionSenders));
+        // 提取邮件附件 CMD 98 (0x62) ENUM_CMDPACKET_MAILBOX_EXTRACT_ITEM
         registry.Register("social.mailbox", new MailboxExtractHandler(
             store,
             itemCatalog,
             _characterPacketBuilders,
             _sessionSenders));
+        // 邮件状态更新(已读/删除) CMD 144 (0x90) ENUM_CMDPACKET_CHANGE_LETTER_STAT
         registry.Register("social.mailbox", new MailboxStateHandler(
             store: store));
+        // 发送邮件 CMD 97 (0x61) ENUM_CMDPACKET_MAILBOX_SEND
         registry.Register("social.mailbox", new MailboxSendHandler(
             store: store,
             itemCatalog: itemCatalog,
             characterSessions: characterSessions,
             builders: _characterPacketBuilders));
+        // 聊天消息发送 CMD 17 (0x11) ENUM_CMDPACKET_SEND_MESSAGE
         registry.Register("social.chat", new SendMessageHandler(
             store,
             characterSessions,
             partyCoordinator,
             options,
-            loggerFactory.CreateLogger<SendMessageHandler>(),
             _characterPacketBuilders,
             _sessionSenders));
-        registry.Register("social.chat", new CreatureSendMessageHandler(
-            logger: loggerFactory.CreateLogger<CreatureSendMessageHandler>()));
-        registry.Register("social.chat", new CreatureScriptMessageHandler(
-            logger: loggerFactory.CreateLogger<CreatureScriptMessageHandler>()));
-        registry.Register("session.login", new LoginHandler(store, loggerFactory.CreateLogger<LoginHandler>()));
+        // 精灵聊天消息 CMD 124 (0x7C) ENUM_CMDPACKET_CREATURE_SEND_MESSAGE
+        registry.Register("social.chat", new CreatureSendMessageHandler());
+        // 精灵脚本消息 CMD 132 (0x84) ENUM_CMDPACKET_CREATURE_SCRIPT_MESSAGE
+        registry.Register("social.chat", new CreatureScriptMessageHandler());
+        // 账号登录 CMD 1 (0x01) ENUM_CMDPACKET_LOGIN
+        registry.Register("session.login", new LoginHandler(store));
+        // UDP 端点上报 CMD 2 (0x02) ENUM_CMDPACKET_SET_UDP_IP_PORT
         registry.Register("session.login", new SetUdpEndpointHandler(gameplayDatagram, partyCoordinator));
+        // 用户信息查询 CMD 8 (0x08) ENUM_CMDPACKET_GET_USERINFO
         registry.Register("progression.character", new GetUserInfoHandler(_characterPacketBuilders));
+        // 创建角色 CMD 5 (0x05) ENUM_CMDPACKET_CREATE_CHARACTER
         registry.Register("progression.character", new CreateCharacterHandler(store, _characterPacketBuilders));
+        // 删除角色 CMD 6 (0x06) ENUM_CMDPACKET_DELETE_CHARACTER
         registry.Register("progression.character", new DeleteCharacterHandler(store, _characterPacketBuilders));
+        // 选择角色进入游戏 CMD 4 (0x04) ENUM_CMDPACKET_SELECT_CHARACTER
         registry.Register("progression.character", new SelectCharacterHandler(
             store,
             itemCatalog,
@@ -434,13 +397,12 @@ public sealed class EntranceService(
             premiumBenefitCatalog,
             characterSessions,
             _characterPacketBuilders,
-            _sessionSenders,
-            loggerFactory.CreateLogger<SelectCharacterHandler>()));
+            _sessionSenders));
+        // 返回选角界面 CMD 7 (0x07) ENUM_CMDPACKET_RETURN_SELECT_CHARACTER
         registry.Register("progression.character", new ReturnSelectCharacterHandler(
             store,
             characterSessions,
-            partyCoordinator,
-            loggerFactory.CreateLogger<ReturnSelectCharacterHandler>()));
+            partyCoordinator));
         return registry;
     }
 
@@ -448,7 +410,7 @@ public sealed class EntranceService(
     {
         if (!options.Entrance.Enabled)
         {
-            logger.LogWarning("Entrance listener is disabled.");
+            RuntimeLogger.Warn("Entrance listener is disabled.");
             return;
         }
 
@@ -465,15 +427,27 @@ public sealed class EntranceService(
             questCatalog,
             dungeonCatalog,
             pvpExperienceCatalog,
-            _characterPacketBuilders,
-            loggerFactory.CreateLogger<ChannelSessionSenders>());
+            _characterPacketBuilders);
         _gameCommands = BuildGameCommandRegistry(options, loggerFactory);
+        _clientWhenAny = new ClientWhenAnyHandler(
+            options,
+            runtime,
+            store,
+            characterSessions,
+            partyCoordinator,
+            gameplayDatagram,
+            itemCatalog,
+            dungeonCatalog,
+            _gameCommands,
+            _gameCommandDispatcher,
+            _sessionSenders,
+            _packetTrace);
 
         // Startup listing of the mounted dispatch table (07 §4.6): one line
         // per registered group so a mis-mounted protocol is visible at boot.
         foreach (var group in _gameCommands.Entries.GroupBy(entry => entry.Group))
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Game command group {Group} mounted: {Handlers}",
                 group.Key,
                 string.Join(", ", group.Select(entry => $"{entry.Handler.Name}({entry.Handler.ProtocolId})")));
@@ -491,13 +465,13 @@ public sealed class EntranceService(
             var listener = new TcpListener(address, port);
             listener.Start();
             _listeners.Add(listener);
-            logger.LogInformation("Entrance listener ready at {Address}:{Port}", address, port);
+            RuntimeLogger.Info("Entrance listener ready at {Address}:{Port}", address, port);
         }
 
         try
         {
             await Task.WhenAll(_listeners.Select(listener =>
-                AcceptLoopAsync(listener, ((IPEndPoint)listener.LocalEndpoint).Port, stoppingToken)));
+                AcceptClientConnectionsAsync(listener, ((IPEndPoint)listener.LocalEndpoint).Port, stoppingToken)));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -511,794 +485,15 @@ public sealed class EntranceService(
         }
     }
 
-    private async Task AcceptLoopAsync(TcpListener listener, int port, CancellationToken stoppingToken)
+    private async Task AcceptClientConnectionsAsync(TcpListener listener, int port, CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             var client = await listener.AcceptTcpClientAsync(stoppingToken);
-            _ = HandleClientAsync(client, port, stoppingToken);
+            _ = _clientWhenAny.HandleClientWhenAny(client, port, stoppingToken);
         }
     }
 
-    private async Task HandleClientAsync(TcpClient client, int localPort, CancellationToken serverToken)
-    {
-        using (client)
-        {
-            client.NoDelay = true;
-            using var connectionCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(serverToken);
-            serverToken = connectionCancellation.Token;
-
-            void KickConnection()
-            {
-                connectionCancellation.Cancel();
-                client.Close();
-            }
-
-            var remoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
-            var remote = remoteEndpoint?.ToString() ?? "unknown";
-            var isChannelPort = localPort == options.Channel.Port;
-            var runtimeSession = runtime.Add($"{(isChannelPort ? "channel" : "entrance")}:{localPort}", remote);
-            if (isChannelPort && remoteEndpoint is not null)
-            {
-                gameplayDatagram.RegisterChannelSession(
-                    runtimeSession,
-                    remoteEndpoint.Address);
-            }
-            var protocolSession = new EntranceSessionState();
-            var gameClientCipher = isChannelPort ? new GameClientCipherState() : null;
-            // Session state object (07 §4.3): the former closure variables
-            // of this method live on the state domains now; `session` is the
-            // method-wide alias that handlers reach through ctx.State as well.
-            var sessionState = new ChannelSessionState();
-            var session = sessionState;
-            // Per-run dungeon dependencies: the run recorder needs its
-            // catalog and the return-to-town anchor snapshots the
-            // pre-dungeon position, exactly as the former initializers did.
-            session.Dungeon.Run = new DungeonRunState(dungeonCatalog);
-            session.Dungeon.ReturnTownId = session.Character.TownId;
-            session.Dungeon.ReturnAreaId = session.Character.AreaId;
-            session.Dungeon.ReturnX = session.Character.X;
-            session.Dungeon.ReturnY = session.Character.Y;
-            session.Dungeon.ReturnDirection = session.Character.Direction;
-
-            logger.LogInformation(
-                "Entrance client {SessionId} connected from {Remote} on local port {Port}",
-                runtimeSession.Id, remote, localPort);
-
-            using var stream = new SerializedWriteStream(client.GetStream());
-            // Protocol-layer per-connection plumbing (07 §4.2/§4.4): the
-            // outbound queue pumps every handler send through the
-            // single-writer channel; the context replaces the former
-            // closure world for handlers migrated off the legacy chain.
-            // Declared before the try so teardown drains the pump before
-            // the stream is disposed.
-            var outboundQueue = new OutboundQueue(
-                stream,
-                runtimeSession,
-                packet => LogPacket("TX", runtimeSession, packet),
-                logger,
-                disconnecting: serverToken);
-            var connectionContext = new ConnectionContext(
-                runtimeSession,
-                remoteEndpoint,
-                isChannelPort,
-                sessionState,
-                outboundQueue,
-                logger,
-                serverToken);
-            connectionContext.KickConnection = KickConnection;
-                PacketFrame? queuedRequest = null;
-                Task<PacketFrame?>? pendingPacketRead = null;
-            // Pump-side adjacent-frame read for the CHANGE_SKILLSLOT swap
-            // pair: delay, availability probe, decode and accounting stay in
-            // the transport layer; a non-matching frame is queued back.
-            connectionContext.ReadAdjacentFrame = async (delay, accept, token) =>
-            {
-                await Task.Delay(delay, token);
-                if (client.Available <= 0)
-                {
-                    return default;
-                }
-
-                var adjacentRaw = await PacketFrame.ReadAsync(
-                    stream,
-                    options.MaximumPacketLength,
-                    token);
-                if (adjacentRaw is null)
-                {
-                    return default;
-                }
-
-                if (!accept(adjacentRaw))
-                {
-                    queuedRequest = adjacentRaw;
-                    return default;
-                }
-
-                if (!gameClientCipher!.TryDecode(adjacentRaw, out var adjacentDecoded))
-                {
-                    LogPacket("RX-ENC", runtimeSession, adjacentRaw);
-                    logger.LogWarning("Could not decode the adjacent skill quick-slot command.");
-                    return new AdjacentFrameResult(null, DecodeFailed: true);
-                }
-
-                runtime.CountPacket(runtimeSession);
-                runtimeSession.LastProtocolId = adjacentDecoded.ProtocolId;
-                LogPacket("RX", runtimeSession, adjacentDecoded, adjacentRaw);
-                return new AdjacentFrameResult(adjacentDecoded, DecodeFailed: false);
-            };
-
-            try
-            {
-                async Task<bool> TryDispatchGameCommandAsync(PacketFrame frame)
-                {
-                    if (frame.Type != GameProtocolConstants.CommandPacketType
-                        || !_gameCommands.TryGet(frame.ProtocolId, out var handler))
-                    {
-                        return false;
-                    }
-
-                    return await _gameCommandDispatcher.TryDispatchAsync(
-                        connectionContext,
-                        frame,
-                        handler,
-                        serverToken);
-                }
-
-                // Cross-session delivery channel: PartyCoordinator queues
-                // packets here from other sessions' read loops; the write
-                // itself stays on this connection's serialized stream.
-                characterSessions.AttachPacketChannel(
-                    runtimeSession.Id,
-                    packet => _ = SendCrossSessionPacketAsync(packet));
-
-                async Task SendCrossSessionPacketAsync(GameServerPacket packet)
-                {
-                    try
-                    {
-                        await packet.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, packet);
-                    }
-                    catch (OperationCanceledException) when (serverToken.IsCancellationRequested)
-                    {
-                    }
-                    catch (Exception exception)
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "Could not deliver a cross-session packet {ProtocolId} on session {SessionId}.",
-                            packet.ProtocolId,
-                            runtimeSession.Id);
-                    }
-                }
-
-                // Registers this session's town entity with the party
-                // coordinator so same-area residents can see and invite this
-                // character. The appearance packet is built here because only
-                // this connection owns the equipped-item dictionaries.
-                async Task SendNewMailAlarmAsync(
-                    IReadOnlyCollection<CharacterMailRecord>? knownMails = null)
-                {
-                    if (session.Character.Active is null)
-                    {
-                        return;
-                    }
-
-                    var mails = knownMails
-                        ?? await store.GetCharacterMailsAsync(session.Character.Active.Id, serverToken);
-                    var newMailCount = mails.Count(mail => mail.IsNew);
-                    if (newMailCount == 0)
-                    {
-                        return;
-                    }
-
-                    var alarm = MailboxPacketBuilders.CreateMailboxAlarm(
-                        checked((short)Math.Min(newMailCount, short.MaxValue)));
-                    await alarm.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, alarm);
-                    await store.AcknowledgeCharacterMailNotificationsAsync(
-                        session.Character.Active.Id,
-                        serverToken);
-                }
-
-                Task SendPremiumServiceInfoAsync(byte serviceType, uint remainSeconds) =>
-                    _sessionSenders.SendPremiumServiceInfoAsync(connectionContext, serviceType, remainSeconds, serverToken);
-                Task SendTownFatigueStateAsync() =>
-                    _sessionSenders.SendTownFatigueStateAsync(connectionContext, serverToken);
-                Task<bool> TryAutomaticallySelectFreeCardAsync(string source) =>
-                    _sessionSenders.TryAutomaticallySelectFreeCardAsync(connectionContext, source, serverToken);
-
-                Task ReturnToTownFromDungeonAsync(string reason, bool forcedDungeonExit = false) =>
-                    _sessionSenders.ReturnToTownFromDungeonAsync(connectionContext, reason, forcedDungeonExit, serverToken);
-
-                if (isChannelPort)
-                {
-                    // The launcher applies the process-local channel callback
-                    // after the client's startup integrity pass. This client
-                    // can reach port 7001 a few hundred milliseconds earlier,
-                    // and it never retries a greeting handled by the retired
-                    // callback. Hold the first channel packet until that patch
-                    // window has safely completed.
-                    await Task.Delay(TimeSpan.FromMilliseconds(750), serverToken);
-                    var greeting = ConnectionPacketBuilders.CreateCheckConnection(protocolSession.SessionToken);
-                    await greeting.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, greeting);
-                }
-
-                while (!serverToken.IsCancellationRequested)
-                {
-                    var request = queuedRequest;
-                    queuedRequest = null;
-                    if (request is null)
-                    {
-                        pendingPacketRead ??= PacketFrame.ReadAsync(
-                            stream,
-                            options.MaximumPacketLength,
-                            serverToken).AsTask();
-                        if (isChannelPort && session.Dungeon.InSelection
-                            && session.Dungeon.SelectionDeadline is { } selectionDeadline)
-                        {
-                            var remaining = selectionDeadline - DateTimeOffset.UtcNow;
-                            if (remaining > TimeSpan.Zero)
-                            {
-                                var completed = await Task.WhenAny(
-                                    pendingPacketRead, Task.Delay(remaining, serverToken));
-                                if (completed == pendingPacketRead)
-                                {
-                                    request = await pendingPacketRead;
-                                    pendingPacketRead = null;
-                                    if (request is null)
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (request is null)
-                            {
-                                // DF2008's CMD 16 failure handler (0x410B05) retries
-                                // after 30.3 s, but returns without unlocking controls
-                                // when selected index +0x200 is zero (0x410B1C).
-                                // Never rely solely on the client's CMD 142 to exit.
-                                await ReturnToTownFromDungeonAsync("selection-countdown-expired");
-                                continue;
-                            }
-                        }
-                        else if (isChannelPort && session.Dungeon.DeathTimeout is { } deathTimeout)
-                        {
-                            var remaining = deathTimeout.Deadline - DateTimeOffset.UtcNow;
-                            if (remaining > TimeSpan.Zero)
-                            {
-                                var completed = await Task.WhenAny(
-                                    pendingPacketRead,
-                                    Task.Delay(remaining, serverToken));
-                                if (completed == pendingPacketRead)
-                                {
-                                    request = await pendingPacketRead;
-                                    pendingPacketRead = null;
-                                    if (request is null)
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (request is null)
-                            {
-                                if (session.Dungeon.DeathTimeout is { } currentTimeout
-                                    && currentTimeout.Generation == deathTimeout.Generation
-                                    && !session.Dungeon.CharacterAlive
-                                    && session.Dungeon.CurrentDungeonId != 0)
-                                {
-                                    session.Dungeon.DeathTimeout = null;
-                                    logger.LogInformation(
-                                        "Dungeon death countdown expired for user {UserId} in dungeon {DungeonId}; returning to town.",
-                                        session.Character.LocalUserId,
-                                        session.Dungeon.CurrentDungeonId);
-                                    await ReturnToTownFromDungeonAsync(
-                                        "death-countdown-expired",
-                                        forcedDungeonExit: true);
-                                }
-
-                                continue;
-                            }
-                        }
-                        else if (isChannelPort
-                            && session.Dungeon.CardSelectionDeadline is { } cardSelectionDeadline)
-                        {
-                            var remaining = cardSelectionDeadline - DateTimeOffset.UtcNow;
-                            if (remaining > TimeSpan.Zero)
-                            {
-                                var completed = await Task.WhenAny(
-                                    pendingPacketRead,
-                                    Task.Delay(remaining, serverToken));
-                                if (completed == pendingPacketRead)
-                                {
-                                    request = await pendingPacketRead;
-                                    pendingPacketRead = null;
-                                    if (request is null)
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (request is null)
-                            {
-                                if (session.Dungeon.CardSelectionDeadline
-                                        == cardSelectionDeadline)
-                                {
-                                    session.Dungeon.CardSelectionDeadline = null;
-                                    if (session.Dungeon.CardRightsSent
-                                        && session.Dungeon.ClearReward is not null
-                                        && !session.Dungeon.FreeCardIndex.HasValue
-                                        && !await TryAutomaticallySelectFreeCardAsync(
-                                            "card-selection-timer"))
-                                    {
-                                        session.Dungeon.CardSelectionDeadline =
-                                            DateTimeOffset.UtcNow
-                                            + TimeSpan.FromSeconds(1);
-                                    }
-                                }
-
-                                continue;
-                            }
-                        }
-                        else if (isChannelPort && !session.Premium.ExpiryUnix.IsEmpty)
-                        {
-                            var observedExpiries = session.Premium.ExpiryUnix.ToArray();
-                            var nextExpiry = observedExpiries.Min(pair => pair.Value);
-                            var remaining = DateTimeOffset
-                                .FromUnixTimeSeconds(nextExpiry)
-                                - DateTimeOffset.UtcNow;
-                            var waitTime = remaining > TimeSpan.FromDays(1)
-                                ? TimeSpan.FromDays(1)
-                                : remaining;
-                            if (waitTime > TimeSpan.Zero)
-                            {
-                                var completed = await Task.WhenAny(
-                                    pendingPacketRead,
-                                    Task.Delay(waitTime, serverToken));
-                                if (completed == pendingPacketRead)
-                                {
-                                    request = await pendingPacketRead;
-                                    pendingPacketRead = null;
-                                    if (request is null)
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (request is null)
-                            {
-                                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                                foreach (var expired in observedExpiries.Where(pair =>
-                                             pair.Value <= now))
-                                {
-                                    if (session.Premium.ExpiryUnix.TryGetValue(
-                                            expired.Key,
-                                            out var currentExpiry)
-                                        && currentExpiry <= now
-                                        && session.Premium.ExpiryUnix.TryRemove(expired.Key, out _)
-                                        && session.Character.Active is not null)
-                                    {
-                                        await SendPremiumServiceInfoAsync(expired.Key, 0);
-                                    }
-                                }
-
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            request = await pendingPacketRead;
-                            pendingPacketRead = null;
-                        }
-                    }
-
-                    if (request is null)
-                    {
-                        break;
-                    }
-
-                    PacketFrame? rawFrame = null;
-                    if (isChannelPort)
-                    {
-                        rawFrame = request; // wire bytes before seed decryption
-                        if (!gameClientCipher!.TryDecode(request, out var decodedRequest))
-                        {
-                            LogPacket("RX-ENC", runtimeSession, request);
-                            logger.LogWarning(
-                                "Could not recover the channel payload seed for packet type {Type}, protocol {ProtocolId}; {CandidateCount} candidate(s) remain.",
-                                request.Type, request.ProtocolId, gameClientCipher!.CandidateCount);
-                            continue;
-                        }
-
-                        request = decodedRequest;
-                        logger.LogDebug(
-                            "Accepted channel payload with {CandidateCount} compatible rolling-seed candidate(s).",
-                            gameClientCipher.CandidateCount);
-                    }
-
-                    runtime.CountPacket(runtimeSession);
-                    runtimeSession.LastProtocolId = request.ProtocolId;
-                    LogPacket("RX", runtimeSession, request, rawFrame);
-
-                    if (options.RejectBadCrc32 && !request.HasValidCrc32)
-                    {
-                        logger.LogWarning("Rejected frame with bad CRC32 from {SessionId}", runtimeSession.Id);
-                        break;
-                    }
-
-                    while (session.Events.Reader.TryRead(out var connectionEvent))
-                    {
-                        switch (connectionEvent.Kind)
-                        {
-                            case ConnectionEventKind.MailAlarm:
-                                if (session.Character.Active is not null)
-                                {
-                                    await SendNewMailAlarmAsync();
-                                }
-
-                                break;
-                            case ConnectionEventKind.PremiumServiceUpdate:
-                                if (session.Character.Active is not null)
-                                {
-                                    await SendPremiumServiceInfoAsync(
-                                        connectionEvent.ServiceType,
-                                        (uint)connectionEvent.Value);
-                                }
-
-                                break;
-                            case ConnectionEventKind.CeraValueUpdated:
-                                if (session.Character.Active is not null)
-                                {
-                                    session.Currency.Cash = connectionEvent.Value;
-                                    var ceraNotification = ShopPacketBuilders.CreateCeraUpdate(
-                                        success: true,
-                                        value: (uint)connectionEvent.Value);
-                                    await ceraNotification.WriteAsync(stream, serverToken);
-                                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                                    LogPacket("TX", runtimeSession, ceraNotification);
-                                }
-
-                                break;
-                            case ConnectionEventKind.FatigueReset:
-                                if (session.Character.Active is not null)
-                                {
-                                    session.Character.Active = session.Character.Active with
-                                    {
-                                        UsedFatigue = 0
-                                    };
-                                    if (session.Dungeon.CurrentDungeonId == 0)
-                                    {
-                                        await SendTownFatigueStateAsync();
-                                    }
-                                }
-
-                                break;
-                            case ConnectionEventKind.WeaknessRecovered:
-                                if (session.Character.Active is not null)
-                                {
-                                    session.Character.Active = session.Character.Active with
-                                    {
-                                        WeaknessRecovery = (byte)connectionEvent.Value,
-                                        LegacyIsWeakened = null
-                                    };
-                                }
-
-                                break;
-                        }
-                    }
-
-                    if (isChannelPort)
-                    {
-                        if (await TryDispatchGameCommandAsync(request))
-                        {
-                            continue;
-                        }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                        // -----------------------------------------------------
-                        // Party block (CMD 10-14). The client sends a two-byte
-                        // sequence number before every command body, so the
-                        // parsers below read fields from offset 2.
-                        // -----------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                        // Last-resort fallback for commands the registry does not
-                        // mount yet; CHECK_CONNECTION is dispatched by the registry
-                        // (CheckConnectionHandler) before reaching this point.
-                        var gameReply = FallbackCommandReplies.TryCreateReply(
-                            request,
-                            protocolSession.SessionToken);
-                        if (gameReply is null)
-                        {
-                            logger.LogWarning(
-                                "No channel handler for packet type {Type}, protocol {ProtocolId}; frame retained in logs.",
-                                request.Type, request.ProtocolId);
-                            continue;
-                        }
-
-                        await gameReply.WriteAsync(stream, serverToken);
-                        Interlocked.Increment(ref runtimeSession.SentPackets);
-                        LogPacket("TX", runtimeSession, gameReply);
-                        continue;
-                    }
-
-                    if (await TryDispatchGameCommandAsync(request))
-                    {
-                        continue;
-                    }
-
-                    var reply = EntranceHandshakeReplies.TryCreateReply(request, protocolSession, LoadContent());
-                    if (reply is null)
-                    {
-                        logger.LogWarning(
-                            "No entrance handler for packet type {Type}, protocol {ProtocolId}; frame retained in logs.",
-                            request.Type, request.ProtocolId);
-                        continue;
-                    }
-
-                    await reply.WriteAsync(stream, serverToken);
-                    Interlocked.Increment(ref runtimeSession.SentPackets);
-                    LogPacket("TX", runtimeSession, reply);
-                }
-            }
-            catch (OperationCanceledException) when (serverToken.IsCancellationRequested)
-            {
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Entrance session {SessionId} ended with an error.", runtimeSession.Id);
-            }
-            finally
-            {
-                // Complete the outbound channel and drain the pump before the
-                // stream is disposed, so no queued frame tears (07 §4.4).
-                await outboundQueue.DisposeAsync();
-                if (session.Character.Active is not null)
-                {
-                    try
-                    {
-                        if (session.Dungeon.CurrentDungeonId != 0
-                            && session.Dungeon.CreatureStomachCheckpointSeconds
-                                is long finalCheckpoint)
-                        {
-                            var finalNow = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                            var finalElapsedSeconds = checked((uint)Math.Min(
-                                uint.MaxValue,
-                                Math.Max(0L, finalNow - finalCheckpoint)));
-                            if (finalElapsedSeconds != 0
-                                && CreatureHungerPlanner.TrySettle(
-                                    session.Inventory.Creature,
-                                    finalElapsedSeconds,
-                                    itemCatalog,
-                                    out var finalHungerPlan)
-                                && finalHungerPlan.Changed)
-                            {
-                                await store.SaveCharacterItemSpacesAsync(
-                                    session.Login.AccountName,
-                                    session.Character.Active.Id,
-                                    session.Currency.Gold,
-                                    session.Inventory.Main.Values,
-                                    session.Inventory.Equipped.Values,
-                                    session.Inventory.Warehouse.Values,
-                                    CancellationToken.None,
-                                    avatarInventory: session.Inventory.Avatar.Values,
-                                    creatureInventory:
-                                        finalHungerPlan.Inventory.Values);
-                            }
-                        }
-
-                        var saveTownId = session.Dungeon.CurrentDungeonId == 0
-                            ? session.Character.TownId
-                            : session.Dungeon.ReturnTownId;
-                        var saveAreaId = session.Dungeon.CurrentDungeonId == 0
-                            ? session.Character.AreaId
-                            : session.Dungeon.ReturnAreaId;
-                        var saveX = session.Dungeon.CurrentDungeonId == 0 ? session.Character.X : session.Dungeon.ReturnX;
-                        var saveY = session.Dungeon.CurrentDungeonId == 0 ? session.Character.Y : session.Dungeon.ReturnY;
-                        var saveDirection = session.Dungeon.CurrentDungeonId == 0
-                            ? session.Character.Direction
-                            : session.Dungeon.ReturnDirection;
-                        await store.SaveCharacterLocationAsync(
-                            session.Login.AccountName,
-                            session.Character.Active.Id,
-                            saveTownId,
-                            saveAreaId,
-                            saveX,
-                            saveY,
-                            saveDirection,
-                            CancellationToken.None);
-                    }
-                    catch (Exception exception)
-                    {
-                        logger.LogWarning(
-                            exception,
-                            "Failed to persist the final location for character {CharacterId}.",
-                            session.Character.Active.Id);
-                    }
-                }
-
-                partyCoordinator.OnSessionClosed(runtimeSession.Id);
-                characterSessions.Release(session.Character.Lease);
-                session.Character.Lease = null;
-                characterSessions.DetachPacketChannel(runtimeSession.Id);
-                gameplayDatagram.UnregisterChannelSession(runtimeSession.Id);
-                runtime.Remove(runtimeSession.Id);
-                logger.LogInformation("Entrance client {SessionId} disconnected.", runtimeSession.Id);
-            }
-        }
-    }
-
-    private static int ToIncreaseStatusWireAmount(IncreaseStatusEffect effect) =>
-        effect.Type is IncreaseStatusType.SkillPoints or IncreaseStatusType.Experience
-            ? effect.Amount
-            : checked(effect.Amount * 10);
-
-    private static CreateCharacterMailRequest[] CreateOverflowMailRequests(
-        IEnumerable<CharacterMailAttachmentRecord> items,
-        string source) =>
-        CharacterPacketBuilders.CreateOverflowMailRequests(items, source);
-
-    private GameServerPacket CreateMainInventoryPacket(
-        int gold,
-        uint victoryPoints,
-        IEnumerable<CharacterItemRecord> inventory,
-        ushort? preferredLastSlot = null) =>
-        _characterPacketBuilders.CreateMainInventoryPacket(gold, victoryPoints, inventory, preferredLastSlot);
-
-    private GameServerPacket CreateWarehousePacket(
-        IEnumerable<CharacterItemRecord> warehouse,
-        ushort warehouseCapacity) =>
-        _characterPacketBuilders.CreateWarehousePacket(warehouse, warehouseCapacity);
-
-    private GameServerPacket CreateAvatarInventoryPacket(
-        IEnumerable<CharacterItemRecord> avatarInventory) =>
-        _characterPacketBuilders.CreateAvatarInventoryPacket(avatarInventory);
-
-    private IEnumerable<GameServerPacket> CreateCreatureInventoryPackets(
-        IEnumerable<CharacterItemRecord> creatureInventory) =>
-        _characterPacketBuilders.CreateCreatureInventoryPackets(creatureInventory);
-
-    private GameServerPacket CreateCreatureInventoryItemListPacket(
-        IEnumerable<CharacterItemRecord> creatureInventory) =>
-        _characterPacketBuilders.CreateCreatureInventoryItemListPacket(creatureInventory);
-
-    private byte[] EncodeCreatureName(string? name, ushort itemId) =>
-        _characterPacketBuilders.EncodeCreatureName(name, itemId);
-
-    private GameInventoryEntry[] CreateWornEquipmentSnapshot(
-        IEnumerable<CharacterItemRecord> equipment,
-        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory) =>
-        _characterPacketBuilders.CreateWornEquipmentSnapshot(equipment, creatureInventory);
-
-    private GameServerPacket CreateTownAppearancePacket(
-        CharacterRecord character,
-        ushort userId,
-        IEnumerable<CharacterItemRecord> equipment,
-        IEnumerable<CharacterItemRecord> creatureInventory,
-        bool hasBlackDiamond) =>
-        _characterPacketBuilders.CreateTownAppearancePacket(
-            character,
-            userId,
-            equipment,
-            creatureInventory,
-            hasBlackDiamond);
-
-    private EntranceContent LoadContent() => _sessionSenders.LoadContent();
-
-    private static bool TryGetInventorySpace(
-        byte listType,
-        Dictionary<ushort, CharacterItemRecord> mainInventory,
-        Dictionary<ushort, CharacterItemRecord> avatarInventory,
-        Dictionary<ushort, CharacterItemRecord> equippedInventory,
-        Dictionary<ushort, CharacterItemRecord> warehouseInventory,
-        out Dictionary<ushort, CharacterItemRecord> space) =>
-        ChannelSessionSenders.TryGetInventorySpace(
-            listType, mainInventory, avatarInventory, equippedInventory, warehouseInventory, out space);
-
-    private static bool IsInventorySlotValid(
-        byte listType,
-        ushort slot,
-        ushort warehouseCapacity) =>
-        ChannelSessionSenders.IsInventorySlotValid(listType, slot, warehouseCapacity);
-
-    private bool IsCompatibleMainInventorySlot(
-        CharacterItemRecord item,
-        ushort slot) =>
-        _sessionSenders.IsCompatibleMainInventorySlot(item, slot);
-
-    private bool IsCompatibleInventorySlot(
-        byte listType,
-        CharacterItemRecord item,
-        ushort slot,
-        ushort warehouseCapacity) =>
-        _sessionSenders.IsCompatibleInventorySlot(listType, item, slot, warehouseCapacity);
-
-    private ushort FindFreeCompatibleMainInventorySlot(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
-        CharacterItemRecord item) =>
-        _sessionSenders.FindFreeCompatibleMainInventorySlot(inventory, item);
-
-    private ushort FindPartialStackSlot(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
-        CharacterItemRecord item,
-        byte listType,
-        ushort? excludedSlot) =>
-        _sessionSenders.FindPartialStackSlot(inventory, item, listType, excludedSlot);
-
-    private GameInventoryEntry ToGameInventoryEntry(CharacterItemRecord item) =>
-        _characterPacketBuilders.ToGameInventoryEntry(item);
-
-    private GameMailEntry ToGameMailEntry(CharacterMailRecord mail) =>
-        _characterPacketBuilders.ToGameMailEntry(mail);
-
-    private static byte GetEquippedCreatureLevel(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> creatureInventory) =>
-        CharacterPacketBuilders.GetEquippedCreatureLevel(creatureInventory);
 
     internal static bool ShouldUseIncrementalMainMoveRefresh(
         byte sourceListType,
@@ -1309,74 +504,4 @@ public sealed class EntranceService(
         && destinationListType == 0
         && (CharacterInventoryLayout.IsQuickSlot(sourceSlot)
             || CharacterInventoryLayout.IsQuickSlot(destinationSlot));
-
-
-
-    private bool IsEquipmentItem(ushort itemId) => itemCatalog.IsEquipment(itemId);
-
-
-    private static bool TryReadLengthPrefixedBytes(
-        byte[] source,
-        int offset,
-        out byte[] value,
-        out int nextOffset) =>
-        ClientBodyParsers.TryReadLengthPrefixedBytes(source, offset, out value, out nextOffset);
-
-    private static Encoding CreateClientEncoding()
-    {
-        return PvfEncodings.Cp936Lossy();
-    }
-
-
-
-
-
-    private void LogPacket(string direction, RuntimeSession session, PacketFrame frame, PacketFrame? rawFrame = null)
-    {
-        // 漏斗无条件收集（Tap 激活时供智能体抓包），tracing 门卫只挡控制台
-        // hex 与日志（docs/design/09-mcp-packet-tap.md §5.2）。
-        runtime.TracePacket(session, direction, frame, options.HexDumpLimit, rawFrame);
-        if (!options.EnablePacketTracing)
-        {
-            return;
-        }
-
-        var bodyLimit = Math.Min(frame.Body.Length, options.HexDumpLimit);
-        var body = HexDump.ToSpacedHex(frame.Body.AsSpan(0, bodyLimit));
-        var wire = (rawFrame ?? frame).Encode();
-        var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + PacketFrame.HeaderLength);
-        var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
-        var idLabel = frame.Type == GameProtocolConstants.NotificationPacketType ? "NOTI" : "CMD";
-        // Received command bodies are the TryDecode product (the wire carries
-        // the client's rolling-transform ciphertext); server-built frames are
-        // plaintext, so only RX keeps the decode label.
-        var bodyLabel = direction == "RX" ? "TryDecodeBody" : "body";
-        logger.LogInformation(
-            "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} {BodyLabel}=({BodyLen}B) [{Body}]{BodySuffix} crc={Crc:X8} valid={Valid}\n  raw: {Raw}{RawSuffix}",
-            idLabel, session.Id, frame.ProtocolId, $"0x{frame.ProtocolId:X2}",
-            frame.TotalLength, bodyLabel, frame.Body.Length, body, frame.Body.Length > bodyLimit ? "..." : "",
-            frame.DeclaredCrc32, frame.HasValidCrc32,
-            raw, wire.Length > rawLimit ? "..." : "");
-    }
-
-    private void LogPacket(string direction, RuntimeSession session, GameServerPacket packet)
-    {
-        runtime.TracePacket(session, direction, packet, options.HexDumpLimit);
-        if (!options.EnablePacketTracing)
-        {
-            return;
-        }
-
-        var payloadLimit = Math.Min(packet.Payload.Length, options.HexDumpLimit);
-        var payloadDump = HexDump.ToSpacedHex(packet.Payload.AsSpan(0, payloadLimit));
-        var wire = packet.Encode();
-        var rawLimit = Math.Min(wire.Length, options.HexDumpLimit + GameServerPacket.HeaderLength);
-        var raw = HexDump.ToSpacedHex(wire.AsSpan(0, rawLimit));
-        var idLabel = packet.Type == GameProtocolConstants.NotificationPacketType ? "NOTI" : "CMD";
-        logger.LogInformation(
-            "{IdLabel} [{SessionId}] Packet={Id}({IdHex}) len={Length} body=({BodyLen}B) [{Body}]{BodySuffix}\n  raw: {Raw}{RawSuffix}",
-            idLabel, session.Id, packet.ProtocolId, $"0x{packet.ProtocolId:X2}",
-            packet.TotalLength, packet.Payload.Length, payloadDump, packet.Payload.Length > payloadLimit ? "..." : "",
-            raw, wire.Length > rawLimit ? "..." : "");
-    }
 }

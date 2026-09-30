@@ -6,8 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// BUY_SKILL (CMD 31): learns or levels one skill through the prerequisite, cost and Premium-effective level checks (07 §5 group 8).
 /// </summary>
-public sealed class BuySkillHandler(
-    ILogger<BuySkillHandler> logger,JsonGameStore store,
+public sealed class BuySkillHandler(JsonGameStore store,
     SkillCatalog skillCatalog,
     PremiumBenefitCatalog premiumBenefitCatalog,
     ChannelSessionSenders senders) : IGameCommandHandler
@@ -27,7 +26,7 @@ public sealed class BuySkillHandler(
         if (session.Character.Active is null || request.Body.Length < 3)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -40,7 +39,7 @@ public sealed class BuySkillHandler(
                 out var definition))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -83,8 +82,8 @@ public sealed class BuySkillHandler(
         {
             var errorCode = cost > session.Skill.CurrentSp ? (byte)2 : (byte)18;
             var error = ConnectionPacketBuilders.CreateCommandError(request, errorCode);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected skill {SkillId} level {TargetLevel}: character level {CharacterLevel}, Premium-effective level {EffectiveLevel}, required level {RequiredLevel}, SP {CurrentSp}/{Cost}.",
                 definition.SkillId,
                 targetLevel,
@@ -114,7 +113,7 @@ public sealed class BuySkillHandler(
             if (!slot.HasValue)
             {
                 var error = ConnectionPacketBuilders.CreateCommandError(request, 1);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 return;
             }
 
@@ -139,8 +138,8 @@ public sealed class BuySkillHandler(
             learnedSkillSlot,
             definition.SkillId,
             checked((byte)targetLevel));
-        await context.Outbound.SendAsync(buySkillReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(buySkillReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Learned skill {SkillId} level {Level}; cost {Cost} SP, {RemainingSp} SP remains.",
             definition.SkillId,
             targetLevel,

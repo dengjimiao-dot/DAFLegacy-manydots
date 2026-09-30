@@ -40,7 +40,7 @@ public sealed partial class ChannelSessionSenders
     {
         var permissions = DungeonPacketBuilders.CreateDungeonPermissions(
             GetDungeonPermissions(context));
-        await context.Outbound.SendAsync(permissions, "DUNGEON_PERMISSIONS", cancellationToken);
+        await context.Queue.SendAsync(permissions, "DUNGEON_PERMISSIONS", cancellationToken);
     }
 
     /// <summary>
@@ -54,14 +54,14 @@ public sealed partial class ChannelSessionSenders
         {
             var permissions = DungeonPacketBuilders.CreateDungeonPermissions(
                 GetDungeonPermissions(context));
-            await context.Outbound.SendAsync(permissions, "DUNGEON_PERMISSIONS", context.Disconnecting);
+            await context.Queue.SendAsync(permissions, "DUNGEON_PERMISSIONS", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Could not send dungeon permissions to character {CharacterId}.",
                 context.State.Character.Active?.Id);
@@ -116,7 +116,7 @@ public sealed partial class ChannelSessionSenders
         creatureInventory: hungerPlan.Inventory.Values);
     if (saved is null)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not persist Creature stomach settlement for character {CharacterId} in dungeon {DungeonId}.",
             context.State.Character.Active.Id,
             context.State.Dungeon.CurrentDungeonId);
@@ -146,17 +146,17 @@ public sealed partial class ChannelSessionSenders
         var stomachState = PetsPacketBuilders.CreateCreatureState(
             hungerPlan.CreatureUid,
             hungerPlan.Stomach);
-        await context.Outbound.SendAsync(stomachState, "CREATURE_STATE", cancellationToken);
+        await context.Queue.SendAsync(stomachState, "CREATURE_STATE", cancellationToken);
     }
 
     if (notifyClient && hungerPlan.ConsumedFoodCount != 0)
     {
         var creatureItems = builders.CreateCreatureInventoryItemListPacket(
             context.State.Inventory.Creature.Values);
-        await context.Outbound.SendAsync(creatureItems, "CREATURE_STATE", cancellationToken);
+        await context.Queue.SendAsync(creatureItems, "CREATURE_STATE", cancellationToken);
     }
 
-    logger.LogInformation(
+    RuntimeLogger.Info(
         "Dungeon {DungeonId} settled {ElapsedSeconds}s of Creature hunger for uid {CreatureUid}: stomach {PreviousStomach}->{Stomach}, remainder {PreviousRemainder}->{Remainder}s, auto-consumed food item 24 x{ConsumedFoodCount}.",
         context.State.Dungeon.CurrentDungeonId,
         hungerPlan.ElapsedSeconds,
@@ -177,7 +177,7 @@ public sealed partial class ChannelSessionSenders
     {
     if (context.State.Dungeon.CurrentDungeonId == 0 && !context.State.Dungeon.InSelection)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Ignored {Reason} return-to-town request because the user is not in a dungeon or dungeon selection.",
             reason);
         return;
@@ -258,7 +258,7 @@ public sealed partial class ChannelSessionSenders
         }
         else
         {
-            logger.LogError(
+            RuntimeLogger.Error(
                 "Could not persist weakness for character {CharacterId} while returning from dungeon {DungeonId}; the client will retain normal stamina.",
                 context.State.Character.Active.Id,
                 leavingDungeonId);
@@ -310,7 +310,7 @@ public sealed partial class ChannelSessionSenders
     var townState = CharactersPacketBuilders.CreateUserState(
         context.State.Character.LocalUserId,
         state: 0);
-    await context.Outbound.SendAsync(townState, "DUNGEON", cancellationToken);
+    await context.Queue.SendAsync(townState, "DUNGEON", cancellationToken);
 
     var townUser = new GameTownUser(
         context.State.Character.LocalUserId,
@@ -321,13 +321,13 @@ public sealed partial class ChannelSessionSenders
         context.State.Character.TownId,
         context.State.Character.AreaId,
         townUser);
-    await context.Outbound.SendAsync(userArea, "DUNGEON", cancellationToken);
+    await context.Queue.SendAsync(userArea, "DUNGEON", cancellationToken);
 
     var areaUsers = TownPacketBuilders.CreateAreaUsers(
         context.State.Character.TownId,
         context.State.Character.AreaId,
         [townUser]);
-    await context.Outbound.SendAsync(areaUsers, "DUNGEON", cancellationToken);
+    await context.Queue.SendAsync(areaUsers, "DUNGEON", cancellationToken);
     context.State.Character.AreaRosterInitialized = true;
     await SendTownFatigueStateAsync(context, cancellationToken);
     await SendTownAppearanceAsync(context, waitForTownActor: true, cancellationToken);
@@ -344,14 +344,14 @@ public sealed partial class ChannelSessionSenders
 
     if (leftDungeonSelection && leavingDungeonId == 0)
     {
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Dungeon selection returned user {UserId} to town through {Reason}.",
             context.State.Character.LocalUserId,
             reason);
     }
     else
     {
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Dungeon {DungeonId} returned user {UserId} to town through {Reason}; exp={Experience}, weakened={IsWeakened}, enteredWeakness={EnteredWeakness}, blackDiamond={HasBlackDiamond}.",
             leavingDungeonId,
             context.State.Character.LocalUserId,
@@ -372,8 +372,8 @@ public sealed partial class ChannelSessionSenders
         && !context.State.Dungeon.SelectionWorldMap.HasHellItems(context.State.Inventory.Main.Values);
     var packet = DungeonPacketBuilders.CreateEnterSelectDungeon(
         questsMet, missingItems ? [(ushort)0] : []);
-    await context.Outbound.SendAsync(packet, "DUNGEON", cancellationToken);
-    logger.LogInformation(
+    await context.Queue.SendAsync(packet, "DUNGEON", cancellationToken);
+    RuntimeLogger.Info(
         "World map {WorldMapId} eligibility for {CharacterId}: hellQuests={QuestsMet}, missingHellItems={MissingItems}.",
         context.State.Dungeon.SelectionWorldMap?.Id, context.State.Character.Active?.Id, questsMet, missingItems);
     }
@@ -401,7 +401,7 @@ public sealed partial class ChannelSessionSenders
             cancellationToken);
     if (consumption.Character is null)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not consume dungeon-room fatigue because character {CharacterId} was not found.",
             context.State.Character.Active.Id);
         return;
@@ -410,7 +410,7 @@ public sealed partial class ChannelSessionSenders
     context.State.Character.Active = consumption.Character;
     if (!consumption.Consumed)
     {
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Dungeon {DungeonId} room ({RoomX},{RoomY}) consumed no fatigue because user {UserId} is already at {UsedFatigue}/{MaximumFatigue}.",
             context.State.Dungeon.CurrentDungeonId,
             roomX,
@@ -427,8 +427,8 @@ public sealed partial class ChannelSessionSenders
         consumption.UsedFatigue,
         maximumFatigue,
         premiumFatigue);
-    await context.Outbound.SendAsync(fatigue, "DUNGEON", cancellationToken);
-    logger.LogInformation(
+    await context.Queue.SendAsync(fatigue, "DUNGEON", cancellationToken);
+    RuntimeLogger.Info(
         "Dungeon {DungeonId} room ({RoomX},{RoomY}) consumed one fatigue for user {UserId}: used {PreviousUsedFatigue}->{UsedFatigue}, remaining={RemainingFatigue}/{MaximumFatigue}.",
         context.State.Dungeon.CurrentDungeonId,
         roomX,
@@ -497,7 +497,7 @@ public sealed partial class ChannelSessionSenders
         creatureInventory: plannedCreatureInventory.Values);
     if (saved is null)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not persist Creature experience for character {CharacterId} after clearing dungeon {DungeonId}.",
             context.State.Character.Active.Id,
             context.State.Dungeon.CurrentDungeonId);
@@ -516,8 +516,8 @@ public sealed partial class ChannelSessionSenders
         PetsPacketBuilders.CreateCreatureGainExperience(
             grant.Level,
             grant.Experience);
-    await context.Outbound.SendAsync(experienceNotification, "DUNGEON", cancellationToken);
-    logger.LogInformation(
+    await context.Queue.SendAsync(experienceNotification, "DUNGEON", cancellationToken);
+    RuntimeLogger.Info(
         "Dungeon {DungeonId} granted Creature uid {CreatureUid} {GrantedExperience} experience from {ConsumedFatigue} fatigue and {BonusExperience} artifact bonus: exp {PreviousExperience}->{Experience}, level {PreviousLevel}->{Level}.",
         context.State.Dungeon.CurrentDungeonId,
         creature.CountOrValue,

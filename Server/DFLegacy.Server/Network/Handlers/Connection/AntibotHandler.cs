@@ -8,7 +8,7 @@ namespace DFLegacy.Server;
 /// quietly instead of tripping the unknown-packet warning once per minute.
 /// No reply is ever sent.
 /// </summary>
-public sealed class AntibotHandler(ILogger<AntibotHandler> logger) : IGameCommandHandler
+public sealed class AntibotHandler : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.ANTIBOT;
 
@@ -26,7 +26,7 @@ public sealed class AntibotHandler(ILogger<AntibotHandler> logger) : IGameComman
         CancellationToken cancellationToken)
     {
         var parsedAntibot = AntibotReportParser.TryParse(frame.Body, out var antibotReport);
-        logger.LogDebug(
+        RuntimeLogger.Debug(
             "Antibot report seq={Seq} parsed={Parsed} kind={Kind} declaredBytes={Bytes}.",
             antibotReport.Sequence,
             parsedAntibot,

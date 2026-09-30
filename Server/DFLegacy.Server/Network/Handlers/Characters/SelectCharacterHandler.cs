@@ -22,8 +22,8 @@ public sealed partial class SelectCharacterHandler(
     PremiumBenefitCatalog premiumBenefitCatalog,
     CharacterSessionRegistry characterSessions,
     CharacterPacketBuilders builders,
-    ChannelSessionSenders senders,
-    ILogger<SelectCharacterHandler> logger) : IGameCommandHandler
+    ChannelSessionSenders senders
+    ) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -47,7 +47,7 @@ public sealed partial class SelectCharacterHandler(
         if (character is null)
         {
             var selectError = ConnectionPacketBuilders.CreateCommandError(request, errorCode: 2);
-            await context.Outbound.SendAsync(selectError, Name, cancellationToken);
+            await context.Queue.SendAsync(selectError, Name, cancellationToken);
             return;
         }
 
@@ -388,8 +388,8 @@ public sealed partial class SelectCharacterHandler(
                 var repairError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 4);
-                await context.Outbound.SendAsync(repairError, Name, cancellationToken);
-                logger.LogError(
+                await context.Queue.SendAsync(repairError, Name, cancellationToken);
+                RuntimeLogger.Error(
                     "Could not repair inventory layout for character {CharacterId}; selection was rejected to avoid losing an item.",
                     character.Id);
                 return;
@@ -424,14 +424,14 @@ public sealed partial class SelectCharacterHandler(
             {
                 session.Character.Active = redeemedCharacter;
                 session.Inventory.Main = redeemedContractInventory;
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Redeemed {ContractCount} legacy Cera-shop contract stack(s) while selecting character {CharacterId}.",
                     redeemedContractGrants.Count,
                     session.Character.Active.Id);
             }
             else
             {
-                logger.LogError(
+                RuntimeLogger.Error(
                     "Could not redeem legacy Cera-shop contract items for character {CharacterId}; the items were retained.",
                     session.Character.Active.Id);
             }
@@ -481,7 +481,7 @@ public sealed partial class SelectCharacterHandler(
                     session.Skill.CurrentSp,
                     session.Skill.Current,
                     cancellationToken) ?? session.Character.Active;
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Migrated character {CharacterId} to the DFLegacy skill-slot layout.",
                     character.Id);
             }
@@ -507,7 +507,7 @@ public sealed partial class SelectCharacterHandler(
                 session.Skill.CurrentSp,
                 session.Skill.Current,
                 cancellationToken) ?? session.Character.Active;
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Reconciled {RefundCount} over-level skill(s) for character {CharacterId} at effective level {EffectiveLevel}; refunded {RefundedSp} SP: {Refunds}.",
                 contractSkillRefunds.Count,
                 character.Id,
@@ -589,7 +589,7 @@ public sealed partial class SelectCharacterHandler(
                 cancellationToken) ?? session.Character.Active;
             if (migrateLegacyDungeonProgress)
             {
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Migrated character {CharacterId} dungeon permissions to persistent maximum difficulties.",
                     character.Id);
             }
@@ -648,7 +648,7 @@ public sealed partial class SelectCharacterHandler(
                 .ToArray(),
             completedQuestIds: session.Quest.CompletedIds.Order().ToArray(),
             questCompletionMapping: questCatalog.CompletionMapping);
-        await context.Outbound.SendAsync(selectReply, Name, cancellationToken);
+        await context.Queue.SendAsync(selectReply, Name, cancellationToken);
 
         var currentCharacter = builders.CreateTownAppearancePacket(
             session.Character.Active,
@@ -656,7 +656,7 @@ public sealed partial class SelectCharacterHandler(
             session.Inventory.Equipped.Values,
             session.Inventory.Creature.Values,
             blackDiamondActive);
-        await context.Outbound.SendAsync(currentCharacter, Name, cancellationToken);
+        await context.Queue.SendAsync(currentCharacter, Name, cancellationToken);
 
         var learnedSkills = senders.GetCurrentGameSkills(context);
         var projectedCombatStats =
@@ -674,7 +674,7 @@ public sealed partial class SelectCharacterHandler(
                     session.Inventory.Creature),
                 staminaRecoveryPercentage:
                     senders.GetProjectedStaminaRecovery(context));
-        await context.Outbound.SendAsync(currentCharacterDetails, Name, cancellationToken);
+        await context.Queue.SendAsync(currentCharacterDetails, Name, cancellationToken);
         session.Character.LastProjectedCombatStats = projectedCombatStats;
 
         foreach (var initialPacket in builders.CreateTownInitializationPackets(
@@ -691,7 +691,7 @@ public sealed partial class SelectCharacterHandler(
                      senders.GetAcceptableQuestIds(context),
                      senders.GetDungeonPermissions(context)))
         {
-            await context.Outbound.SendAsync(initialPacket, Name, cancellationToken);
+            await context.Queue.SendAsync(initialPacket, Name, cancellationToken);
         }
 
         await senders.SendPvpRecordAsync(context, cancellationToken);

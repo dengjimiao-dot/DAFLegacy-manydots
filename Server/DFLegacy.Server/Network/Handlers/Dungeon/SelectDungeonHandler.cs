@@ -9,7 +9,6 @@ namespace DFLegacy.Server;
 public sealed class SelectDungeonHandler(    JsonGameStore store,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
-    ILogger<SelectDungeonHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -50,7 +49,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
 
         if (!requiresTutorial && !session.Dungeon.InSelection)
         {
-            logger.LogWarning("Ignored stale dungeon selection for {CharacterId}.", session.Character.Active?.Id);
+            RuntimeLogger.Warn("Ignored stale dungeon selection for {CharacterId}.", session.Character.Active?.Id);
             return;
         }
 
@@ -62,7 +61,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 || !dungeonCatalog.IsHellDungeon(dungeonId)))
         {
             var rejected = ConnectionPacketBuilders.CreateCommandError(request, errorCode: 14);
-            await context.Outbound.SendAsync(rejected, Name, cancellationToken);
+            await context.Queue.SendAsync(rejected, Name, cancellationToken);
             await senders.SendDungeonSelectionEligibilityAsync(context, cancellationToken);
             return;
         }
@@ -72,8 +71,8 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             var tutorialRequiredError = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 4);
-            await context.Outbound.SendAsync(tutorialRequiredError, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(tutorialRequiredError, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected dungeon {DungeonId} for character {CharacterId} until tutorial dungeon {TutorialDungeonId} is complete.",
                 dungeonId,
                 session.Character.Active!.Id,
@@ -88,8 +87,8 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 var closedTutorialError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 4);
-                await context.Outbound.SendAsync(closedTutorialError, Name, cancellationToken);
-                logger.LogInformation(
+                await context.Queue.SendAsync(closedTutorialError, Name, cancellationToken);
+                RuntimeLogger.Info(
                     "Rejected tutorial dungeon replay for character {CharacterId}.",
                     session.Character.Active?.Id);
                 return;
@@ -142,12 +141,12 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
 
             var tutorialInfo =
                 DungeonPacketBuilders.CreateTutorialDungeonInfo(difficulty);
-            await context.Outbound.SendAsync(tutorialInfo, Name, cancellationToken);
+            await context.Queue.SendAsync(tutorialInfo, Name, cancellationToken);
 
             var tutorialStartMap =
                 DungeonPacketBuilders.CreateTutorialStartMap();
-            await context.Outbound.SendAsync(tutorialStartMap, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(tutorialStartMap, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Started mandatory tutorial dungeon/scene {TutorialId} for character {CharacterId}; monsters={MonsterCount}, difficulty={Difficulty}, option={Option}; no PVF dungeon or map definition was queried.",
                 GameProtocolConstants.TutorialDungeonId,
                 session.Character.Active!.Id,
@@ -160,7 +159,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
         if (session.Character.Active is null
             || !dungeonCatalog.TryGetDefinition(dungeonId, out var dungeon))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Client selected unknown dungeon {DungeonId}; request ignored.",
                 dungeonId);
             return;
@@ -171,8 +170,8 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             var lockedDungeonError = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 18);
-            await context.Outbound.SendAsync(lockedDungeonError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(lockedDungeonError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected locked hidden dungeon {DungeonId} for character {CharacterId}.",
                 dungeonId,
                 session.Character.Active.Id);
@@ -189,8 +188,8 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 18);
-            await context.Outbound.SendAsync(lockedDifficultyError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(lockedDifficultyError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected locked dungeon difficulty {Difficulty} for dungeon {DungeonId}; character {CharacterId} has maximum {MaximumDifficulty}.",
                 difficulty,
                 dungeonId,
@@ -204,7 +203,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 out var dungeonLayout,
                 partyMemberCount: 1))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Dungeon {DungeonId} has no usable maze layout; request ignored.",
                 dungeonId);
             return;
@@ -218,7 +217,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
         if (dungeonCatalog.TryApplyQuestMap(
                 dungeonLayout, unfinishedQuestDefinitions, out var questMapId))
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Dungeon {DungeonId} selected rescue quest map {MapId} for character {CharacterId}.",
                 dungeonId, questMapId, session.Character.Active.Id);
         }
@@ -229,7 +228,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 dungeonOption,
                 out var initialTransition))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Dungeon {DungeonId} maze {MazeIndex} start room ({RoomX},{RoomY}) has no map.",
                 dungeonId,
                 dungeonLayout.MazeIndex,
@@ -250,9 +249,9 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 var ticketError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 14);
-                await context.Outbound.SendAsync(ticketError, Name, cancellationToken);
+                await context.Queue.SendAsync(ticketError, Name, cancellationToken);
                 await senders.SendDungeonSelectionEligibilityAsync(context, cancellationToken);
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Rejected hell entry for dungeon {DungeonId}: no matching ticket ({TicketIds}).",
                     dungeonId,
                     string.Join(',', dungeon.HellTicketItemIds));
@@ -279,7 +278,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
                 var ticketSaveError = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 19);
-                await context.Outbound.SendAsync(ticketSaveError, Name, cancellationToken);
+                await context.Queue.SendAsync(ticketSaveError, Name, cancellationToken);
                 return;
             }
 
@@ -347,10 +346,10 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             bossY: dungeonLayout.BossY,
             flagA: hellRoomX,
             flagB: hellRoomY);
-        await context.Outbound.SendAsync(dungeonInfo, Name, cancellationToken);
+        await context.Queue.SendAsync(dungeonInfo, Name, cancellationToken);
         if (pendingHellTicketUpdate is not null)
         {
-            await context.Outbound.SendAsync(pendingHellTicketUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(pendingHellTicketUpdate, Name, cancellationToken);
         }
 
         var passiveObjectDrops = senders.RegisterPassiveObjectDrops(
@@ -368,14 +367,14 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
             randomSeed: session.Dungeon.Room.ClientRandomSeed,
             roomStateFlag: session.Dungeon.Run.RoomStateFlag,
             hellPartyMode: session.Dungeon.Run.CurrentHellPartyMode);
-        await context.Outbound.SendAsync(startMap, Name, cancellationToken);
+        await context.Queue.SendAsync(startMap, Name, cancellationToken);
         session.Dungeon.CreatureStomachCheckpointSeconds =
             DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         await senders.ConsumeDungeonRoomFatigueAsync(context, 
             session.Dungeon.RoomX,
             session.Dungeon.RoomY);
         await senders.EnableEmptyBossRoomSettlementAsync(context, session.Dungeon.Room);
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Dungeon {DungeonId} selected maze {MazeIndex}, start ({StartX},{StartY}), boss ({BossX},{BossY}), start map {MapId}, monsters={MonsterCount}, champions={ChampionCount}, mapChampionBase={MapChampionBase}, clientSeed={ClientSeed}, hellMode={HellMode}, partyMode={HellPartyMode}, ticket={TicketItemId}.",
             dungeonId,
             dungeonLayout.MazeIndex,

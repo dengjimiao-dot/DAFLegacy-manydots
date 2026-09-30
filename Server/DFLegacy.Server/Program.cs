@@ -92,7 +92,8 @@ builder.Services.AddHostedService<ProbeService>();
 
 // 统一文件日志（docs/design/07 §11 日志统一）：默认关闭，开启后才挂有界队列
 // 文件日志器（全部 ILogger 事件与控制台共享同一批记录，日志器随主机 Dispose
-// 排空退出）；关闭时不注册提供器、不落盘。
+// 排空退出）；关闭时不注册提供器、不落盘。开关仅作用于文件日志，控制台
+// 日志无开关、始终输出。
 if (options.Logging.Enabled)
 {
     builder.Logging.AddProvider(

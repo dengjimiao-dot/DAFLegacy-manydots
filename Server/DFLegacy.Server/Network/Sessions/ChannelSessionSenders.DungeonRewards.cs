@@ -23,7 +23,7 @@ public sealed partial class ChannelSessionSenders
         context.State.Dungeon.GoldCardIndex,
         goldRewardRevealed: context.State.Dungeon.GoldCardIndex.HasValue,
         goldRewardItemId: context.State.Dungeon.ClearReward.GoldItemId);
-    await context.Outbound.SendAsync(selectCardReply, "DUNGEON", cancellationToken);
+    await context.Queue.SendAsync(selectCardReply, "DUNGEON", cancellationToken);
     if (!inventoryChanged)
     {
         return;
@@ -33,7 +33,7 @@ public sealed partial class ChannelSessionSenders
         context.State.Currency.Gold,
         context.State.Currency.VictoryPoints,
         context.State.Inventory.Main.Values);
-    await context.Outbound.SendAsync(inventoryRefresh, "DUNGEON", cancellationToken);
+    await context.Queue.SendAsync(inventoryRefresh, "DUNGEON", cancellationToken);
     }
 
     public async Task<bool> TryAutomaticallySelectFreeCardAsync(
@@ -60,7 +60,7 @@ public sealed partial class ChannelSessionSenders
         automaticCardIndex.Value);
     if (!automaticGrant.Saved)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not automatically settle dungeon {DungeonId} free card for user {UserId} through {Source}",
             context.State.Dungeon.CurrentDungeonId,
             context.State.Character.LocalUserId,
@@ -74,7 +74,7 @@ public sealed partial class ChannelSessionSenders
         context,
         automaticGrant.InventoryChanged,
         cancellationToken);
-    logger.LogInformation(
+    RuntimeLogger.Info(
         "Dungeon {DungeonId} automatically selected free card {CardIndex} for user {UserId} through {Source}; reward={RewardItemId}",
         context.State.Dungeon.CurrentDungeonId,
         automaticCardIndex.Value,
@@ -214,10 +214,10 @@ public sealed partial class ChannelSessionSenders
     // simulated, an empty terminal room must remain settleable.
     context.State.Dungeon.ClearEnabled = true;
     var enableClear = DungeonPacketBuilders.CreateEnableClearDungeon();
-    await context.Outbound.SendAsync(enableClear, "DUNGEON", cancellationToken);
+    await context.Queue.SendAsync(enableClear, "DUNGEON", cancellationToken);
     await CompleteClearQuestTriggersAsync(context, 
         "empty boss-room settlement");
-    logger.LogInformation(
+    RuntimeLogger.Info(
         "Dungeon {DungeonId} empty boss room ({RoomX},{RoomY}) enabled settlement.",
         context.State.Dungeon.CurrentDungeonId,
         context.State.Dungeon.RoomX,
@@ -234,7 +234,7 @@ public sealed partial class ChannelSessionSenders
         || !context.State.Dungeon.ClearEnabled
         || context.State.Dungeon.AliveMonsters.Count != 0)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Ignored tutorial completion because its room is not cleared for user {UserId}.",
             context.State.Character.LocalUserId);
         return;
@@ -248,7 +248,7 @@ public sealed partial class ChannelSessionSenders
     {
         if (context.State.Quest.Current.Count >= 3)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Tutorial completion quest {QuestId} was not activated because the active quest list is full.",
                 QuestCatalog.TutorialCompletionQuestId);
         }
@@ -257,7 +257,7 @@ public sealed partial class ChannelSessionSenders
                      out var definition)
                  || !QuestCatalog.IsTutorialCompletionQuestDefinition(definition))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Tutorial completion quest {QuestId} is missing or does not match the target client definition.",
                 QuestCatalog.TutorialCompletionQuestId);
         }
@@ -279,7 +279,7 @@ public sealed partial class ChannelSessionSenders
         cancellationToken: cancellationToken);
     if (saved is null)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not persist tutorial completion for character {CharacterId}.",
             context.State.Character.Active.Id);
         return;
@@ -307,15 +307,15 @@ public sealed partial class ChannelSessionSenders
         var acceptQuest = QuestPacketBuilders.CreateAcceptQuestReply(
             QuestCatalog.TutorialCompletionQuestId,
             trigger: 1);
-        await context.Outbound.SendAsync(acceptQuest, "TUTORIAL", cancellationToken);
+        await context.Queue.SendAsync(acceptQuest, "TUTORIAL", cancellationToken);
 
         var readyQuest = QuestPacketBuilders.CreateSetQuestTriggerReply(
             QuestCatalog.TutorialCompletionQuestId,
             trigger: 0);
-        await context.Outbound.SendAsync(readyQuest, "TUTORIAL", cancellationToken);
+        await context.Queue.SendAsync(readyQuest, "TUTORIAL", cancellationToken);
         await SendDungeonPermissionsAsync(context, cancellationToken);
         await SendAcceptableQuestListAsync(context, cancellationToken);
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Activated tutorial completion quest {QuestId} for character {CharacterId}.",
             QuestCatalog.TutorialCompletionQuestId,
             context.State.Character.Active.Id);

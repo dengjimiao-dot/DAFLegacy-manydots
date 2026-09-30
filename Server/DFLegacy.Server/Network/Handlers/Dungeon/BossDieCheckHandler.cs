@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// BOSS_DIE_CHECK (CMD 127): checks boss-death progress and unlocks the clear (07 §5 group 13).
 /// </summary>
-public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger) : IGameCommandHandler
+public sealed class BossDieCheckHandler(    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.BOSS_DIE_CHECK;
 
@@ -52,7 +52,7 @@ public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger)
                 success: true,
                 allBossesReported,
                 bossDieCheck.BossId);
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Dungeon {DungeonId} accepted BOSS_DIE_CHECK from participant {ParticipantId} for boss {BossId}; reported={ReportedCount}/{BossCount}, native-all-die={AllBossesReported}, checksum={SkillChecksum:X8}.",
                 session.Dungeon.CurrentDungeonId,
                 bossDieCheck.ParticipantId,
@@ -68,7 +68,7 @@ public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger)
                 success: false,
                 allBossesReported: false,
                 errorCode: 2);
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Rejected BOSS_DIE_CHECK in dungeon {DungeonId}, room ({RoomX},{RoomY}); parsed={Parsed}, participant={ParticipantId}, expectedParticipant={ExpectedParticipantId}, boss={BossId}, mapType={MapType}.",
                 session.Dungeon.CurrentDungeonId,
                 session.Dungeon.RoomX,
@@ -80,6 +80,6 @@ public sealed class BossDieCheckHandler(    ILogger<BossDieCheckHandler> logger)
                 session.Dungeon.Room?.MapType);
         }
 
-        await context.Outbound.SendAsync(bossDieReply, Name, cancellationToken);
+        await context.Queue.SendAsync(bossDieReply, Name, cancellationToken);
     }
 }

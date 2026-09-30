@@ -10,7 +10,6 @@ namespace DFLegacy.Server;
 public sealed class GetItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     CharacterStatCatalog characterStatCatalog,
-    ILogger<GetItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -43,7 +42,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                 out var groundItem)
             || groundItem.OwnerUserId != session.Character.LocalUserId)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Ignored invalid or duplicate pickup of ground item {GroundId} for user {UserId}.",
                 groundId,
                 session.Character.LocalUserId);
@@ -60,7 +59,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             }
             catch (OverflowException)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Gold pickup {GroundId} would overflow the character balance.",
                     groundId);
                 return;
@@ -75,7 +74,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                 cancellationToken);
             if (saved is null)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Gold pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
                 return;
@@ -88,13 +87,13 @@ public sealed class GetItemHandler(JsonGameStore store,
                 groundId,
                 session.Character.LocalUserId,
                 groundItem.CountOrValue);
-            await context.Outbound.SendAsync(pickup, Name, cancellationToken);
+            await context.Queue.SendAsync(pickup, Name, cancellationToken);
 
             var refresh = builders.CreateMainInventoryPacket(
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(refresh, Name, cancellationToken);
+            await context.Queue.SendAsync(refresh, Name, cancellationToken);
             return;
         }
 
@@ -116,7 +115,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                 expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
             if (savedUpgrade is null)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Warehouse-upgrade pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
                 return;
@@ -129,13 +128,13 @@ public sealed class GetItemHandler(JsonGameStore store,
                     groundId,
                     session.Character.LocalUserId,
                     ushort.MaxValue);
-            await context.Outbound.SendAsync(upgradePickup, Name, cancellationToken);
+            await context.Queue.SendAsync(upgradePickup, Name, cancellationToken);
 
             var inventoryRefresh = builders.CreateMainInventoryPacket(
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
             await senders.SendWarehouseStateAsync(context, cancellationToken);
             return;
         }
@@ -159,7 +158,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             // a second ground object instead of releasing the existing one.
             var overweightReply =
                 CraftPacketBuilders.CreateGetItemSilentRejection(request);
-            await context.Outbound.SendAsync(overweightReply, Name, cancellationToken);
+            await context.Queue.SendAsync(overweightReply, Name, cancellationToken);
 
             var combinedWeight = carriedWeight > ulong.MaxValue - pickupWeight
                 ? ulong.MaxValue
@@ -172,8 +171,8 @@ public sealed class GetItemHandler(JsonGameStore store,
                 // A zero target suppresses the local-character prefix.
                 0,
                 ClientEncoding.GetBytes(overweightMessage));
-            await context.Outbound.SendAsync(notice, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(notice, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Ground item {GroundId} pickup rejected as overweight; current={CurrentWeight}, incoming={IncomingWeight}, limit={WeightLimit}, excess={ExcessWeight}; authoritative ground state was retained for the client's pickup rollback.",
                 groundId,
                 carriedWeight,
@@ -213,7 +212,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                     out var creaturePickupPlan,
                     out var creaturePickupFailure))
             {
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Ground Creature item {GroundId} cannot enter Creature inventory ({Failure}); it remains in the room.",
                     groundId,
                     creaturePickupFailure);
@@ -234,7 +233,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                         creaturePickupPlan.Inventory.Values);
             if (savedCreaturePickup is null)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Creature item pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
                 return;
@@ -248,13 +247,13 @@ public sealed class GetItemHandler(JsonGameStore store,
                     groundId,
                     session.Character.LocalUserId,
                     creaturePickupPlan.DestinationSlot);
-            await context.Outbound.SendAsync(creaturePickup, Name, cancellationToken);
+            await context.Queue.SendAsync(creaturePickup, Name, cancellationToken);
 
             foreach (var creatureRefresh in
                      builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creatureRefresh, Name, cancellationToken);
+                await context.Queue.SendAsync(creatureRefresh, Name, cancellationToken);
             }
 
             return;
@@ -286,7 +285,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                     out var avatarPickupPlan,
                     out var avatarPickupFailure))
             {
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Ground Avatar item {GroundId} cannot enter Avatar inventory ({Failure}); it remains in the room.",
                     groundId,
                     avatarPickupFailure);
@@ -305,7 +304,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                     avatarInventory: avatarPickupPlan.Inventory.Values);
             if (savedAvatarPickup is null)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Avatar item pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
                 return;
@@ -319,11 +318,11 @@ public sealed class GetItemHandler(JsonGameStore store,
                     groundId,
                     session.Character.LocalUserId,
                     avatarPickupPlan.DestinationSlot);
-            await context.Outbound.SendAsync(avatarPickup, Name, cancellationToken);
+            await context.Queue.SendAsync(avatarPickup, Name, cancellationToken);
 
             var avatarRefresh = builders.CreateAvatarInventoryPacket(
                 session.Inventory.Avatar.Values);
-            await context.Outbound.SendAsync(avatarRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(avatarRefresh, Name, cancellationToken);
             return;
         }
 
@@ -335,7 +334,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                 out var pickupPlan,
                 out var pickupFailure))
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Ground item {GroundId} cannot enter the inventory ({Failure}); it remains in the room.",
                 groundId,
                 pickupFailure);
@@ -351,7 +350,7 @@ public sealed class GetItemHandler(JsonGameStore store,
             cancellationToken);
         if (savedInventory is null)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Item pickup {GroundId} was not persisted; the ground item was retained.",
                 groundId);
             return;
@@ -364,13 +363,13 @@ public sealed class GetItemHandler(JsonGameStore store,
             groundId,
             session.Character.LocalUserId,
             pickupPlan.DestinationSlot);
-        await context.Outbound.SendAsync(itemPickup, Name, cancellationToken);
+        await context.Queue.SendAsync(itemPickup, Name, cancellationToken);
 
         var itemRefresh = builders.CreateMainInventoryPacket(
             session.Currency.Gold,
             session.Currency.VictoryPoints,
             session.Inventory.Main.Values,
             pickupPlan.DestinationSlot);
-        await context.Outbound.SendAsync(itemRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(itemRefresh, Name, cancellationToken);
     }
 }

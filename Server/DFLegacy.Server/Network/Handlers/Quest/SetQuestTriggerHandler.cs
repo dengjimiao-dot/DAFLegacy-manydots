@@ -6,8 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SET_QUEST_TRIGGER (CMD 35): applies the client's trigger action through the per-quest requirement policies (07 §5 group 7).
 /// </summary>
-public sealed class SetQuestTriggerHandler(
-    ILogger<SetQuestTriggerHandler> logger,JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
+public sealed class SetQuestTriggerHandler(JsonGameStore store, QuestCatalog questCatalog, ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.SET_QUEST_TRIGGER;
 
@@ -27,7 +26,7 @@ public sealed class SetQuestTriggerHandler(
         if (session.Character.Active is null || request.Body.Length < 5)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -37,7 +36,7 @@ public sealed class SetQuestTriggerHandler(
         if (questIndex < 0)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -108,8 +107,8 @@ public sealed class SetQuestTriggerHandler(
         if (!validTrigger)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected quest {QuestId} trigger action 0x{Action:X2}.",
                 questId,
                 triggerAction);
@@ -137,8 +136,8 @@ public sealed class SetQuestTriggerHandler(
         }
 
         var setQuestTriggerReply = QuestPacketBuilders.CreateSetQuestTriggerReply(questId, trigger);
-        await context.Outbound.SendAsync(setQuestTriggerReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(setQuestTriggerReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Updated quest {QuestId} trigger from {OldTrigger} to {Trigger} through action 0x{Action:X2}.",
             questId,
             oldTrigger,

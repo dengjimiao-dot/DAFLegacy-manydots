@@ -39,6 +39,6 @@ public sealed class SetUdpEndpointHandler(
         var endpointReply = parsed
             ? ConnectionPacketBuilders.CreateCommandReply(frame, success: true)
             : ConnectionPacketBuilders.CreateCommandError(frame, errorCode: 2);
-        await context.Outbound.SendAsync(endpointReply, Name, cancellationToken);
+        await context.Queue.SendAsync(endpointReply, Name, cancellationToken);
     }
 }

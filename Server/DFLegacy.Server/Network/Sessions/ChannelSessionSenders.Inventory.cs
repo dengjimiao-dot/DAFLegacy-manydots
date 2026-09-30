@@ -62,7 +62,7 @@ public sealed partial class ChannelSessionSenders
         var warehouseRefresh = builders.CreateWarehousePacket(
             context.State.Inventory.Warehouse.Values,
             context.State.Inventory.WarehouseCapacity);
-        await context.Outbound.SendAsync(warehouseRefresh, "WAREHOUSE_STATE", cancellationToken);
+        await context.Queue.SendAsync(warehouseRefresh, "WAREHOUSE_STATE", cancellationToken);
     }
 
     // ---- Quest-flow helpers (migrated verbatim from the former local

@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// GIVEUP_GAME (CMD 45): gives up the dungeon run and returns to town (07 §5 group 13).
 /// </summary>
-public sealed class GiveupGameHandler(    ILogger<GiveupGameHandler> logger,
+public sealed class GiveupGameHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.GIVEUP_GAME;
@@ -25,8 +25,8 @@ public sealed class GiveupGameHandler(    ILogger<GiveupGameHandler> logger,
             var tutorialError = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 4);
-            await context.Outbound.SendAsync(tutorialError, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(tutorialError, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected tutorial give-up for character {CharacterId}.",
                 session.Character.Active.Id);
             return;

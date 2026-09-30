@@ -107,7 +107,7 @@ public sealed partial class MoveItemSpaceHandler
                     withdrawnCount,
                     destinationListType,
                     destinationSlot);
-            await context.Outbound.SendAsync(withdrawReply, Name, cancellationToken);
+            await context.Queue.SendAsync(withdrawReply, Name, cancellationToken);
 
             foreach (var refresh in new[]
                      {
@@ -121,10 +121,10 @@ public sealed partial class MoveItemSpaceHandler
                              session.Inventory.WarehouseCapacity)
                      })
             {
-                await context.Outbound.SendAsync(refresh, Name, cancellationToken);
+                await context.Queue.SendAsync(refresh, Name, cancellationToken);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Withdrew item {ItemId} from forward cargo slot {CargoSlot}; automatic main destination starts at {MainSlot}.",
                 sourceItem.ItemId,
                 sourceSlot,

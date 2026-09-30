@@ -8,8 +8,8 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class UseSkillHandler(
     RuntimeState runtime,
-    ServerOptions options,    SkillCatalog skillCatalog,
-    ILogger<UseSkillHandler> logger) : IGameCommandHandler
+    ServerOptions options,    SkillCatalog skillCatalog
+    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.USE_SKILL;
 
@@ -47,7 +47,7 @@ public sealed class UseSkillHandler(
             // owns both the authoritative material
             // deduction and the client's pending item
             // transaction. Do not consume the stack twice.
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "USE_SKILL job={Job}, skill={SkillId}, configuredItem={ItemId} x{ConfiguredCount}; material handled by command 18.",
                 session.Character.Active.Job,
                 skillId,
@@ -56,7 +56,7 @@ public sealed class UseSkillHandler(
         }
         else
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "USE_SKILL job={Job}, skill={SkillId}, dungeon={DungeonId}; no configured item transaction.",
                 session.Character.Active?.Job,
                 skillId,
@@ -65,7 +65,7 @@ public sealed class UseSkillHandler(
 
         var useSkillReply =
             DungeonPacketBuilders.CreateUseSkillReply();
-        await context.Outbound.SendAsync(useSkillReply, Name, cancellationToken);
+        await context.Queue.SendAsync(useSkillReply, Name, cancellationToken);
 
     }
 }

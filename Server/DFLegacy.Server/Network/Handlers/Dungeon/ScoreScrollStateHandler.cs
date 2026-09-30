@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// SCORE_SCROLL_STATE (CMD 72): dungeon score-scroll display state (07 §5 group 13).
 /// </summary>
 public sealed class ScoreScrollStateHandler(
-    ChannelSessionSenders senders,    ILogger<ScoreScrollStateHandler> logger) : IGameCommandHandler
+    ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.SCORE_SCROLL_STATE;
 
@@ -29,7 +29,7 @@ public sealed class ScoreScrollStateHandler(
             }
             else
             {
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Ignored tutorial score-scroll command before the tutorial room was cleared.");
             }
             return;
@@ -40,8 +40,8 @@ public sealed class ScoreScrollStateHandler(
             session.Dungeon.CardLayoutSent = true;
             var scoreScrollReply =
                 DungeonPacketBuilders.CreateScoreScrollStateReply();
-            await context.Outbound.SendAsync(scoreScrollReply, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(scoreScrollReply, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Dungeon {DungeonId} score scroll acknowledged for user {UserId}",
                 session.Dungeon.CurrentDungeonId,
                 session.Character.LocalUserId);

@@ -9,7 +9,6 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class UseLotteryItemHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<UseLotteryItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -31,7 +30,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -63,8 +62,8 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected lottery item use at slot {SourceSlot}: {Failure}.",
                 sourceSlot,
                 lotteryFailure);
@@ -100,7 +99,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -118,7 +117,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             lotteryPlan.ResponseCountOrValue,
             lotteryPlan.InstanceValue,
             lotteryPlan.ItemAttribute);
-        await context.Outbound.SendAsync(lotteryReply, Name, cancellationToken);
+        await context.Queue.SendAsync(lotteryReply, Name, cancellationToken);
 
         if (warehouseCapacityChanged || isLotteryWarehouseUpgrade)
         {
@@ -126,7 +125,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
             await senders.SendWarehouseStateAsync(context, cancellationToken);
         }
 
@@ -140,11 +139,11 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
             foreach (var creaturePacket in builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
+                await context.Queue.SendAsync(creaturePacket, Name, cancellationToken);
             }
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Used lottery item at slot {SourceSlot}; roll={Roll}, reward={RewardItemId} x{RewardCount}, destination={DestinationSlot}, gold={Gold}.",
             sourceSlot,
             roll,

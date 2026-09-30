@@ -94,13 +94,13 @@ public sealed partial class MoveItemSpaceHandler
                     creatureMove.MovedCount,
                     destinationListType,
                     creatureMove.ReplyDestinationSlot);
-            await context.Outbound.SendAsync(creatureMoveReply, Name, cancellationToken);
+            await context.Queue.SendAsync(creatureMoveReply, Name, cancellationToken);
 
             foreach (var creaturePacket in
                      builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
+                await context.Queue.SendAsync(creaturePacket, Name, cancellationToken);
             }
 
             if (creatureMove.EquippedSlotsChanged)
@@ -138,10 +138,10 @@ public sealed partial class MoveItemSpaceHandler
                 var warehousePacket = builders.CreateWarehousePacket(
                     session.Inventory.Warehouse.Values,
                     session.Inventory.WarehouseCapacity);
-                await context.Outbound.SendAsync(warehousePacket, Name, cancellationToken);
+                await context.Queue.SendAsync(warehousePacket, Name, cancellationToken);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Moved Creature-space item {ItemId} from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}; count={MovedCount}.",
                 creatureMove.ItemId,
                 sourceListType,

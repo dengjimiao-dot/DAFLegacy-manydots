@@ -29,7 +29,7 @@ public sealed partial class ChannelSessionSenders
             pvpExperienceCatalog.GetNextRankPoint(grade),
             grade,
             context.State.Character.Active.PvpGradeExtension);
-        await context.Outbound.SendAsync(pvpRecord, "PVP_RECORD", cancellationToken);
+        await context.Queue.SendAsync(pvpRecord, "PVP_RECORD", cancellationToken);
 
         var refreshedQuests = context.State.Quest.Current.Select(quest =>
             questCatalog.TryGetDefinition(quest.QuestId, out var definition)
@@ -47,7 +47,7 @@ public sealed partial class ChannelSessionSenders
             context.State.Login.AccountName, context.State.Character.Active.Id, refreshedQuests, context.State.Quest.CompletedIds, cancellationToken);
         if (saved is null)
         {
-            logger.LogWarning("Could not persist PvP-rank quest progress for {CharacterId}.", context.State.Character.Active.Id);
+            RuntimeLogger.Warn("Could not persist PvP-rank quest progress for {CharacterId}.", context.State.Character.Active.Id);
             return;
         }
         context.State.Quest.Current = refreshedQuests;
@@ -55,7 +55,7 @@ public sealed partial class ChannelSessionSenders
         foreach (var quest in changedQuests)
         {
             var update = QuestPacketBuilders.CreateSetQuestTriggerReply(quest.QuestId, quest.Trigger);
-            await context.Outbound.SendAsync(update, "QUEST_TRIGGER", cancellationToken);
+            await context.Queue.SendAsync(update, "QUEST_TRIGGER", cancellationToken);
         }
     }
 
@@ -81,14 +81,14 @@ public sealed partial class ChannelSessionSenders
                 messageType,
                 targetAreaUserId,
                 messageBytes);
-            await context.Outbound.SendAsync(messageNotification, "MESSAGE_NOTI", context.Disconnecting);
+            await context.Queue.SendAsync(messageNotification, "MESSAGE_NOTI", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Could not send message notification to character {CharacterId}.",
                 context.State.Character.Active?.Id);
@@ -116,14 +116,14 @@ public sealed partial class ChannelSessionSenders
                 targetAreaUserId,
                 senderName,
                 messageBytes);
-            await context.Outbound.SendAsync(megaphoneNotification, "MEGAPHONE_NOTI", context.Disconnecting);
+            await context.Queue.SendAsync(megaphoneNotification, "MEGAPHONE_NOTI", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Could not send megaphone notification to character {CharacterId}.",
                 context.State.Character.Active?.Id);
@@ -142,14 +142,14 @@ public sealed partial class ChannelSessionSenders
             }
 
             var popupNotification = ChatPacketBuilders.CreatePopupNotification(messageBytes);
-            await context.Outbound.SendAsync(popupNotification, "POPUP_NOTI", context.Disconnecting);
+            await context.Queue.SendAsync(popupNotification, "POPUP_NOTI", context.Disconnecting);
         }
         catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Could not send popup notification to character {CharacterId}.",
                 context.State.Character.Active?.Id);

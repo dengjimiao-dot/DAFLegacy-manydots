@@ -13,7 +13,6 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
     ServerOptions options,
     RuntimeState runtime,
     CharacterSessionRegistry characterSessions,
-    ILogger<CeraShopBuyHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -54,8 +53,8 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
         {
             var error = ShopPacketBuilders.CreateCeraShopBuyError(
                 errorCode: 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected malformed Cera-shop request session.Character.Active={HasCharacter}, body={Body}.",
                 session.Character.Active is not null,
                 Convert.ToHexString(request.Body));
@@ -229,7 +228,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 {
                     purchaseValid = false;
                     errorProduct = requestedProduct;
-                    logger.LogWarning(
+                    RuntimeLogger.Warn(
                         "Could not plan immediate Cera-shop container {ItemId}: {Failure}.",
                         product.ItemId,
                         contentsFailure);
@@ -275,7 +274,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 {
                     purchaseValid = false;
                     errorProduct = requestedProduct;
-                    logger.LogWarning(
+                    RuntimeLogger.Warn(
                         "Could not settle immediate effects from Cera-shop container {ItemId}.",
                         product.ItemId);
                     break;
@@ -420,8 +419,8 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 errorCode: 4,
                 errorClientCategory,
                 errorProduct.CommodityNo);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected Cera-shop purchase commodity={CommodityNo}, products={Count}, cash={Cash}, price={Price}.",
                 errorProduct.CommodityNo,
                 requestedProducts.Length,
@@ -454,7 +453,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 errorCode: 4,
                 errorClientCategory,
                 errorProduct.CommodityNo);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -526,7 +525,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     purchasedProduct.ClientCategory,
                     requestedProduct.CommodityNo,
                     purchaseReplyRewards[index]);
-            await context.Outbound.SendAsync(buyReply, Name, cancellationToken);
+            await context.Queue.SendAsync(buyReply, Name, cancellationToken);
         }
 
         if (warehouseUpgraded)
@@ -534,29 +533,29 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
             var warehouseRefresh = builders.CreateWarehousePacket(
                 session.Inventory.Warehouse.Values,
                 session.Inventory.WarehouseCapacity);
-            await context.Outbound.SendAsync(warehouseRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(warehouseRefresh, Name, cancellationToken);
         }
 
         var mainRefresh = builders.CreateMainInventoryPacket(
             session.Currency.Gold,
             session.Currency.VictoryPoints,
             session.Inventory.Main.Values);
-        await context.Outbound.SendAsync(mainRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(mainRefresh, Name, cancellationToken);
 
         var avatarRefresh = builders.CreateAvatarInventoryPacket(
             session.Inventory.Avatar.Values);
-        await context.Outbound.SendAsync(avatarRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(avatarRefresh, Name, cancellationToken);
 
         foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
                      session.Inventory.Creature.Values))
         {
-            await context.Outbound.SendAsync(creatureRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(creatureRefresh, Name, cancellationToken);
         }
 
         var cashUpdate = ShopPacketBuilders.CreateCeraUpdate(
             success: true,
             value: (uint)session.Currency.Cash);
-        await context.Outbound.SendAsync(cashUpdate, Name, cancellationToken);
+        await context.Queue.SendAsync(cashUpdate, Name, cancellationToken);
 
         // The command-67 result window is limited and does not
         // replace the authoritative inventory refresh. Keep the
@@ -596,7 +595,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     out var purchasedProduct)
                     ? $"{purchasedProduct.CommodityNo}:item={purchasedProduct.ItemId}x{purchasedProduct.Quantity}@{purchasedProduct.CashPrice}"
                     : $"{requestedProduct.CommodityNo}:unresolved"));
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Completed Cera-shop purchase [{Products}] ({Count} product(s)) for {Price}; cash={Cash}, gold={Gold}, victoryPoints={VictoryPoints}, openedContainers={OpenedContainerCount}, containerRewards={ContainerRewardCount}, PremiumGrants={PremiumGrantCount}, WarehouseCapacity={WarehouseCapacity}.",
             purchasedProductSummary,
             requestedProducts.Length,

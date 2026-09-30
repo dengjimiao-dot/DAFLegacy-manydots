@@ -66,7 +66,7 @@ public sealed class SetUserPositionHandler(PartyCoordinator partyCoordinator,
                 session.Character.TownId,
                 session.Character.AreaId,
                 [townUser]);
-            await context.Outbound.SendAsync(areaUsers, Name, cancellationToken);
+            await context.Queue.SendAsync(areaUsers, Name, cancellationToken);
             session.Character.AreaRosterInitialized = true;
             await senders.SendTownFatigueStateAsync(context, cancellationToken);
             await senders.SendTownAppearanceAsync(context, waitForTownActor: true, cancellationToken);

@@ -7,8 +7,8 @@ namespace DFLegacy.Server;
 /// RECOVER_STAMINA (CMD 9): gold-cost weakness recovery with the stamina notification (07 §5 group 4).
 /// </summary>
 public sealed class RecoverStaminaHandler(    JsonGameStore store,
-    StaminaRecoveryCatalog staminaRecoveryCatalog,
-    ILogger<RecoverStaminaHandler> logger) : IGameCommandHandler
+    StaminaRecoveryCatalog staminaRecoveryCatalog
+    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.RECOVER_STAMINA;
 
@@ -27,7 +27,7 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
         {
             var invalidState =
                 StaminaPacketBuilders.CreateRecoverStaminaError(4);
-            await context.Outbound.SendAsync(invalidState, Name, cancellationToken);
+            await context.Queue.SendAsync(invalidState, Name, cancellationToken);
             return;
         }
 
@@ -47,8 +47,8 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
             };
             var error =
                 StaminaPacketBuilders.CreateRecoverStaminaError(errorCode);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected stamina recovery for character {CharacterId}: failure={Failure}, cost={Cost}, gold={Gold}.",
                 session.Character.Active.Id,
                 recovery.Failure,
@@ -61,12 +61,12 @@ public sealed class RecoverStaminaHandler(    JsonGameStore store,
         session.Currency.Gold = session.Character.Active.Gold;
         var recoveryReply =
             StaminaPacketBuilders.CreateRecoverStaminaReply(session.Currency.Gold);
-        await context.Outbound.SendAsync(recoveryReply, Name, cancellationToken);
+        await context.Queue.SendAsync(recoveryReply, Name, cancellationToken);
 
         var fullStamina = StaminaPacketBuilders.CreateStamina(
             DungeonWeaknessPolicy.FullStamina);
-        await context.Outbound.SendAsync(fullStamina, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(fullStamina, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Recovered character {CharacterId} from weakness for {Cost} gold; remaining gold={Gold}.",
             session.Character.Active.Id,
             recoveryCost,

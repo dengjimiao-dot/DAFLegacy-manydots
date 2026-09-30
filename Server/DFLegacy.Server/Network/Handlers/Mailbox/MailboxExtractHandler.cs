@@ -27,7 +27,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -54,7 +54,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: mail is null ? (byte)10 : (byte)4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -84,7 +84,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 10);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -96,7 +96,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
         session.Inventory.Creature = (claim.Character.CreatureInventory ?? [])
             .ToDictionary(item => item.Slot);
         var extractReply = MailboxPacketBuilders.CreateMailboxExtractReply(mail.Id);
-        await context.Outbound.SendAsync(extractReply, Name, cancellationToken);
+        await context.Queue.SendAsync(extractReply, Name, cancellationToken);
 
         if (mail.Gold != 0 || mailDestinationListType == 0)
         {
@@ -105,14 +105,14 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values,
                 destinationSlot);
-            await context.Outbound.SendAsync(inventoryUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(inventoryUpdate, Name, cancellationToken);
         }
 
         if (mailDestinationListType == 1)
         {
             var avatarUpdate = builders.CreateAvatarInventoryPacket(
                 session.Inventory.Avatar.Values);
-            await context.Outbound.SendAsync(avatarUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(avatarUpdate, Name, cancellationToken);
         }
 
         if (mailDestinationListType == 7)
@@ -121,7 +121,7 @@ public sealed class MailboxExtractHandler(JsonGameStore store,
                      builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creatureUpdate, Name, cancellationToken);
+                await context.Queue.SendAsync(creatureUpdate, Name, cancellationToken);
             }
         }
 

@@ -14,7 +14,6 @@ public sealed class SetPlayResultHandler(
     CharacterSpCatalog spCatalog,
     ClearRewardGenerator clearRewardGenerator,
     CharacterSessionRegistry characterSessions,
-    ILogger<SetPlayResultHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.SET_PLAY_RESULT;
@@ -30,7 +29,7 @@ public sealed class SetPlayResultHandler(
         var session = context.State;
         if (session.Dungeon.TutorialActive)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Ignored normal settlement command for tutorial dungeon {DungeonId}; waiting for tutorial module {ModuleId}.",
                 session.Dungeon.CurrentDungeonId,
                 GameProtocolConstants.TutorialCompletionModule);
@@ -52,7 +51,7 @@ public sealed class SetPlayResultHandler(
             var playResult = DungeonPacketBuilders.CreatePlayResult(
                 session.Character.LocalUserId,
                 clientResultValue);
-            await context.Outbound.SendAsync(playResult, Name, cancellationToken);
+            await context.Queue.SendAsync(playResult, Name, cancellationToken);
 
             if (await senders.SettleDungeonCreatureHungerAsync(context, 
                     notifyClient: true,
@@ -133,7 +132,7 @@ public sealed class SetPlayResultHandler(
                     session.Dungeon.LeveledUp |= clearProgression.LeveledUp;
                     if (clearProgression.LeveledUp)
                     {
-                        logger.LogInformation(
+                        RuntimeLogger.Info(
                             "Dungeon clear advanced character level {OldLevel}->{Level} and granted {SkillPoints} SP.",
                             clearProgression.PreviousLevel,
                             clearProgression.Level,
@@ -177,8 +176,8 @@ public sealed class SetPlayResultHandler(
                         GameProtocolConstants.BlackDiamondServiceType),
                     premiumItemId: session.Dungeon.ClearReward.PremiumItemId,
                     experience: settledClearExperience);
-            await context.Outbound.SendAsync(clearReward, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(clearReward, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Dungeon {DungeonId} clear-card rewards prepared for user {UserId}: normalKills={NormalKills}, championKills={ChampionKills}, bossKills={BossKills}, championAnimationCount={ChampionAnimationCount}, freeGold={FreeGold}, freeItem={FreeItemId}, premiumItem={PremiumItemId}, goldItem={GoldItemId}, partyMemberCount={PartyMemberCount}.",
                 session.Dungeon.CurrentDungeonId,
                 session.Character.LocalUserId,
@@ -237,8 +236,8 @@ public sealed class SetPlayResultHandler(
                                 [new GameDungeonPermissionEntry(
                                     session.Dungeon.CurrentDungeonId,
                                     nextDifficulty)]);
-                        await context.Outbound.SendAsync(difficultyUnlocked, Name, cancellationToken);
-                        logger.LogInformation(
+                        await context.Queue.SendAsync(difficultyUnlocked, Name, cancellationToken);
+                        RuntimeLogger.Info(
                             "Unlocked dungeon {DungeonId} difficulty {Difficulty} after clearing difficulty {ClearedDifficulty} with result code {ResultCode}.",
                             session.Dungeon.CurrentDungeonId,
                             nextDifficulty,
@@ -247,7 +246,7 @@ public sealed class SetPlayResultHandler(
                     }
                     else
                     {
-                        logger.LogWarning(
+                        RuntimeLogger.Warn(
                             "Could not persist dungeon {DungeonId} difficulty {Difficulty} for character {CharacterId}.",
                             session.Dungeon.CurrentDungeonId,
                             nextDifficulty,
@@ -258,13 +257,13 @@ public sealed class SetPlayResultHandler(
 
             if (!hasClearScore)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Dungeon {DungeonId} settlement did not contain the 24-byte score layout; higher difficulty rank gates used result code zero.",
                     session.Dungeon.CurrentDungeonId);
             }
             else if (!clearScore.IsWireResultCodeConsistent)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Dungeon {DungeonId} ignored inconsistent client result code {WireResultCode}; calculated {CalculatedResultCode} from score {CalculatedScore}.",
                     session.Dungeon.CurrentDungeonId,
                     clearScore.WireResultCode,
@@ -272,7 +271,7 @@ public sealed class SetPlayResultHandler(
                     clearScore.CalculatedScore);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Dungeon {DungeonId} settlement sent for user {UserId}, result {ResultValue}, resultCode={ResultCode}, goldCost={GoldCost}, monsterExp={MonsterExperience}, clearExp={ClearExperience}, base={BaseExperience}, rank={RankBonus}, party={PartyBonus}, mentor={MentorBonus}, avatar={AvatarBonus}, creature={CreatureBonus}, event={EventBonus}, blackDiamond={BlackDiamondBonus}, channel={ChannelBonus}",
                 session.Dungeon.CurrentDungeonId,
                 session.Character.LocalUserId,

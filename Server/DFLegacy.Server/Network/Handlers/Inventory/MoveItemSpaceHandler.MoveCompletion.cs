@@ -43,7 +43,7 @@ public sealed partial class MoveItemSpaceHandler
             requestedCount,
             destinationListType,
             destinationSlot);
-        await context.Outbound.SendAsync(moveReply, Name, cancellationToken);
+        await context.Queue.SendAsync(moveReply, Name, cancellationToken);
 
         if (sourceListType == 2 || destinationListType == 2)
         {
@@ -60,15 +60,15 @@ public sealed partial class MoveItemSpaceHandler
                     session.Currency.VictoryPoints,
                     session.Inventory.Main.Values,
                     preferredLastSlot: destinationSlot);
-                await context.Outbound.SendAsync(refreshMain, Name, cancellationToken);
+                await context.Queue.SendAsync(refreshMain, Name, cancellationToken);
             }
 
             var refreshWarehouse = builders.CreateWarehousePacket(
                 session.Inventory.Warehouse.Values,
                 session.Inventory.WarehouseCapacity);
-            await context.Outbound.SendAsync(refreshWarehouse, Name, cancellationToken);
+            await context.Queue.SendAsync(refreshWarehouse, Name, cancellationToken);
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Moved character cargo item {ItemId} from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}.",
                 sourceItem.ItemId,
                 sourceListType,
@@ -116,7 +116,7 @@ public sealed partial class MoveItemSpaceHandler
                     preferredLastSlot: movedWithinMainList
                         ? destinationSlot
                         : sourceSlot);
-                await context.Outbound.SendAsync(refreshBag, Name, cancellationToken);
+                await context.Queue.SendAsync(refreshBag, Name, cancellationToken);
             }
             else
             {
@@ -132,7 +132,7 @@ public sealed partial class MoveItemSpaceHandler
                     InventoryPacketBuilders.CreateUpdateItemList(
                         0,
                         [sourceUpdateEntry]);
-                await context.Outbound.SendAsync(updateSourceItem, Name, cancellationToken);
+                await context.Queue.SendAsync(updateSourceItem, Name, cancellationToken);
             }
         }
 
@@ -140,7 +140,7 @@ public sealed partial class MoveItemSpaceHandler
         {
             var refreshAvatar = builders.CreateAvatarInventoryPacket(
                 session.Inventory.Avatar.Values);
-            await context.Outbound.SendAsync(refreshAvatar, Name, cancellationToken);
+            await context.Queue.SendAsync(refreshAvatar, Name, cancellationToken);
         }
 
         if (sourceListType == 3 || destinationListType == 3)
@@ -154,7 +154,7 @@ public sealed partial class MoveItemSpaceHandler
                             3,
                             [builders.ToGameInventoryEntry(
                                 session.Inventory.Equipped[destinationSlot])]);
-                    await context.Outbound.SendAsync(addWornItem, Name, cancellationToken);
+                    await context.Queue.SendAsync(addWornItem, Name, cancellationToken);
                 }
             }
 
@@ -189,7 +189,7 @@ public sealed partial class MoveItemSpaceHandler
             await senders.SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Moved item {ItemId} from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}",
             sourceItem.ItemId,
             sourceListType,

@@ -12,8 +12,8 @@ namespace DFLegacy.Server;
 public sealed class ReturnSelectCharacterHandler(
     JsonGameStore store,
     CharacterSessionRegistry characterSessions,
-    PartyCoordinator partyCoordinator,
-    ILogger<ReturnSelectCharacterHandler> logger) : IGameCommandHandler
+    PartyCoordinator partyCoordinator
+    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.RETURN_SELECT_CHARACTER;
 
@@ -36,8 +36,8 @@ public sealed class ReturnSelectCharacterHandler(
             var tutorialError = ConnectionPacketBuilders.CreateCommandError(
                 frame,
                 errorCode: 4);
-            await context.Outbound.SendAsync(tutorialError, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(tutorialError, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected return to character selection for {CharacterId} until the tutorial is complete.",
                 session.Character.Active.Id);
             return;
@@ -128,13 +128,13 @@ public sealed class ReturnSelectCharacterHandler(
         var returnReply = ConnectionPacketBuilders.CreateCommandReply(
             frame,
             success: true);
-        await context.Outbound.SendAsync(returnReply, Name, cancellationToken);
+        await context.Queue.SendAsync(returnReply, Name, cancellationToken);
 
         // The 60CN client refreshes the roster itself with a
         // GET_USERINFO (CMD 8) right after this acknowledgement;
         // pushing the roster here too arrives as a second list
         // and makes the select-screen event notice pop up twice.
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Returned character {CharacterId} to character selection for account {Account}.",
             returningCharacterId,
             session.Login.AccountName);

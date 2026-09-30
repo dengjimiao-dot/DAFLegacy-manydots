@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// CREATURE_SCRIPT_MESSAGE (CMD 132): creature talk with an equipped Creature (07 §5 group 5).
 /// </summary>
 public sealed class CreatureScriptMessageHandler(
-    ILogger<CreatureScriptMessageHandler> logger) : IGameCommandHandler
+    ) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -26,7 +26,7 @@ public sealed class CreatureScriptMessageHandler(
         if (session.Character.Active is null
             || !ChatParsers.TryReadSendMessage(request.Body, out var messageRequest))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Rejected malformed CREATURE_SCRIPT_MESSAGE request for character {CharacterId}: body={Body}.",
                 session.Character.Active?.Id,
                 Convert.ToHexString(request.Body));
@@ -49,7 +49,7 @@ public sealed class CreatureScriptMessageHandler(
             || equippedCreature.ItemId == 0
             || equippedCreature.CountOrValue == 0)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Ignored CREATURE_SCRIPT_MESSAGE type {MessageType} from character {CharacterId}; town={TownId}, equippedCreature={CreatureId}.",
                 messageRequest.MessageType,
                 session.Character.Active.Id,
@@ -62,8 +62,8 @@ public sealed class CreatureScriptMessageHandler(
                 (GameMessageType)messageRequest.MessageType,
                 session.Character.LocalUserId,
                 messageRequest.MessageBytes);
-        await context.Outbound.SendAsync(creatureScriptMessage, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(creatureScriptMessage, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Creature script message from {CharacterName}'s Creature {CreatureId}: {Message}",
             session.Character.Active.Name,
             equippedCreature.ItemId,

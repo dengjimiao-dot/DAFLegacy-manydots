@@ -23,7 +23,7 @@ public sealed class TutorialCompletionHandler(
         var tutorialModuleReply = ConnectionPacketBuilders.CreateCommandReply(
             request,
             success: true);
-        await context.Outbound.SendAsync(tutorialModuleReply, Name, cancellationToken);
+        await context.Queue.SendAsync(tutorialModuleReply, Name, cancellationToken);
 
         if (session.Dungeon.TutorialActive
             && session.Dungeon.ClearEnabled

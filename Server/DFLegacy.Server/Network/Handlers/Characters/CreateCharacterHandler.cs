@@ -41,14 +41,14 @@ public sealed class CreateCharacterHandler(
         var createReply = created
             ? ConnectionPacketBuilders.CreateCommandReply(frame, success: true)
             : ConnectionPacketBuilders.CreateCommandError(frame, errorCode: 2);
-        await context.Outbound.SendAsync(createReply, Name, cancellationToken);
+        await context.Queue.SendAsync(createReply, Name, cancellationToken);
 
         if (created)
         {
             var userInfo = await builders.CreateUserInfoAsync(
                 context.State.Login.AccountUid,
                 cancellationToken);
-            await context.Outbound.SendAsync(userInfo, Name, cancellationToken);
+            await context.Queue.SendAsync(userInfo, Name, cancellationToken);
         }
     }
 }

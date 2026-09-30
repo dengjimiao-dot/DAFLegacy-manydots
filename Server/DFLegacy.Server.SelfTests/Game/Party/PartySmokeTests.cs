@@ -401,13 +401,13 @@ internal static class PartySmokeTests
         var registry = new CharacterSessionRegistry(NullLogger<CharacterSessionRegistry>.Instance);
         var datagram = new GameplayDatagramService(
             new ServerOptions(),
-            new RuntimeState(),
-            NullLogger<GameplayDatagramService>.Instance);
+            new RuntimeState()
+            );
         var coordinator = new PartyCoordinator(
             new ServerOptions(),
             registry,
-            datagram,
-            NullLogger<PartyCoordinator>.Instance);
+            datagram
+            );
         var inbox = new Dictionary<Guid, List<GameServerPacket>>();
         void Capture(Guid sessionId, GameServerPacket packet)
         {

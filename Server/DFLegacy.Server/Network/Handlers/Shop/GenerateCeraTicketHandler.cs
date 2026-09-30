@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// GENERATE_CERA_TICKET (CMD 68): mints the Cera web ticket for the active character (07 §5 group 10).
 /// </summary>
-public sealed class GenerateCeraTicketHandler(ILogger<GenerateCeraTicketHandler> logger) : IGameCommandHandler
+public sealed class GenerateCeraTicketHandler : IGameCommandHandler
 {
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -26,8 +26,8 @@ public sealed class GenerateCeraTicketHandler(ILogger<GenerateCeraTicketHandler>
         var ticket = Guid.NewGuid().ToString("N");
         var ticketReply = ShopPacketBuilders.CreateCeraTicketReply(
             ticket);
-        await context.Outbound.SendAsync(ticketReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(ticketReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Generated a DFLegacy Cera web ticket for character {CharacterId}.",
             session.Character.Active?.Id);
     }

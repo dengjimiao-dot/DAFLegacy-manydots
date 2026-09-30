@@ -6,8 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// INCREASE_STATUS (CMD 32): consumes skill-reset items (River Lethe), experience books and permanent-status items through the persisted use transactions (07 §5 group 8).
 /// </summary>
-public sealed class IncreaseStatusHandler(
-    ILogger<IncreaseStatusHandler> logger,JsonGameStore store,
+public sealed class IncreaseStatusHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
     SkillCatalog skillCatalog,
     CharacterSpCatalog spCatalog,
@@ -37,7 +36,7 @@ public sealed class IncreaseStatusHandler(
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -48,8 +47,8 @@ public sealed class IncreaseStatusHandler(
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected increase-status command for slot {SourceSlot}: the slot is empty.",
                 sourceSlot);
             return;
@@ -82,8 +81,8 @@ public sealed class IncreaseStatusHandler(
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 17);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(error, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Rejected skill-reset item {ItemId} at slot {SourceSlot}: persisted state changed ({Failure}).",
                     sourceItem.ItemId,
                     sourceSlot,
@@ -107,8 +106,8 @@ public sealed class IncreaseStatusHandler(
                 sourceSlot,
                 statusType: (byte)IncreaseStatusType.SkillReset,
                 amount: 1);
-            await context.Outbound.SendAsync(resetReply, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(resetReply, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Used skill-reset item {ItemId} at slot {SourceSlot}; SP reset to level rewards {LevelSkillPoints} + bonus {BonusSp} = {SkillPoints}, restored skills={SkillCount}, preserved guild skills={GuildSkillCount}, stack remaining={RemainingCount}.",
                 sourceItem.ItemId,
                 sourceSlot,
@@ -134,8 +133,8 @@ public sealed class IncreaseStatusHandler(
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected increase-status command for slot {SourceSlot}: the slot does not contain a cached permanent-status item.",
                 sourceSlot);
             return;
@@ -161,8 +160,8 @@ public sealed class IncreaseStatusHandler(
                 var error = ConnectionPacketBuilders.CreateCommandError(
                     request,
                     errorCode: 17);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(error, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Rejected experience book {ItemId} at slot {SourceSlot}: persisted item state changed or experience cannot be granted ({Failure}).",
                     sourceItem.ItemId,
                     sourceSlot,
@@ -185,7 +184,7 @@ public sealed class IncreaseStatusHandler(
                         useExperienceResult.GrantedSkillPoints,
                         ushort.MaxValue)),
                     secondAuxiliaryValue: 0);
-            await context.Outbound.SendAsync(experienceReply, Name, cancellationToken);
+            await context.Queue.SendAsync(experienceReply, Name, cancellationToken);
 
             if (progression.LeveledUp)
             {
@@ -204,7 +203,7 @@ public sealed class IncreaseStatusHandler(
                 await senders.SendAcceptableQuestListAsync(context, cancellationToken);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Used experience book {ItemId} at slot {SourceSlot}; experience=+{Experience}, cumulative={CumulativeExperience}, level={PreviousLevel}->{Level}, SP=+{SkillPoints}, stack remaining={RemainingCount}.",
                 sourceItem.ItemId,
                 sourceSlot,
@@ -229,8 +228,8 @@ public sealed class IncreaseStatusHandler(
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected permanent-status item {ItemId} at slot {SourceSlot}: persisted item state changed ({Failure}).",
                 sourceItem.ItemId,
                 sourceSlot,
@@ -248,8 +247,8 @@ public sealed class IncreaseStatusHandler(
             sourceSlot,
             statusType: (byte)increaseStatus.Type,
             amount: responseAmount);
-        await context.Outbound.SendAsync(increaseStatusReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(increaseStatusReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Used permanent-status item {ItemId} at slot {SourceSlot}; type={StatusType}, persisted amount={Amount}, response amount={ResponseAmount}, remaining SP={RemainingSp}, cumulative bonuses=[SP:{BonusSp}, HP:{BonusHp}, MP:{BonusMp}, STR:{BonusStrength}, VIT:{BonusVitality}, INT:{BonusIntelligence}, SPI:{BonusSpirit}, MOVE:{BonusMovementSpeed}, ALLR:{BonusAllResistance}], stack remaining={RemainingCount}.",
             sourceItem.ItemId,
             sourceSlot,

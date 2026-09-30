@@ -23,12 +23,12 @@ public sealed class MailboxOpenHandler(ChannelSessionSenders senders) : IGameCom
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
         var openReply = MailboxPacketBuilders.CreateMailboxOpenReply();
-        await context.Outbound.SendAsync(openReply, Name, cancellationToken);
+        await context.Queue.SendAsync(openReply, Name, cancellationToken);
         await senders.SendMailboxStateAsync(context, notifyNewMail: true, cancellationToken);
     }
 }

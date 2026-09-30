@@ -119,7 +119,7 @@ public sealed partial class ChannelSessionSenders
                     out var placement,
                     out var failure))
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Could not grant quest item {ItemId} x{Count} for quest {QuestId} from {Source}: {Failure}.",
                     drop.ItemId,
                     drop.Count,
@@ -159,7 +159,7 @@ public sealed partial class ChannelSessionSenders
         expectedWarehouseCapacity: context.State.Inventory.WarehouseCapacity);
     if (saved is null)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not persist quest item grants from {Source}; inventory and quest progress were left unchanged.",
             source);
         return;
@@ -176,7 +176,7 @@ public sealed partial class ChannelSessionSenders
                 .OrderBy(slot => slot)
                 .Select(slot => builders.ToGameInventoryEntry(context.State.Inventory.Main[slot]))
                 .ToArray());
-        await context.Outbound.SendAsync(itemUpdate, "QUEST_ITEMS", cancellationToken);
+        await context.Queue.SendAsync(itemUpdate, "QUEST_ITEMS", cancellationToken);
     }
 
     if (warehouseCapacityChanged)
@@ -189,12 +189,12 @@ public sealed partial class ChannelSessionSenders
         var triggerUpdate = QuestPacketBuilders.CreateSetQuestTriggerReply(
             change.QuestId,
             change.NewTrigger);
-        await context.Outbound.SendAsync(triggerUpdate, "QUEST_TRIGGER", cancellationToken);
+        await context.Queue.SendAsync(triggerUpdate, "QUEST_TRIGGER", cancellationToken);
     }
 
     foreach (var grant in grantedDrops)
     {
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Granted quest item from {Source}: quest={QuestId}, item={ItemId}, count={Count}.",
             source,
             grant.QuestId,
@@ -208,7 +208,7 @@ public sealed partial class ChannelSessionSenders
     {
     var acceptable = QuestPacketBuilders.CreateAcceptableQuestList(
         GetAcceptableQuestIds(context));
-    await context.Outbound.SendAsync(acceptable, "QUEST_LIST", cancellationToken);
+    await context.Queue.SendAsync(acceptable, "QUEST_LIST", cancellationToken);
     }
 
     public async Task CompleteClearQuestTriggersAsync(
@@ -253,7 +253,7 @@ public sealed partial class ChannelSessionSenders
         cancellationToken: cancellationToken);
     if (savedQuestProgress is null)
     {
-        logger.LogWarning(
+        RuntimeLogger.Warn(
             "Could not persist clear quest progress after {Source} in dungeon {DungeonId}.",
             source,
             context.State.Dungeon.CurrentDungeonId);
@@ -272,8 +272,8 @@ public sealed partial class ChannelSessionSenders
             QuestPacketBuilders.CreateSetQuestTriggerReply(
                 questId,
                 trigger: 0);
-        await context.Outbound.SendAsync(triggerUpdate, "DUNGEON", cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(triggerUpdate, "DUNGEON", cancellationToken);
+        RuntimeLogger.Info(
             "Completed clear quest {QuestId} after {Source} in dungeon {DungeonId} difficulty {Difficulty}.",
             questId,
             source,

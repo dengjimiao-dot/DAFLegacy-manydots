@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// DIE_CHARACTER (CMD 43): dungeon death with the return-to-town countdown (07 §5 group 13).
 /// </summary>
-public sealed class DieCharacterHandler(    ILogger<DieCharacterHandler> logger) : IGameCommandHandler
+public sealed class DieCharacterHandler(    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.DIE_CHARACTER;
 
@@ -26,8 +26,8 @@ public sealed class DieCharacterHandler(    ILogger<DieCharacterHandler> logger)
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 errorCode: 19);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected DIE_CHARACTER for user {UserId}: dungeon={DungeonId}, hasCharacter={HasCharacter}, alive={Alive}.",
                 session.Character.LocalUserId,
                 session.Dungeon.CurrentDungeonId,
@@ -44,8 +44,8 @@ public sealed class DieCharacterHandler(    ILogger<DieCharacterHandler> logger)
         var dieState = DungeonPacketBuilders.CreateDieState(
             session.Character.LocalUserId,
             isAlive: false);
-        await context.Outbound.SendAsync(dieState, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(dieState, Name, cancellationToken);
+        RuntimeLogger.Info(
             "User {UserId} entered authoritative dungeon death state in dungeon {DungeonId} room ({RoomX},{RoomY}).",
             session.Character.LocalUserId,
             session.Dungeon.CurrentDungeonId,

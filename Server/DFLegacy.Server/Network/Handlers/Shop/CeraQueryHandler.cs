@@ -8,7 +8,7 @@ namespace DFLegacy.Server;
 /// server already sends when the balance changes — the client reads it as
 /// [u8 flag][u32 cera]. Never a command-type reply (07 §5 group 10).
 /// </summary>
-public sealed class CeraQueryHandler(ILogger<CeraQueryHandler> logger) : IGameCommandHandler
+public sealed class CeraQueryHandler : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.CERA;
 
@@ -28,7 +28,7 @@ public sealed class CeraQueryHandler(ILogger<CeraQueryHandler> logger) : IGameCo
         {
             // The client only sends this from the in-game cash UI; without a
             // selected character there is no balance to report.
-            logger.LogDebug("Ignored cera refresh before character selection.");
+            RuntimeLogger.Debug("Ignored cera refresh before character selection.");
             return;
         }
 
@@ -36,6 +36,6 @@ public sealed class CeraQueryHandler(ILogger<CeraQueryHandler> logger) : IGameCo
         var ceraNotification = ShopPacketBuilders.CreateCeraUpdate(
             success: true,
             value: checked((uint)Math.Max(0, cera)));
-        await context.Outbound.SendAsync(ceraNotification, Name, cancellationToken);
+        await context.Queue.SendAsync(ceraNotification, Name, cancellationToken);
     }
 }

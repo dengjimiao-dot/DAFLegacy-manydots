@@ -8,8 +8,8 @@ namespace DFLegacy.Server;
 /// DROP_ITEM (CMD 50): world-drop placement for the current map (07 §5 group 11).
 /// </summary>
 public sealed class DropItemHandler(JsonGameStore store,
-    ItemCatalog itemCatalog,
-    ILogger<DropItemHandler> logger) : IGameCommandHandler
+    ItemCatalog itemCatalog
+    ) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -35,7 +35,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 CraftPacketBuilders.CreateDropItemErrorReply(
                     17,
                     replyItemSpace);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -46,7 +46,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 CraftPacketBuilders.CreateDropItemErrorReply(
                     19,
                     replyItemSpace);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -78,8 +78,8 @@ public sealed class DropItemHandler(JsonGameStore store,
                 CraftPacketBuilders.CreateDropItemErrorReply(
                     errorCode,
                     replyItemSpace);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Rejected dungeon item drop from {ItemSpace}:{Slot} x{Count}: {Failure}.",
                 dropCommand.ItemSpace,
                 dropCommand.Slot,
@@ -101,7 +101,7 @@ public sealed class DropItemHandler(JsonGameStore store,
         }
         catch (InvalidOperationException exception)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 exception,
                 "Could not allocate a ground id for item {ItemId}.",
                 dropPlan.DroppedItem.ItemId);
@@ -109,7 +109,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 CraftPacketBuilders.CreateDropItemErrorReply(
                     19,
                     replyItemSpace);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -136,7 +136,7 @@ public sealed class DropItemHandler(JsonGameStore store,
                 CraftPacketBuilders.CreateDropItemErrorReply(
                     19,
                     replyItemSpace);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -155,14 +155,14 @@ public sealed class DropItemHandler(JsonGameStore store,
                 groundItem.GetClientDurability(itemCatalog),
                 groundItem.OwnerUserId,
                 groundItem.GetClientItemAttr(itemCatalog)));
-        await context.Outbound.SendAsync(dropNotification, Name, cancellationToken);
+        await context.Queue.SendAsync(dropNotification, Name, cancellationToken);
 
         var dropReply = CraftPacketBuilders.CreateDropItemReply(
             dropCommand.ItemSpace,
             dropCommand.Slot,
             dropCommand.Count);
-        await context.Outbound.SendAsync(dropReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(dropReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Dropped item {ItemId} x{Count} from {ItemSpace}:{Slot} as ground item {GroundId} in dungeon {DungeonId} room ({RoomX},{RoomY}).",
             groundItem.ItemId,
             groundItem.CountOrValue,

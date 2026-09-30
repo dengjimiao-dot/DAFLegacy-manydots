@@ -8,7 +8,6 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class HatchCreatureHandler(JsonGameStore store,
     ItemCatalog itemCatalog,
-    ILogger<HatchCreatureHandler> logger,
     CharacterPacketBuilders builders) : IGameCommandHandler
 {
 
@@ -43,8 +42,8 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
             var hatchError = PetsPacketBuilders.CreateHatchCreatureReply(
                 success: false,
                 errorCode: 4);
-            await context.Outbound.SendAsync(hatchError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(hatchError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected Creature hatch itemSpace={ItemSpace}, slot={Slot}, parsed={Parsed}: {Failure}.",
                 hatchItemSpace,
                 hatchSlot,
@@ -71,8 +70,8 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
             var hatchError = PetsPacketBuilders.CreateHatchCreatureReply(
                 success: false,
                 errorCode: 2);
-            await context.Outbound.SendAsync(hatchError, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(hatchError, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Could not persist Creature hatch at slot {Slot} for character {CharacterId}.",
                 hatchSlot,
                 hatchingCharacter.Id);
@@ -83,14 +82,14 @@ public sealed class HatchCreatureHandler(JsonGameStore store,
         session.Inventory.Creature = hatchPlan.Inventory;
         var hatchReply = PetsPacketBuilders.CreateHatchCreatureReply(
             success: true);
-        await context.Outbound.SendAsync(hatchReply, Name, cancellationToken);
+        await context.Queue.SendAsync(hatchReply, Name, cancellationToken);
         foreach (var creaturePacket in builders.CreateCreatureInventoryPackets(
                      session.Inventory.Creature.Values))
         {
-            await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
+            await context.Queue.SendAsync(creaturePacket, Name, cancellationToken);
         }
 
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Hatched Creature egg {EggItemId} into {CreatureItemId} at slot {Slot} for character {CharacterId}.",
             hatchPlan.EggItemId,
             hatchPlan.CreatureItemId,

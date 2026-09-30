@@ -7,8 +7,8 @@ namespace DFLegacy.Server;
 /// CHANGE_SKILLSLOT (CMD 30): swaps quick slots, including the adjacent-command compound move the client sends as two back-to-back frames (07 §5 group 8).
 /// </summary>
 public sealed class ChangeSkillSlotHandler(JsonGameStore store,
-    SkillCatalog skillCatalog,
-    ILogger<ChangeSkillSlotHandler> logger) : IGameCommandHandler
+    SkillCatalog skillCatalog
+    ) : IGameCommandHandler
 {
 
     public ushort ProtocolId => (byte)CmdPacketType.CHANGE_SKILLSLOT;
@@ -26,7 +26,7 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
         {
             var invalidQuickSlotReply =
                 ConnectionPacketBuilders.CreateCommandError(request, errorCode: 1);
-            await context.Outbound.SendAsync(invalidQuickSlotReply, Name, cancellationToken);
+            await context.Queue.SendAsync(invalidQuickSlotReply, Name, cancellationToken);
             return;
         }
 
@@ -108,12 +108,12 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
                         : SkillPacketBuilders.CreateChangeSkillSlotReply(
                             replySourceSlot,
                             replyDestinationSlot);
-                    await context.Outbound.SendAsync(quickSlotBatchReply, Name, cancellationToken);
+                    await context.Queue.SendAsync(quickSlotBatchReply, Name, cancellationToken);
                 }
 
                 if (rejected)
                 {
-                    logger.LogWarning(
+                    RuntimeLogger.Warn(
                         "Rejected adjacent skill-slot changes {FirstSource}->{FirstDestination}, {SecondSource}->{SecondDestination}: {Reason}.",
                         sourceQuickSlot,
                         destinationQuickSlot,
@@ -123,7 +123,7 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
                 }
                 else
                 {
-                    logger.LogInformation(
+                    RuntimeLogger.Info(
                         "Changed adjacent skill slots {FirstSource}->{FirstDestination}, {SecondSource}->{SecondDestination}; compound={Compound}.",
                         sourceQuickSlot,
                         destinationQuickSlot,
@@ -159,17 +159,17 @@ public sealed class ChangeSkillSlotHandler(JsonGameStore store,
                 sourceQuickSlot,
                 destinationQuickSlot)
             : ConnectionPacketBuilders.CreateCommandError(request, errorCode: 1);
-        await context.Outbound.SendAsync(quickSlotReply, Name, cancellationToken);
+        await context.Queue.SendAsync(quickSlotReply, Name, cancellationToken);
         if (skillSlotMoveAccepted)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Changed skill slot from {SourceSlot} to {DestinationSlot}.",
                 sourceQuickSlot,
                 destinationQuickSlot);
         }
         else
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Rejected skill-slot change {SourceSlot}->{DestinationSlot}: {Reason}.",
                 sourceQuickSlot,
                 destinationQuickSlot,

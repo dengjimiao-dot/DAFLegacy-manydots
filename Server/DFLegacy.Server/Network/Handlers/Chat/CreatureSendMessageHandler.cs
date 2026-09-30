@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// CREATURE_SEND_MESSAGE (CMD 124): the equipped Creature's automatic talk (07 §5 group 5).
 /// </summary>
 public sealed class CreatureSendMessageHandler(
-    ILogger<CreatureSendMessageHandler> logger) : IGameCommandHandler
+    ) : IGameCommandHandler
 {
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
 
@@ -27,7 +27,7 @@ public sealed class CreatureSendMessageHandler(
         if (session.Character.Active is null
             || !ChatParsers.TryReadSendMessage(request.Body, out var messageRequest))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Rejected malformed CREATURE_SEND_MESSAGE request for character {CharacterId}: body={Body}.",
                 session.Character.Active?.Id,
                 Convert.ToHexString(request.Body));
@@ -43,7 +43,7 @@ public sealed class CreatureSendMessageHandler(
             || equippedCreature?.ItemId != BoboCreatureItemId
             || equippedCreature.CountOrValue == 0)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Ignored CREATURE_SEND_MESSAGE type {MessageType} from character {CharacterId}; equippedCreature={CreatureId}.",
                 messageRequest.MessageType,
                 session.Character.Active.Id,
@@ -60,8 +60,8 @@ public sealed class CreatureSendMessageHandler(
                 (GameMessageType)messageRequest.MessageType,
                 session.Character.LocalUserId,
                 messageRequest.MessageBytes);
-        await context.Outbound.SendAsync(creatureMessage, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(creatureMessage, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Creature automatic message from {CharacterName}'s Bobo uid={CreatureUid}: {Message}",
             session.Character.Active.Name,
             equippedCreature.CountOrValue,

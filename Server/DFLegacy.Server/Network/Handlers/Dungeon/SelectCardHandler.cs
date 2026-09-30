@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SELECT_CARD (CMD 74): clear-card pick with the free/gold reward grant (07 §5 group 13).
 /// </summary>
-public sealed class SelectCardHandler(    ILogger<SelectCardHandler> logger,
+public sealed class SelectCardHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.SELECT_CARD;
@@ -33,7 +33,7 @@ public sealed class SelectCardHandler(    ILogger<SelectCardHandler> logger,
             ushort? selectedRewardItemId = null;
             if (selectedCardIndex >= 4)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Ignored invalid dungeon card index {CardIndex} from user {UserId}",
                     selectedCardIndex,
                     session.Character.LocalUserId);
@@ -83,7 +83,7 @@ public sealed class SelectCardHandler(    ILogger<SelectCardHandler> logger,
             }
             else if (cardType is not 0 and not 1)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Ignored invalid dungeon card type {CardType} from user {UserId}",
                     cardType,
                     session.Character.LocalUserId);
@@ -94,7 +94,7 @@ public sealed class SelectCardHandler(    ILogger<SelectCardHandler> logger,
             // free reward is NOTI 35 group 3 at the same
             // selected column and is settled with type 0.
             await senders.SendCardSelectionSnapshotAsync(context, inventoryChanged);
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Dungeon {DungeonId} card type {CardType}, index {CardIndex} processed for user {UserId}; accepted={Accepted}, reward={RewardItemId}",
                 session.Dungeon.CurrentDungeonId,
                 cardType,
@@ -105,7 +105,7 @@ public sealed class SelectCardHandler(    ILogger<SelectCardHandler> logger,
         }
         else
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Ignored dungeon card selection before card rights for user {UserId}",
                 session.Character.LocalUserId);
         }

@@ -10,7 +10,6 @@ public sealed class SendMessageHandler(JsonGameStore store,
     CharacterSessionRegistry characterSessions,
     PartyCoordinator partyCoordinator,
     ServerOptions options,
-    ILogger<SendMessageHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -33,7 +32,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
         if (session.Character.Active is null
             || !ChatParsers.TryReadSendMessage(request.Body, out var messageRequest))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Rejected malformed SEND_MESSAGE request for character {CharacterId}: body={Body}.",
                 session.Character.Active?.Id,
                 Convert.ToHexString(request.Body));
@@ -67,7 +66,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
             {
                 await senders.SendPopupNotificationSafeAsync(context, 
                     ClientEncoding.GetBytes("喇叭使用失败，请确认道具状态"));
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Rejected megaphone message type {MessageType} from character {CharacterId}; target={TargetOrItemSpace}, slot/reserved={SlotOrReserved}.",
                     messageRequest.MessageType,
                     session.Character.Active.Id,
@@ -105,7 +104,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                 InventoryPacketBuilders.CreateUpdateItemList(
                     0,
                     [megaphoneEntry]);
-            await context.Outbound.SendAsync(megaphoneInventoryUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(megaphoneInventoryUpdate, Name, cancellationToken);
 
             // Routing per client case 130 (0x427518): the
             // packet flag is compared with the local
@@ -129,7 +128,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                     session.Character.LocalUserId,
                     ClientEncoding.GetBytes(session.Character.Active.Name),
                     messageRequest.MessageBytes);
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Megaphone type {MessageType} from {CharacterName} (slot {Slot}, stack remaining {Remaining}) broadcast to {Recipients} sessions: {Message}",
                 messageRequest.MessageType,
                 session.Character.Active.Name,
@@ -175,7 +174,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                     messageRequest.MessageBytes));
             if (delivered)
             {
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Whisper type {MessageType} from {CharacterName} delivered to {PartnerName} as NOTI 12 type 1: {Message}",
                     messageRequest.MessageType,
                     session.Character.Active.Name,
@@ -189,7 +188,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                     0,
                     ClientEncoding.GetBytes(
                         $"{partnerName} 不在线，无法发送悄悄话"));
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Whisper type {MessageType} from {CharacterName} to offline partner {PartnerName}: {Message}",
                     messageRequest.MessageType,
                     session.Character.Active.Name,
@@ -225,14 +224,14 @@ public sealed class SendMessageHandler(JsonGameStore store,
                     messageRequest.MessageBytes));
             if (partyChatRecipients == 0)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Party chat type {MessageType} from character {CharacterId} reached nobody: the sender holds no party.",
                     messageRequest.MessageType,
                     session.Character.Active.Id);
                 return;
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Party chat type {MessageType} from {CharacterName} delivered to {Recipients} party sessions: {Message}",
                 messageRequest.MessageType,
                 session.Character.Active.Name,
@@ -247,7 +246,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
         // there is no separate successful CMD 17 reply.
         if (messageRequest.MessageType != (byte)GameMessageType.Type03White)
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "Unsupported SEND_MESSAGE type {MessageType} from character {CharacterId}; target/item-space={TargetOrItemSpace}, slot/reserved={SlotOrReserved}.",
                 messageRequest.MessageType,
                 session.Character.Active.Id,
@@ -275,7 +274,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                 GameMessageType.Type03White,
                 session.Character.LocalUserId,
                 messageRequest.MessageBytes));
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Map chat from {CharacterName} in town {TownId}, area {AreaId} delivered to {Recipients} nearby sessions: {Message}",
             session.Character.Active.Name,
             session.Character.TownId,

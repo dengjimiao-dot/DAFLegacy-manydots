@@ -38,6 +38,6 @@ public sealed class CheckConnectionHandler(ServerOptions options) : IGameCommand
             [Encoding.ASCII.GetBytes(options.GameplayDatagram.Host)],
             port1: checked((uint)options.GameplayDatagram.PrimaryPort),
             port2: checked((uint)options.GameplayDatagram.SecondaryPort));
-        await context.Outbound.SendAsync(reply, Name, cancellationToken);
+        await context.Queue.SendAsync(reply, Name, cancellationToken);
     }
 }

@@ -25,6 +25,6 @@ public sealed class GetUserInfoHandler(CharacterPacketBuilders builders) : IGame
         var userInfo = await builders.CreateUserInfoAsync(
             context.State.Login.AccountUid,
             cancellationToken);
-        await context.Outbound.SendAsync(userInfo, Name, cancellationToken);
+        await context.Queue.SendAsync(userInfo, Name, cancellationToken);
     }
 }

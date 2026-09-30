@@ -15,7 +15,6 @@ public sealed class DieMonsterHandler(
     DungeonCatalog dungeonCatalog,
     CharacterExperienceCatalog experienceCatalog,
     DungeonDropGenerator dropGenerator,
-    ILogger<DieMonsterHandler> logger,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.DIE_MONSTER;
@@ -47,7 +46,7 @@ public sealed class DieMonsterHandler(
                         session.Dungeon.RoomY);
                     session.Dungeon.Room = session.Dungeon.Run.CurrentRoom
                         ?? session.Dungeon.Room;
-                    logger.LogInformation(
+                    RuntimeLogger.Info(
                         "Passive object code {PassiveObjectCode}, association {PassiveObjectIndex} destroyed in room ({RoomX},{RoomY}); activatedItems={ActivatedItemCount}.",
                         dieCommand.EntityId,
                         passiveObjectIndex,
@@ -57,7 +56,7 @@ public sealed class DieMonsterHandler(
                 }
                 else
                 {
-                    logger.LogWarning(
+                    RuntimeLogger.Warn(
                         "Ignored unknown passive object {PassiveObjectIndex} in room ({RoomX},{RoomY}).",
                         dieCommand.EntityId,
                         session.Dungeon.RoomX,
@@ -80,7 +79,7 @@ public sealed class DieMonsterHandler(
                 : null;
             if (!wasAlive || defeatedMonster is null)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Ignored stale or unknown monster death {MonsterId} in room ({RoomX},{RoomY}).",
                     monsterUniqueId,
                     session.Dungeon.RoomX,
@@ -177,7 +176,7 @@ public sealed class DieMonsterHandler(
                         out var hellItemId,
                         options.Drop.RatePercent / 100.0 * options.Drop.EconomicRate,
                         options.Drop.ForceDrops);
-                    logger.LogInformation(
+                    RuntimeLogger.Info(
                         "Hell drop result for character {CharacterId}, dungeon {DungeonId}, monster {MonsterIndex}/{UniqueId}: hit={Hit}, item={ItemId}.",
                         session.Character.Active?.Id, session.Dungeon.CurrentDungeonId, defeatedMonster.MonsterIndex,
                         monsterUniqueId, hellHit, hellItemId);
@@ -210,7 +209,7 @@ public sealed class DieMonsterHandler(
                     monsterUniqueId,
                     protocolDrops,
                     championRewardOrdinal);
-            await context.Outbound.SendAsync(monsterDie, Name, cancellationToken);
+            await context.Queue.SendAsync(monsterDie, Name, cancellationToken);
 
             if (!isBossCascadeDeath && !session.Dungeon.TutorialActive)
             {
@@ -278,8 +277,8 @@ public sealed class DieMonsterHandler(
                             skillPoints: checked((ushort)Math.Min(
                                 session.Skill.CurrentSp,
                                 ushort.MaxValue)));
-                    await context.Outbound.SendAsync(experienceGained, Name, cancellationToken);
-                    logger.LogInformation(
+                    await context.Queue.SendAsync(experienceGained, Name, cancellationToken);
+                    RuntimeLogger.Info(
                         "Monster {MonsterId} (index {MonsterIndex}, level {MonsterLevel}, type {MonsterType}) granted character {CharacterId} {GrantedExperience} EXP; cumulative EXP is {Experience} at level {Level}.",
                         monsterUniqueId,
                         defeatedMonster.MonsterIndex,
@@ -291,7 +290,7 @@ public sealed class DieMonsterHandler(
                         session.Character.Active.Level);
                     if (grantedSkillPoints > 0)
                     {
-                        logger.LogInformation(
+                        RuntimeLogger.Info(
                             "Monster {MonsterId} advanced character level {OldLevel}->{Level} and granted {SkillPoints} SP.",
                             monsterUniqueId,
                             progression.PreviousLevel,
@@ -310,7 +309,7 @@ public sealed class DieMonsterHandler(
 
             if (protocolDrops.Count > 0)
             {
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Monster {MonsterId} generated {DropCount} ground drops in room ({RoomX},{RoomY}).",
                     monsterUniqueId,
                     protocolDrops.Count,
@@ -324,7 +323,7 @@ public sealed class DieMonsterHandler(
                 session.Dungeon.AliveMonsters);
             if (clearDecision.ForcedMonsterIds.Length > 0)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Dungeon {DungeonId} received the final boss MONSTER_DIE with {MonsterCount} monsters still alive in room ({RoomX},{RoomY}); waiting for the native BOSS_DIE_CHECK/ALLDIE_MONSTER cascade instead of injecting a solo UDP peer packet.",
                     session.Dungeon.CurrentDungeonId,
                     clearDecision.ForcedMonsterIds.Length,
@@ -341,8 +340,8 @@ public sealed class DieMonsterHandler(
                 }
                 var enableClear =
                     DungeonPacketBuilders.CreateEnableClearDungeon();
-                await context.Outbound.SendAsync(enableClear, Name, cancellationToken);
-                logger.LogInformation(
+                await context.Queue.SendAsync(enableClear, Name, cancellationToken);
+                RuntimeLogger.Info(
                     "Dungeon {DungeonId} boss map room ({RoomX},{RoomY}) cleared by {ClearReason}; settlement enabled",
                     session.Dungeon.CurrentDungeonId,
                     session.Dungeon.RoomX,

@@ -10,7 +10,7 @@ namespace DFLegacy.Server;
 /// least the record-count byte plus one payload byte — shorter bodies fell
 /// through to the "No channel handler" warning. Both behaviors are kept.
 /// </summary>
-public sealed class ExitHandler(ILogger<ExitHandler> logger) : IGameCommandHandler
+public sealed class ExitHandler : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.EXIT;
 
@@ -27,7 +27,7 @@ public sealed class ExitHandler(ILogger<ExitHandler> logger) : IGameCommandHandl
     {
         if (frame.Body.Length < sizeof(ushort))
         {
-            logger.LogWarning(
+            RuntimeLogger.Warn(
                 "No channel handler for packet type {Type}, protocol {ProtocolId}; frame retained in logs.",
                 frame.Type,
                 frame.ProtocolId);
@@ -35,6 +35,6 @@ public sealed class ExitHandler(ILogger<ExitHandler> logger) : IGameCommandHandl
         }
 
         var reply = ConnectionPacketBuilders.CreateCommandReply(frame, success: true);
-        await context.Outbound.SendAsync(reply, Name, cancellationToken);
+        await context.Queue.SendAsync(reply, Name, cancellationToken);
     }
 }

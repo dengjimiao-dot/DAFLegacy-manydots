@@ -15,16 +15,14 @@ public sealed class ConnectionContext
         IPEndPoint? remote,
         bool isChannelPort,
         ChannelSessionState state,
-        IOutboundQueue outbound,
-        ILogger logger,
+        IConnectionQueue queue,
         CancellationToken disconnecting)
     {
         Runtime = runtime;
         Remote = remote;
         IsChannelPort = isChannelPort;
         State = state;
-        Outbound = outbound;
-        Logger = logger;
+        Queue = queue;
         Disconnecting = disconnecting;
         Timers = new ConnectionTimerScheduler(this, disconnecting);
     }
@@ -39,11 +37,9 @@ public sealed class ConnectionContext
 
     public ChannelSessionState State { get; }
 
-    public IOutboundQueue Outbound { get; }
+    public IConnectionQueue Queue { get; }
 
     public IConnectionTimers Timers { get; }
-
-    public ILogger Logger { get; }
 
     /// <summary>Connected to the connection cancellation source; cancelled when the connection dies.</summary>
     public CancellationToken Disconnecting { get; }

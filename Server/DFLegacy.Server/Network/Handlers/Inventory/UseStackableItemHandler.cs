@@ -16,7 +16,6 @@ public sealed class UseStackableItemHandler(
     CharacterExperienceCatalog experienceCatalog,
     PvpExperienceCatalog pvpExperienceCatalog,
     CharacterSessionRegistry characterSessions,
-    ILogger<UseStackableItemHandler> logger,
     CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -80,8 +79,8 @@ public sealed class UseStackableItemHandler(
             var error = InventoryPacketBuilders.CreateUseStackableItemError(
                 errorCode: 17,
                 listType);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected stackable-item use session.Character.Active={HasCharacter}, dungeon={DungeonId}, parsed={Parsed}, listType={ListType}, slot={Slot}, body={Body}.",
                 session.Character.Active is not null,
                 session.Dungeon.CurrentDungeonId,
@@ -108,7 +107,7 @@ public sealed class UseStackableItemHandler(
                     InventoryPacketBuilders.CreateUseStackableItemError(
                         errorCode: 17,
                         listType);
-                await context.Outbound.SendAsync(settlementError, Name, cancellationToken);
+                await context.Queue.SendAsync(settlementError, Name, cancellationToken);
                 return;
             }
 
@@ -125,8 +124,8 @@ public sealed class UseStackableItemHandler(
                     InventoryPacketBuilders.CreateUseStackableItemError(
                         errorCode: 17,
                         listType);
-                await context.Outbound.SendAsync(creatureFoodError, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(creatureFoodError, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Rejected Creature food use at slot {Slot}: equipped Creature is unavailable.",
                     slot);
                 return;
@@ -184,8 +183,8 @@ public sealed class UseStackableItemHandler(
                     InventoryPacketBuilders.CreateUseStackableItemError(
                         errorCode: 17,
                         listType);
-                await context.Outbound.SendAsync(creatureFoodSaveError, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(creatureFoodSaveError, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Could not persist Creature food use at slot {Slot} for character {CharacterId}.",
                     slot,
                     session.Character.Active.Id);
@@ -211,27 +210,27 @@ public sealed class UseStackableItemHandler(
                 var revival =
                     PetsPacketBuilders.CreateRevivalCreature(
                         session.Character.LocalUserId);
-                await context.Outbound.SendAsync(revival, Name, cancellationToken);
+                await context.Queue.SendAsync(revival, Name, cancellationToken);
             }
 
             var creatureState = PetsPacketBuilders.CreateCreatureState(
                 equippedCreature.CountOrValue,
                 restoredStomach);
-            await context.Outbound.SendAsync(creatureState, Name, cancellationToken);
+            await context.Queue.SendAsync(creatureState, Name, cancellationToken);
 
             var creatureFoodReply =
                 InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
-            await context.Outbound.SendAsync(creatureFoodReply, Name, cancellationToken);
+            await context.Queue.SendAsync(creatureFoodReply, Name, cancellationToken);
             foreach (var creaturePacket in
                      builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
+                await context.Queue.SendAsync(creaturePacket, Name, cancellationToken);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Used Creature food item {ItemId} at slot {Slot}; stomach {PreviousStomach}->{Stomach}, revived={Revived}.",
                 foodItem.ItemId,
                 slot,
@@ -263,15 +262,15 @@ public sealed class UseStackableItemHandler(
                 var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 if (useResult.Failure
                     == FatigueRecoveryItemUseFailure.FatigueNotLowEnough)
                 {
                     var popup = ChatPacketBuilders.CreatePopupNotification(
                         ClientEncoding.GetBytes(FatigueRecoveryRejectedMessage));
-                    await context.Outbound.SendAsync(popup, Name, cancellationToken);
+                    await context.Queue.SendAsync(popup, Name, cancellationToken);
                 }
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Rejected fatigue recovery item {ItemId} at slot {Slot}; failure={Failure}, remaining fatigue={RemainingFatigue}/{MaximumFatigue}, stack={RemainingCount}.",
                     FatigueRecoveryItemId,
                     slot,
@@ -290,14 +289,14 @@ public sealed class UseStackableItemHandler(
                 usedFatigue: useResult.UsedFatigue,
                 maximumFatigue: maximumFatigue,
                 premiumFatigue: premiumFatigue);
-            await context.Outbound.SendAsync(fatigue, Name, cancellationToken);
+            await context.Queue.SendAsync(fatigue, Name, cancellationToken);
 
             var fatigueItemReply =
                 InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
-            await context.Outbound.SendAsync(fatigueItemReply, Name, cancellationToken);
-            logger.LogInformation(
+            await context.Queue.SendAsync(fatigueItemReply, Name, cancellationToken);
+            RuntimeLogger.Info(
                 "Used fatigue recovery item {ItemId} at slot {Slot}; restored={RecoveryAmount}, remaining fatigue {PreviousRemaining}->{Remaining}/{MaximumFatigue}, stack={RemainingCount}.",
                 FatigueRecoveryItemId,
                 slot,
@@ -326,7 +325,7 @@ public sealed class UseStackableItemHandler(
                 var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
+                await context.Queue.SendAsync(error, Name, cancellationToken);
                 var rejectedMessage = useResult.Failure switch
                 {
                     ExperienceBookItemUseFailure.LevelLimitReached =>
@@ -339,7 +338,7 @@ public sealed class UseStackableItemHandler(
                 };
                 await senders.SendPopupNotificationSafeAsync(context, 
                     ClientEncoding.GetBytes(rejectedMessage));
-                logger.LogInformation(
+                RuntimeLogger.Info(
                     "Rejected level-up coupon {ItemId} at slot {Slot}; failure={Failure}, level={Level}, stack={RemainingCount}.",
                     LevelUpCouponItemId,
                     slot,
@@ -359,7 +358,7 @@ public sealed class UseStackableItemHandler(
                 InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
-            await context.Outbound.SendAsync(levelUpItemReply, Name, cancellationToken);
+            await context.Queue.SendAsync(levelUpItemReply, Name, cancellationToken);
             await senders.SendTypedMessageNotificationSafeAsync(context, 
                 GameMessageType.Type16Brown,
                 0,
@@ -370,7 +369,7 @@ public sealed class UseStackableItemHandler(
                 "level-up coupon");
             await senders.SendAcceptableQuestListAsync(context, cancellationToken);
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Used level-up coupon {ItemId} at slot {Slot}; experience=+{Experience}, cumulative={CumulativeExperience}, level={PreviousLevel}->{Level}, SP=+{SkillPoints}, stack remaining={RemainingCount}.",
                 LevelUpCouponItemId,
                 slot,
@@ -402,8 +401,8 @@ public sealed class UseStackableItemHandler(
                 var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
-                logger.LogInformation(
+                await context.Queue.SendAsync(error, Name, cancellationToken);
+                RuntimeLogger.Info(
                     "Rejected PvP experience item {ItemId} at slot {Slot}; failure={Failure}, stack={RemainingCount}.",
                     consumedItem.ItemId,
                     slot,
@@ -420,13 +419,13 @@ public sealed class UseStackableItemHandler(
                 InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
-            await context.Outbound.SendAsync(pvpItemReply, Name, cancellationToken);
+            await context.Queue.SendAsync(pvpItemReply, Name, cancellationToken);
 
             var pvpInventoryRefresh = builders.CreateMainInventoryPacket(
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(pvpInventoryRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(pvpInventoryRefresh, Name, cancellationToken);
 
             await senders.SendPvpRecordAsync(context, cancellationToken);
             await senders.SendTypedMessageNotificationSafeAsync(context, 
@@ -434,7 +433,7 @@ public sealed class UseStackableItemHandler(
                 0,
                 ClientEncoding.GetBytes(
                     $"获得{pvpUseResult.GrantedExperience}点决斗经验值"));
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Used PvP experience item {ItemId} at slot {Slot}; PvP points {PreviousPoints}->{Points}, grade={Grade}, counters win={Wins}, play={PlayCount}, count={PvpCount}, stack remaining={RemainingCount}.",
                 consumedItem.ItemId,
                 slot,
@@ -471,8 +470,8 @@ public sealed class UseStackableItemHandler(
                 var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(error, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Rejected Cera booster item {ItemId} at slot {Slot}; dungeon={DungeonId}, failure={Failure}.",
                     consumedItem.ItemId,
                     slot,
@@ -514,8 +513,8 @@ public sealed class UseStackableItemHandler(
                 var error = InventoryPacketBuilders.CreateUseStackableItemError(
                     errorCode: 17,
                     listType);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(error, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Could not persist Cera booster item {ItemId} at slot {Slot}.",
                     consumedItem.ItemId,
                     slot);
@@ -533,22 +532,22 @@ public sealed class UseStackableItemHandler(
                 InventoryPacketBuilders.CreateUseStackableItemReply(
                     slot,
                     listType);
-            await context.Outbound.SendAsync(boosterReply, Name, cancellationToken);
+            await context.Queue.SendAsync(boosterReply, Name, cancellationToken);
 
             var mainRefresh = builders.CreateMainInventoryPacket(
                 session.Currency.Gold,
                 session.Currency.VictoryPoints,
                 session.Inventory.Main.Values);
-            await context.Outbound.SendAsync(mainRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(mainRefresh, Name, cancellationToken);
 
             var avatarRefresh = builders.CreateAvatarInventoryPacket(
                 session.Inventory.Avatar.Values);
-            await context.Outbound.SendAsync(avatarRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(avatarRefresh, Name, cancellationToken);
 
             foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creatureRefresh, Name, cancellationToken);
+                await context.Queue.SendAsync(creatureRefresh, Name, cancellationToken);
             }
 
             if (warehouseCapacityChanged || hasWarehouseUpgradeReward)
@@ -597,7 +596,7 @@ public sealed class UseStackableItemHandler(
                     session.Character.Active.CharacterNo);
             }
 
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Opened Cera booster item {ItemId} at slot {Slot}; rewards={Rewards}, overflowMails={OverflowMailCount}.",
                 boosterPlan.BoosterItemId,
                 slot,
@@ -614,8 +613,8 @@ public sealed class UseStackableItemHandler(
             var error = InventoryPacketBuilders.CreateUseStackableItemError(
                 errorCode: 17,
                 listType);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected non-fatigue stackable item {ItemId} outside a dungeon at slot {Slot}.",
                 consumedItem.ItemId,
                 slot);
@@ -650,8 +649,8 @@ public sealed class UseStackableItemHandler(
             InventoryPacketBuilders.CreateUseStackableItemReply(
                 slot,
                 listType);
-        await context.Outbound.SendAsync(dungeonItemReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(dungeonItemReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Consumed dungeon item {ItemId} from listType={ListType}, slot={Slot}; remaining={Remaining}, body={Body}.",
             consumedItem.ItemId,
             listType,

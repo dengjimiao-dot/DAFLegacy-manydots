@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// BACK_2_VILLAGE (CMD 142): returns from the dungeon-selection screen (07 §5 group 13).
 /// </summary>
-public sealed class BackToVillageHandler(    ILogger<BackToVillageHandler> logger,
+public sealed class BackToVillageHandler(
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.BACK_2_VILLAGE;
@@ -22,7 +22,7 @@ public sealed class BackToVillageHandler(    ILogger<BackToVillageHandler> logge
         var session = context.State;
         if (session.Character.Active is { TutorialStarted: false })
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Ignored return from dungeon selection for {CharacterId} until the tutorial is complete.",
                 session.Character.Active.Id);
             return;

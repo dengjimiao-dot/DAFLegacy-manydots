@@ -56,7 +56,7 @@ public sealed class ConnectionTimerScheduler : IConnectionTimers
             }
             catch (Exception exception)
             {
-                owner.Logger.LogWarning(
+                RuntimeLogger.Warn(
                     exception,
                     "Connection timer callback failed on session {SessionId}.",
                     owner.Runtime.Id);

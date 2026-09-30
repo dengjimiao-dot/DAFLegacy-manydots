@@ -7,8 +7,8 @@ namespace DFLegacy.Server;
 /// DECREASE_DURABILITY (CMD 51): applies the client-reported durability decay (07 §5 group 9).
 /// </summary>
 public sealed class DecreaseDurabilityHandler(JsonGameStore store,
-    ItemCatalog itemCatalog,
-    ILogger<DecreaseDurabilityHandler> logger) : IGameCommandHandler
+    ItemCatalog itemCatalog
+    ) : IGameCommandHandler
 {
 
     public ushort ProtocolId => (byte)CmdPacketType.DECREASE_DURABILITY;
@@ -38,7 +38,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 17);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -47,7 +47,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -75,7 +75,7 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
                 4);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -84,8 +84,8 @@ public sealed class DecreaseDurabilityHandler(JsonGameStore store,
         var durabilityReply =
             InventoryPacketBuilders.CreateDecreaseDurabilityReply(
                 equipmentSlot);
-        await context.Outbound.SendAsync(durabilityReply, Name, cancellationToken);
-        logger.LogDebug(
+        await context.Queue.SendAsync(durabilityReply, Name, cancellationToken);
+        RuntimeLogger.Debug(
             "Decreased equipped item {ItemId} durability at slot {Slot}: {OldDurability}->{NewDurability}",
             usedEquipment.ItemId,
             equipmentSlot,

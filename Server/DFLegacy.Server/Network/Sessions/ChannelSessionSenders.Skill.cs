@@ -13,7 +13,7 @@ public sealed partial class ChannelSessionSenders
         var skillInfo = SkillPacketBuilders.CreateSkillInfo(
             checked((ushort)Math.Min(context.State.Skill.CurrentSp, ushort.MaxValue)),
             GetCurrentGameSkills(context));
-        await context.Outbound.SendAsync(skillInfo, "SKILL_INFO", cancellationToken);
+        await context.Queue.SendAsync(skillInfo, "SKILL_INFO", cancellationToken);
     }
 
     public int ApplyLevelUpSkillPoints(ConnectionContext context, CharacterExperienceGrant progression)

@@ -1,9 +1,9 @@
 namespace DFLegacy.Server;
 
 /// <summary>
-/// 十六进制格式化工具(自 EntranceService.LogPacket 内联实现拆出,
-/// docs/design/07 §11 日志统一):只做字节到文本的排版,不涉及任何
-/// 加密/解密或协议语义,供统一日志与逐包捕获共用。
+/// 十六进制格式化工具(docs/design/07 §11 日志统一的共享拆分,
+/// 逐包日志本体现居同目录 PacketTraceLogger):只做字节到文本的排版,
+/// 不涉及任何加密/解密或协议语义,供统一日志与逐包捕获共用。
 /// </summary>
 public static class HexDump
 {

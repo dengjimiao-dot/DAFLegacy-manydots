@@ -13,8 +13,8 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class CharacterDatagramService(
     ServerOptions options,
-    RuntimeState runtime,
-    ILogger<CharacterDatagramService> logger) : BackgroundService
+    RuntimeState runtime
+) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, DatagramSession> _sessions = new();
     private UdpClient? _listener;
@@ -23,7 +23,7 @@ public sealed class CharacterDatagramService(
     {
         if (!options.CharacterDatagram.Enabled)
         {
-            logger.LogWarning("Character datagram listener is disabled.");
+            RuntimeLogger.Warn("Character datagram listener is disabled.");
             return;
         }
 
@@ -31,7 +31,7 @@ public sealed class CharacterDatagramService(
             IPAddress.Parse(options.CharacterDatagram.Host),
             options.CharacterDatagram.Port);
         _listener = new UdpClient(endpoint);
-        logger.LogInformation("Character datagram listener ready at {Endpoint}", endpoint);
+        RuntimeLogger.Info("Character datagram listener ready at {Endpoint}", endpoint);
 
         try
         {
@@ -75,7 +75,7 @@ public sealed class CharacterDatagramService(
             options.HexDumpLimit);
         if (options.EnablePacketTracing)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "RX {SessionId} character-datagram remote={Remote} length={Length} body={Body}",
                 session.Runtime.Id,
                 remote,
@@ -88,7 +88,7 @@ public sealed class CharacterDatagramService(
             session.PendingHeader = null;
             if (datagram.Length != pending.PayloadLength)
             {
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "Character datagram {Protocol} expected {Expected} payload bytes but received {Actual}.",
                     pending.ProtocolId,
                     pending.PayloadLength,
@@ -103,12 +103,12 @@ public sealed class CharacterDatagramService(
 
         if (!LegacyDatagramProtocol.TryReadHeader(datagram, out var header))
         {
-            logger.LogWarning("Ignored character datagram without a valid 11-byte header from {Remote}.", remote);
+            RuntimeLogger.Warn("Ignored character datagram without a valid 11-byte header from {Remote}.", remote);
             return;
         }
 
         session.Runtime.LastProtocolId = header.ProtocolId;
-        logger.LogDebug(
+        RuntimeLogger.Debug(
             "Character datagram header protocol={Protocol} total={Total} payload={Payload} version={Version}",
             header.ProtocolId,
             header.TotalLength,
@@ -138,7 +138,7 @@ public sealed class CharacterDatagramService(
             case 11:
                 if (payload.Length != 32)
                 {
-                    logger.LogWarning("Character key request had unexpected length {Length}.", payload.Length);
+                    RuntimeLogger.Warn("Character key request had unexpected length {Length}.", payload.Length);
                     EndSession(key, session);
                     return;
                 }
@@ -154,7 +154,7 @@ public sealed class CharacterDatagramService(
             case 5:
                 if (payload.Length % 16 != 0)
                 {
-                    logger.LogWarning("Character login request was not AES block aligned.");
+                    RuntimeLogger.Warn("Character login request was not AES block aligned.");
                     EndSession(key, session);
                     return;
                 }
@@ -187,7 +187,7 @@ public sealed class CharacterDatagramService(
                 break;
 
             default:
-                logger.LogWarning(
+                RuntimeLogger.Warn(
                     "No character datagram handler for protocol {Protocol}; payload={Payload}",
                     header.ProtocolId,
                     Dump(payload));
@@ -230,7 +230,7 @@ public sealed class CharacterDatagramService(
             protocolId);
         if (options.EnablePacketTracing)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "TX character-datagram remote={Remote} protocol={Protocol} length={Length} body={Body}",
                 remote,
                 protocolId,
@@ -244,11 +244,11 @@ public sealed class CharacterDatagramService(
         try
         {
             var plaintext = LegacyDatagramProtocol.DecryptAesEcb(payload, new byte[16]);
-            logger.LogInformation("Character initial AES plaintext={Plaintext}", Dump(plaintext));
+            RuntimeLogger.Info("Character initial AES plaintext={Plaintext}", Dump(plaintext));
         }
         catch (CryptographicException exception)
         {
-            logger.LogWarning(exception, "Could not inspect the initial character datagram AES block.");
+            RuntimeLogger.Warn(exception, "Could not inspect the initial character datagram AES block.");
         }
     }
 
@@ -257,11 +257,11 @@ public sealed class CharacterDatagramService(
         try
         {
             var plaintext = LegacyDatagramProtocol.DecryptAesEcb(payload, keyMaterial.AsSpan(0, 16));
-            logger.LogInformation("Decrypted {Description} payload={Plaintext}", description, Dump(plaintext));
+            RuntimeLogger.Info("Decrypted {Description} payload={Plaintext}", description, Dump(plaintext));
         }
         catch (CryptographicException exception)
         {
-            logger.LogWarning(exception, "Could not inspect {Description} AES payload.", description);
+            RuntimeLogger.Warn(exception, "Could not inspect {Description} AES payload.", description);
         }
     }
 

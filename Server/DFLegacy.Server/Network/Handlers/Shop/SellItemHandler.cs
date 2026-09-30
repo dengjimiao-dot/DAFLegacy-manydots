@@ -8,8 +8,8 @@ namespace DFLegacy.Server;
 /// SELL_ITEM (CMD 24): NPC shop sales with the sell-price table (07 §5 group 10).
 /// </summary>
 public sealed class SellItemHandler(JsonGameStore store,
-    ItemCatalog itemCatalog,
-    ILogger<SellItemHandler> logger) : IGameCommandHandler
+    ItemCatalog itemCatalog
+    ) : IGameCommandHandler
 {
 
     private static readonly Encoding ClientEncoding = PvfEncodings.Cp936Lossy();
@@ -39,7 +39,7 @@ public sealed class SellItemHandler(JsonGameStore store,
                 out var unitSellPrice))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 0x11);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -71,8 +71,8 @@ public sealed class SellItemHandler(JsonGameStore store,
             itemSpace: listType,
             slot,
             soldCount: checked((ushort)soldCount));
-        await context.Outbound.SendAsync(sellReply, Name, cancellationToken);
-        logger.LogInformation(
+        await context.Queue.SendAsync(sellReply, Name, cancellationToken);
+        RuntimeLogger.Info(
             "Sold item {ItemId} x{Count} from slot {Slot}; unitPrice={UnitPrice}, durability={Durability}, gold={Gold}",
             soldItem.ItemId,
             soldCount,

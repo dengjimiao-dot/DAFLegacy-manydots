@@ -7,7 +7,6 @@ namespace DFLegacy.Server;
 /// FINISH_QUEST (CMD 36): settles quest rewards, experience and growth-skill changes, then refreshes inventory and skill panels (07 §5 group 7).
 /// </summary>
 public sealed class FinishQuestHandler(
-    ILogger<FinishQuestHandler> logger,
     CharacterSessionRegistry characterSessions,JsonGameStore store,
     ItemCatalog itemCatalog,
     QuestCatalog questCatalog,
@@ -32,7 +31,7 @@ public sealed class FinishQuestHandler(
         if (session.Character.Active is null || request.Body.Length < 4)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -45,7 +44,7 @@ public sealed class FinishQuestHandler(
         if (questIndex < 0 || !hasQuestDefinition)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -74,7 +73,7 @@ public sealed class FinishQuestHandler(
                 if (savedQuestProgress is null)
                 {
                     var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-                    await context.Outbound.SendAsync(error, Name, cancellationToken);
+                    await context.Queue.SendAsync(error, Name, cancellationToken);
                     return;
                 }
 
@@ -88,7 +87,7 @@ public sealed class FinishQuestHandler(
                     QuestPacketBuilders.CreateSetQuestTriggerReply(
                         questId,
                         authoritativeTrigger);
-                await context.Outbound.SendAsync(triggerUpdate, Name, cancellationToken);
+                await context.Queue.SendAsync(triggerUpdate, Name, cancellationToken);
             }
         }
 
@@ -96,8 +95,8 @@ public sealed class FinishQuestHandler(
                 session.Quest.Current[questIndex].Trigger))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected unfinished quest {QuestId}; remaining trigger={Trigger}.",
                 questId,
                 session.Quest.Current[questIndex].Trigger);
@@ -109,8 +108,8 @@ public sealed class FinishQuestHandler(
                 out var questGrowNumber))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected quest {QuestId} with invalid growth reward {RewardType}:{GrowthReward}.",
                 questId,
                 questDefinition.RewardType,
@@ -128,8 +127,8 @@ public sealed class FinishQuestHandler(
                     || previousAwakeningType != 0)))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected stale growth quest {QuestId}; chain={ChainType}, growType={GrowType}, awakening={AwakeningType}.",
                 questId,
                 questChainType,
@@ -146,8 +145,8 @@ public sealed class FinishQuestHandler(
                 out var consumptionPlan))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected quest {QuestId} because its seeking requirements changed before completion.",
                 questId);
             return;
@@ -163,8 +162,8 @@ public sealed class FinishQuestHandler(
                 out var evolutionFailure))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Could not finish Creature evolution quest {QuestId}: {Reason}",
                 questId,
                 evolutionFailure);
@@ -190,8 +189,8 @@ public sealed class FinishQuestHandler(
         if (!rewardPlan.Success)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Could not finish quest {QuestId}: {Reason}",
                 questId,
                 rewardPlan.Error);
@@ -248,8 +247,8 @@ public sealed class FinishQuestHandler(
                     out nextSkills))
             {
                 var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-                await context.Outbound.SendAsync(error, Name, cancellationToken);
-                logger.LogWarning(
+                await context.Queue.SendAsync(error, Name, cancellationToken);
+                RuntimeLogger.Warn(
                     "Rejected awakening quest {QuestId}: no valid skill slot remains for its PVF grants.",
                     questId);
                 return;
@@ -263,8 +262,8 @@ public sealed class FinishQuestHandler(
                     growthSkillChanges)))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
-            logger.LogWarning(
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+            RuntimeLogger.Warn(
                 "Rejected growth quest {QuestId}: its PVF skill changes could not be applied atomically.",
                 questId);
             return;
@@ -324,7 +323,7 @@ public sealed class FinishQuestHandler(
         if (completedCharacter is null)
         {
             var error = ConnectionPacketBuilders.CreateCommandError(request, 22);
-            await context.Outbound.SendAsync(error, Name, cancellationToken);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
 
@@ -386,7 +385,7 @@ public sealed class FinishQuestHandler(
                     groundItem.GetClientDurability(itemCatalog),
                     groundItem.OwnerUserId,
                     groundItem.GetClientItemAttr(itemCatalog)));
-            await context.Outbound.SendAsync(dropNotification, Name, cancellationToken);
+            await context.Queue.SendAsync(dropNotification, Name, cancellationToken);
         }
 
         if (creatureEvolution is not null)
@@ -395,12 +394,12 @@ public sealed class FinishQuestHandler(
                 PetsPacketBuilders.CreateCreatureEvolution(
                     checked((byte)questDefinition.EvolutionCreatureKind),
                     session.Character.LocalUserId);
-            await context.Outbound.SendAsync(evolutionNotification, Name, cancellationToken);
+            await context.Queue.SendAsync(evolutionNotification, Name, cancellationToken);
 
             foreach (var creaturePacket in builders.CreateCreatureInventoryPackets(
                          session.Inventory.Creature.Values))
             {
-                await context.Outbound.SendAsync(creaturePacket, Name, cancellationToken);
+                await context.Queue.SendAsync(creaturePacket, Name, cancellationToken);
             }
         }
 
@@ -434,18 +433,18 @@ public sealed class FinishQuestHandler(
                     change.SkillClass,
                     change.Level))
                 .ToArray());
-        await context.Outbound.SendAsync(finishQuestReply, Name, cancellationToken);
+        await context.Queue.SendAsync(finishQuestReply, Name, cancellationToken);
         var inventoryRefresh = builders.CreateMainInventoryPacket(
             session.Currency.Gold,
             session.Currency.VictoryPoints,
             session.Inventory.Main.Values);
-        await context.Outbound.SendAsync(inventoryRefresh, Name, cancellationToken);
+        await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
         if (warehouseCapacityChanged)
         {
             var warehouseRefresh = builders.CreateWarehousePacket(
                 session.Inventory.Warehouse.Values,
                 session.Inventory.WarehouseCapacity);
-            await context.Outbound.SendAsync(warehouseRefresh, Name, cancellationToken);
+            await context.Queue.SendAsync(warehouseRefresh, Name, cancellationToken);
         }
         foreach (var change in nextQuestTriggerChanges)
         {
@@ -453,7 +452,7 @@ public sealed class FinishQuestHandler(
                 QuestPacketBuilders.CreateSetQuestTriggerReply(
                     change.QuestId,
                     change.NewTrigger);
-            await context.Outbound.SendAsync(triggerUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(triggerUpdate, Name, cancellationToken);
         }
         if (progression.LeveledUp || growthAdvanced)
         {
@@ -473,7 +472,7 @@ public sealed class FinishQuestHandler(
 
         await senders.SendDungeonPermissionsAsync(context, cancellationToken);
         await senders.SendAcceptableQuestListAsync(context, cancellationToken);
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Finished quest {QuestId}; chain={ChainType}, consumedItems={ConsumedItemCount}, insertedItems={InsertedItemCount}, goldCost={GoldCost}, victoryPointCost={VictoryPointCost}, rewardItems={ItemCount}, gold=+{Gold}, exp=+{Experience}, SP={SkillPoints}, level={OldLevel}->{Level}, growType={OldGrowType}->{GrowType}, awakening={OldAwakening}->{Awakening}.",
             questId,
             questChainType,
@@ -493,7 +492,7 @@ public sealed class FinishQuestHandler(
             completedCharacter.AwakeningType);
         if (creatureEvolution is not null)
         {
-            logger.LogInformation(
+            RuntimeLogger.Info(
                 "Evolved Creature uid {CreatureUid} in slot {Slot}: item {SourceItemId}->{EvolvedItemId} for quest {QuestId}.",
                 creatureEvolution.CreatureUid,
                 creatureEvolution.Slot,

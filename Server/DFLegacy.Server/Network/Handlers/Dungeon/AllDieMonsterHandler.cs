@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// ALLDIE_MONSTER (CMD 148): clears all alive monsters of the room (07 §5 group 13).
 /// </summary>
-public sealed class AllDieMonsterHandler(    ILogger<AllDieMonsterHandler> logger) : IGameCommandHandler
+public sealed class AllDieMonsterHandler(    ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.ALLDIE_MONSTER;
 
@@ -19,7 +19,7 @@ public sealed class AllDieMonsterHandler(    ILogger<AllDieMonsterHandler> logge
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
         var session = context.State;
-        logger.LogInformation(
+        RuntimeLogger.Info(
             "Accepted DFLegacy ALLDIE_MONSTER for dungeon {DungeonId}, room ({RoomX},{RoomY}); waiting for normal monster-death confirmations.",
             session.Dungeon.CurrentDungeonId,
             session.Dungeon.RoomX,

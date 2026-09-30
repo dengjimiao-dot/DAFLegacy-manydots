@@ -15,13 +15,52 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
 {
     private readonly ConcurrentDictionary<CharacterSessionKey, CharacterSessionLease> _activeCharacters = new();
 
+    // Per-channel connected-session counts (M2): incremented when a channel
+    // listener accepts a connection, decremented when its read loop finally
+    // runs. Feeds the entrance metadata CurrentUsers per channel record.
+    private readonly ConcurrentDictionary<int, int> _channelConnections = new();
+
     // Per-connection outbound channels for cross-session pushes (party
     // notifications, town presence). Keyed by the owning RuntimeSession id;
     // channels detach when the connection's read loop finally block runs.
     private readonly ConcurrentDictionary<Guid, Action<GameServerPacket>> _packetChannels = new();
 
-    /// <summary>当前在册角色会话数（频道 CurrentUsers 动态上报源，拥挤度按在线/容量判定）。</summary>
+    /// <summary>当前在册角色会话数（跨频道总数，诊断用；元数据上报改用按频道计数）。</summary>
     public int SessionCount => _activeCharacters.Count;
+
+    /// <summary>频道 <paramref name="channelNumber"/> 的已连接会话数（元数据 CurrentUsers 源）。</summary>
+    public int GetChannelConnectionCount(int channelNumber) =>
+        _channelConnections.GetValueOrDefault(channelNumber);
+
+    public void AddChannelConnection(int channelNumber) =>
+        _channelConnections.AddOrUpdate(channelNumber, 1, (_, count) => count + 1);
+
+    public void RemoveChannelConnection(int channelNumber)
+    {
+        while (true)
+        {
+            if (!_channelConnections.TryGetValue(channelNumber, out var current))
+            {
+                return;
+            }
+
+            if (current <= 1)
+            {
+                if (((ICollection<KeyValuePair<int, int>>)_channelConnections).Remove(
+                        new(channelNumber, current)))
+                {
+                    return;
+                }
+
+                continue;
+            }
+
+            if (_channelConnections.TryUpdate(channelNumber, current - 1, current))
+            {
+                return;
+            }
+        }
+    }
 
     /// <summary>Registers this connection's serialized write delegate so other
     /// sessions can deliver packets to it.</summary>
@@ -458,10 +497,10 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
         // path (sub_849280 -> sub_846A10 @0x846A27), which resolves the
         // speaker by the packet uid in the town-user table, so residents of
         // the speaker's area see the bubble above the speaker's head and the
-        // uid match shows the speaker their own bubble. Only flag-unequal
-        // copies render the plain banner, and those belong to other-channel
-        // clients — never to sessions of this process's single configured
-        // channel — so every session here receives the speaker-flagged copy.
+        // uid match shows the speaker their own bubble. The flag carries the
+        // speaker's listener-bound channel (M2): same-channel recipients take
+        // the chat-line copy, cross-channel recipients fail the comparison and
+        // render the client's native banner-only display.
         var leases = SnapshotDistinctSessions();
         foreach (var lease in leases)
         {

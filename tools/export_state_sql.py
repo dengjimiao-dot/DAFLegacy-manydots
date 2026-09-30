@@ -118,6 +118,17 @@ def num(value, default=0):
     return value if value is not None else default
 
 
+def opt(value):
+    """可空标量透传：JSON null → SQL NULL，不落 0。
+
+    九个可空物品标量（avatar_* / creature_* / equipment_quality_seed）在消费侧
+    一律 `?? 回退值`，null 与 0 的下发字节不同（线路耐久取
+    AvatarAbilityIndex ?? Durability、add_info 取 AvatarRemainingSeconds ??
+    CountOrValue）；种子按 0 落库会把全服耐久压成 0、宠物条目 uid 覆盖成 0
+    （客户端按 uid 查宠物状态对象落空即崩溃）。"""
+    return value
+
+
 def guid_text(value) -> str:
     return str(value) if value else ""
 
@@ -303,15 +314,15 @@ def build_rows(state: dict):
                         int(num(item.get("State"))),
                         int(num(item.get("Durability"))),
                         int(num(item.get("SealState"))),
-                        int(num(item.get("AvatarExpireAt"))),
-                        int(num(item.get("AvatarAbilityIndex"))),
-                        int(num(item.get("CreatureStomach"))),
-                        int(num(item.get("CreatureExperience"))),
-                        int(num(item.get("CreatureLevel"))),
-                        str(item.get("CreatureName") or ""),
-                        b(item.get("CreatureNoCharge")),
-                        int(num(item.get("CreatureStomachRemainderSeconds"))),
-                        int(num(item.get("EquipmentQualitySeed"))),
+                        opt(item.get("AvatarExpireAt")),
+                        opt(item.get("AvatarAbilityIndex")),
+                        opt(item.get("CreatureStomach")),
+                        opt(item.get("CreatureExperience")),
+                        opt(item.get("CreatureLevel")),
+                        opt(item.get("CreatureName")),
+                        opt(item.get("CreatureNoCharge")),
+                        opt(item.get("CreatureStomachRemainderSeconds")),
+                        opt(item.get("EquipmentQualitySeed")),
                         guid_text(item.get("InstanceId"))))
 
             for skill in (character.get("Skills") or []):
@@ -341,9 +352,9 @@ def build_rows(state: dict):
                     int(num(att.get("ItemId"))), int(num(att.get("CountOrValue"))),
                     int(num(att.get("State"))), int(num(att.get("Durability"))),
                     int(num(att.get("SealState"))),
-                    int(num(att.get("AvatarExpireAt"))),
-                    int(num(att.get("AvatarAbilityIndex"))),
-                    int(num(att.get("EquipmentQualitySeed"))),
+                    opt(att.get("AvatarExpireAt")),
+                    opt(att.get("AvatarAbilityIndex")),
+                    opt(att.get("EquipmentQualitySeed")),
                     guid_text(att.get("InstanceId")),
                     b(mail.get("IsNew"), default=True), int(num(mail.get("State"), 1)),
                     int(num(mail.get("SentAt"))), int(num(mail.get("ExpiresAt")))))
@@ -358,6 +369,8 @@ def build_rows(state: dict):
 def sql_literal(value) -> str:
     if value is None:
         return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
     if isinstance(value, int):
         return str(value)
     return "'" + str(value).replace("'", "''") + "'"
@@ -421,7 +434,9 @@ def verify(conn: sqlite3.Connection, state: dict, stats: dict, rows: tuple) -> l
     expect("premium", conn.execute("SELECT COUNT(*) FROM account_premium").fetchone()[0],
            len(rows[1]))
 
-    # 物品逐容器行数 + 每件物品 (slot,item_id,count,state,durability,seal) 多重集
+    # 物品逐容器行数 + 每件物品全部 16 列（含九个可空标量）多重集比对。
+    # 可空列必须在比对集内：null 与 0 的下发字节不同，压平即回归（线路耐久
+    # 恒 0、宠物条目 uid 覆盖为 0）。
     for account in accounts:
         for character in (account.get("Characters") or []):
             name = character.get("Name")
@@ -436,11 +451,25 @@ def verify(conn: sqlite3.Connection, state: dict, stats: dict, rows: tuple) -> l
                 wanted_items = sorted(
                     (int(num(t.get("Slot"))), int(num(t.get("ItemId"))),
                      int(num(t.get("CountOrValue"))), int(num(t.get("State"))),
-                     int(num(t.get("Durability"))), int(num(t.get("SealState"))))
+                     int(num(t.get("Durability"))), int(num(t.get("SealState"))),
+                     opt(t.get("AvatarExpireAt")),
+                     opt(t.get("AvatarAbilityIndex")),
+                     opt(t.get("CreatureStomach")),
+                     opt(t.get("CreatureExperience")),
+                     opt(t.get("CreatureLevel")),
+                     opt(t.get("CreatureName")),
+                     opt(t.get("CreatureNoCharge")),
+                     opt(t.get("CreatureStomachRemainderSeconds")),
+                     opt(t.get("EquipmentQualitySeed")),
+                     guid_text(t.get("InstanceId")))
                     for t in (character.get(json_key) or []))
                 stored_items = sorted(conn.execute(
                     "SELECT slot_index, item_id, item_count, item_state,"
-                    " durability, seal_state FROM character_items"
+                    " durability, seal_state, avatar_remaining_seconds,"
+                    " avatar_ability_index, creature_stomach,"
+                    " creature_experience, creature_level, creature_name,"
+                    " creature_no_charge, creature_stomach_remainder_seconds,"
+                    " equipment_quality_seed, instance_id FROM character_items"
                     " WHERE character_id=? AND list_type=?", (cid, container)))
                 if wanted_items != stored_items:
                     problems.append(
@@ -510,13 +539,13 @@ def main() -> int:
 -- DAFLegacy 60A1 数据种子（仅 test 账号）
 -- 生成工具：tools/export_state_sql.py
 -- 生成时间：{iso_now()}
--- 数据来源：{state_path}（只保留 username=='{TEST_USERNAME}' 的账号，
+-- 数据来源：{state_path.as_posix()}（只保留 username=='{TEST_USERNAME}' 的账号，
 --           其余账号不进入本产物；密码哈希为公开默认凭据 test/test）
 -- 适用基线：{BASELINE_ID}（schema_version {SCHEMA_VERSION}）
 --
 -- 用法（全新库）：
---   sqlite3 game.db < docs/sql/act1_schema.sql
---   sqlite3 game.db < docs/sql/data_schema.sql
+--   sqlite3 game.db < {schema_path.as_posix()}
+--   sqlite3 game.db < {out_path.as_posix()}
 --
 -- 运行期规范化（NormalizeCharacterExperience / SettleWarehouseUpgradeItems /
 -- 预置角色刷新）不在本文件内，由服务端启动流程执行。

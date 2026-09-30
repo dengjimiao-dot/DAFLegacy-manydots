@@ -62,15 +62,16 @@ internal static class DungeonClearExperienceSmokeTests
                 channelDirectory,
                 NullLogger<DungeonExperienceCatalog>.Instance);
             var dungeon = new DungeonDefinition(1, 1, 1, 1, 1, 0, 0, 0, 0, "B");
-            check(catalog.GetChannelBonusRate(1) == 0.1 && catalog.GetChannelBonusRate(2) == 0.1
-                && catalog.GetChannelBonusRate(3) == 0 && catalog.GetChannelBonusRate(999) == 0,
+            check(catalog.GetChannelBonusRate(15, 1) == 0.1 && catalog.GetChannelBonusRate(15, 2) == 0.1
+                && catalog.GetChannelBonusRate(15, 3) == 0 && catalog.GetChannelBonusRate(15, 999) == 0
+                && catalog.GetChannelBonusRate(16, 1) == 0.3,
                 "channel EXP matches server, channel and dungeon group without parsing localized-name digits");
             check(catalog.GetEventBonusRate(starts.AddTicks(-1)) == 0
                 && catalog.GetEventBonusRate(starts) == 0.5
                 && catalog.GetEventBonusRate(starts.AddDays(1)) == 0,
                 "clear EXP event uses an inclusive start and exclusive end");
             var bonuses = new DungeonClearBonusContext(true, true, true, 0.1,
-                catalog.GetEventBonusRate(starts), catalog.GetChannelBonusRate(1));
+                catalog.GetEventBonusRate(starts), catalog.GetChannelBonusRate(15, 1));
             var result = catalog.CalculateClearExperience(1, dungeon, 0, 70, 20, bonuses: bonuses);
             check(result.BaseExperience == 300 && result.RankBonus == 30 && result.PartyBonus == 0
                 && result.AvatarBonus == 6 && result.CreatureBonus == 6 && result.BlackDiamondBonus == 15

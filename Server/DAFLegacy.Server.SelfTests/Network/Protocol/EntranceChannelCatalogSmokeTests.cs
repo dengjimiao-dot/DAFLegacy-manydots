@@ -34,8 +34,9 @@ internal static class EntranceChannelCatalogSmokeTests
             "channel_info_dname_0>艾尔文防线\n"
             + "<chn_channel_info_004>格兰之森 A\n"
             + "channel_info_cname_1>新手 - 洛兰\n"
-            + "a>测试频道\n");
-        check(displayNames is { Count: 4 }
+            + "a>测试频道\n"
+            + "num>洛兰 2\n");
+        check(displayNames is { Count: 5 }
               && displayNames!["channel_info_dname_0"] == "艾尔文防线"
               && displayNames["chn_channel_info_004"] == "格兰之森 A",
             "string table parses key>value lines with and without angle brackets");
@@ -63,21 +64,22 @@ internal static class EntranceChannelCatalogSmokeTests
             12 `<4::c>`
             0 `<4::d>` 2 `[t]` 5
             13 `<4::missing>` 2 `[t]` 5
+            14 <4::num> 2 `[t]` 5
             [/server]
             """, displayNames);
         check(lenient is { Count: 1 } && lenient[0].ChannelNumber == 11,
-            "etc parser drops out-of-range, typeless and unresolved-name rows");
+            "etc parser drops out-of-range, typeless, unresolved and digit-bearing name rows");
         check(ChannelCatalog.TryParseChannelInfoEtc(null, displayNames) is null,
             "missing etc text parses to no catalog");
         check(ChannelCatalog.TryParseChannelInfoEtc("[server]\n1\n11 `<4::a>` 1 `[t]` 5\n", null) is null,
             "no display-name table resolves no catalog");
 
         var defaults = new EntranceChannel("127.0.0.1", 7001, 10, 3);
-        var composed = EntranceMetadata.BuildChannels(defaults, parsed);
+        var composed = EntranceMetadata.BuildChannels(defaults, parsed, channelPortBase: 20000);
         check(composed.Length == 700, "parsed catalog feeds the builder (2 etc channels + 8 default records)");
         var clientText = PvfEncodings.Cp936Lossy();
-        check(clientText.GetString(composed, 28, 20).TrimEnd('\0') == "格兰之森 A",
-            "etc channels carry the etc.chn.str display name in client text");
+        check(clientText.GetString(composed, 28, 20).TrimEnd('\0') == "格兰之森 A 11",
+            "record names compose the display name with the channel number (client atol semantics)");
         check(BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(48, 4)) == 10
               && BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(52, 4)) == 3,
             "records carry the configured capacity and the live session count");
@@ -85,39 +87,65 @@ internal static class EntranceChannelCatalogSmokeTests
             "groups without catalog entries keep the single default record");
         check(Encoding.ASCII.GetString(composed, 148, 15) == "Local Channel 1",
             "the default record keeps the verified fallback display name");
+        check(BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(72, 4)) == 20011
+              && BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(120, 4)) == 20200,
+            "catalog records advertise their per-channel listener ports (PortBase + number)");
+        check(Encoding.ASCII.GetString(composed, 56, 9) == "127.0.0.1"
+              && BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(192, 4)) == 7001,
+            "hosts stay shared and fallback-group records keep the legacy endpoint");
 
         var metadata = EntranceMetadata.BuildChannels(
             defaults,
             [
-                new ChannelCatalogEntry(0, 1, 0, null, "Local Channel 1"),
-                new ChannelCatalogEntry(0, 6, 0, null, "Local Channel 6"),
-                new ChannelCatalogEntry(0, 10, 0, null, "Local Channel 10")
-            ]);
+                new ChannelCatalogEntry(0, 1, 0, null, "Local Channel"),
+                new ChannelCatalogEntry(0, 6, 0, null, "Local Channel"),
+                new ChannelCatalogEntry(0, 10, 0, null, "Local Channel")
+            ],
+            channelPortBase: 20000);
         check(metadata.Length == 748, "nine-group catalog metadata length (3 + 8 default records)");
         check(Encoding.ASCII.GetString(metadata, 4, 4) == "cain", "catalog channels land in group 0 (cain)");
         check(Encoding.ASCII.GetString(metadata, 28, 15) == "Local Channel 1", "first catalog record display name");
         check(Encoding.ASCII.GetString(metadata, 76, 15) == "Local Channel 6", "catalog records sort by channel number");
-        check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(72, 4)) == 7001,
-            "catalog records share the configured game endpoint");
+        check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(72, 4)) == 20001
+              && BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(120, 4)) == 20006
+              && BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(168, 4)) == 20010,
+            "each catalog record carries PortBase + its channel number");
         check(Encoding.ASCII.GetString(metadata, 676, 5) == "anton", "ninth group preserved");
 
+        var populated = EntranceMetadata.BuildChannels(
+            defaults,
+            [
+                new ChannelCatalogEntry(0, 1, 0, null, "Local Channel"),
+                new ChannelCatalogEntry(0, 6, 0, null, "Local Channel")
+            ],
+            channelPortBase: 20000,
+            currentUserByChannel: number => number == 6 ? 4 : 0);
+        check(BinaryPrimitives.ReadInt32LittleEndian(populated.AsSpan(52, 4)) == 0
+              && BinaryPrimitives.ReadInt32LittleEndian(populated.AsSpan(100, 4)) == 4,
+            "catalog records carry their per-channel live session count");
+        check(BinaryPrimitives.ReadInt32LittleEndian(populated.AsSpan(172, 4)) == 3,
+            "fallback-group records keep the caller-provided session count");
+
         var single = EntranceMetadata.BuildSingleLocalChannel(defaults);
-        var fallback = EntranceMetadata.BuildChannels(defaults, []);
+        var fallback = EntranceMetadata.BuildChannels(defaults, [], channelPortBase: 20000);
         check(single.AsSpan().SequenceEqual(fallback),
             "empty catalog is byte-identical to the single-channel builder");
 
         check(Throws<ArgumentException>(() => EntranceMetadata.BuildChannels(defaults,
-                [new ChannelCatalogEntry(0, 1, 0, null, "A"), new ChannelCatalogEntry(0, 1, 0, null, "B")])),
+                [new ChannelCatalogEntry(0, 1, 0, null, "A"), new ChannelCatalogEntry(0, 1, 0, null, "B")], 20000)),
             "duplicate (group, number) entries are rejected");
         check(Throws<ArgumentOutOfRangeException>(() => EntranceMetadata.BuildChannels(defaults,
-                [new ChannelCatalogEntry(0, 0, 0, null, "A")])),
+                [new ChannelCatalogEntry(0, 0, 0, null, "A")], 20000)),
             "channel number 0 is rejected");
         check(Throws<ArgumentOutOfRangeException>(() => EntranceMetadata.BuildChannels(defaults,
-                [new ChannelCatalogEntry(9, 1, 0, null, "A")])),
+                [new ChannelCatalogEntry(9, 1, 0, null, "A")], 20000)),
             "group index beyond the nine groups is rejected");
         check(Throws<ArgumentException>(() => EntranceMetadata.BuildChannels(defaults,
-                [new ChannelCatalogEntry(0, 1, 0, null, "")])),
+                [new ChannelCatalogEntry(0, 1, 0, null, "")], 20000)),
             "entries without a resolved display name are rejected");
+        check(Throws<ArgumentException>(() => EntranceMetadata.BuildChannels(defaults,
+                [new ChannelCatalogEntry(0, 1, 0, null, "洛兰 2")], 20000)),
+            "display names containing digits are rejected (client atol semantics)");
         check(Throws<ArgumentException>(() => EntranceMetadata.BuildSingleLocalChannel(
                 new EntranceChannel("1234567890123456", 7001, 10, 1))),
             "oversized host fields are rejected");

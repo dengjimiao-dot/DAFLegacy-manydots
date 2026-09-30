@@ -97,7 +97,9 @@ public sealed class SetPlayResultHandler(
                                 MentorBonusRate: DungeonClearBonusContext.GetMentorBonusRate(
                                     session.Character.Active, characterSessions.IsOnline),
                                 EventBonusRate: dungeonExperienceCatalog.GetEventBonusRate(DateTimeOffset.UtcNow),
-                                ChannelBonusRate: dungeonExperienceCatalog.GetChannelBonusRate(session.Dungeon.CurrentDungeonId)))
+                                ChannelBonusRate: dungeonExperienceCatalog.GetChannelBonusRate(
+                                    session.SessionChannel?.Number ?? 0,
+                                    session.Dungeon.CurrentDungeonId)))
                         : GameDungeonClearExperienceBreakdown.Empty;
 
                 if (session.Character.Active is not null

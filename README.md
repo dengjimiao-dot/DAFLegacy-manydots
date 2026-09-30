@@ -124,7 +124,7 @@ dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release 
 | `Admin` | HTTP 监听地址和端口，默认 `127.0.0.1:8081`。 |
 | `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DAFLegacy.Mcp.dll`。 |
 | `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，默认 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |
-| `Entrance` / `Channel` | 登录入口和频道连接配置。 |
+| `Entrance` / `Channel` | 登录入口和频道连接配置。频道目录每条频道监听 `Channel.PortBase + 频道号`（默认 20000 起），`Channel.Port`（默认 7001）为遗留单频道端口。 |
 | `CharacterDatagram` / `GameplayDatagram` | 客户端 UDP 监听配置。 |
 | `Drop.Enabled` | 服务端掉落总开关。 |
 | `Drop.RatePercent` | 普通掉落倍率百分比，`100` 使用 PVF 原始概率。 |

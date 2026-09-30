@@ -44,6 +44,10 @@ public static class ChannelCatalog
     /// 组行 = 剥离 // 注释后仅剩单个整数的行（如「1 // 凯恩」）；仅组号 1 触发收集，
     /// 其余组号停止收集，与参考项目「只取组 1」一致。缺类型列或频道号越界
     /// （1..255 之外）的行同样丢弃，不中断解析。
+    /// 显示名含 ASCII 数字的行亦按坏行丢弃：60A1 客户端从元数据记录名提取全部
+    /// 数字字符推频道号（sub_8929C0，60a4-handshake-protocol.md §11.3），记录名
+    /// 由 EntranceMetadata 组合为「显示名 + 空格 + 频道号」，显示名自带数字会
+    /// 污染拼接结果导致错号或注册失败。
     /// </summary>
     public static IReadOnlyList<ChannelCatalogEntry>? TryParseChannelInfoEtc(
         string? text,
@@ -97,7 +101,8 @@ public static class ChannelCatalog
                 || !TryParseInvariantInt32(tokens[0], out var channelNumber)
                 || channelNumber is < 1 or > 255
                 || !TryFindChannelType(tokens, out var type)
-                || !TryResolveDisplayName(tokens, displayNames, out var displayName))
+                || !TryResolveDisplayName(tokens, displayNames, out var displayName)
+                || displayName.Any(char.IsAsciiDigit))
             {
                 continue;
             }

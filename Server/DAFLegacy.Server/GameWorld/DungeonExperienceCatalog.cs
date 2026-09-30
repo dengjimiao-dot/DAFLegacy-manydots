@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -38,7 +39,12 @@ public sealed class DungeonExperienceCatalog
     private readonly double _eventBonusRate;
     private readonly DateTimeOffset? _eventStartsAt;
     private readonly DateTimeOffset? _eventEndsAt;
-    private readonly IReadOnlyDictionary<ushort, double> _channelBonusRates;
+    private readonly ScriptFileSystem _scripts;
+    private readonly int _serverNumber;
+    private readonly int _defaultChannelNumber;
+    // M2: per-channel clear-EXP bonus tables (etc「额外经验比例」列), loaded
+    // lazily per listener-bound channel number.
+    private readonly ConcurrentDictionary<int, IReadOnlyDictionary<ushort, double>> _channelBonusRates = new();
 
     public DungeonExperienceCatalog(
         ServerOptions options,
@@ -56,7 +62,9 @@ public sealed class DungeonExperienceCatalog
         _eventBonusRate = NormalizeRate(settings.ClearBonusEventRate, 0);
         _eventStartsAt = settings.ClearBonusEventStartsAt;
         _eventEndsAt = settings.ClearBonusEventEndsAt;
-        _channelBonusRates = LoadChannelBonusRates(scripts, options.Channel.ServerNumber, channelDirectory.Session.Number);
+        _scripts = scripts;
+        _serverNumber = options.Channel.ServerNumber;
+        _defaultChannelNumber = channelDirectory.Session.Number;
 
         logger.LogInformation(
             "Loaded dungeon EXP rates from {Source}: monster={MonsterRate}, clear={ClearRate}, party=[{PartyRates}], difficulty=[{DifficultyRates}], rank=[{RankRates}], kind=[{KindRates}], operatorMonster={OperatorMonster}, operatorClear={OperatorClear}.",
@@ -70,9 +78,10 @@ public sealed class DungeonExperienceCatalog
             _operatorMonsterMultiplier,
             _operatorClearMultiplier);
         logger.LogInformation(
-            "Clear EXP bonus policy: blackDiamond={BlackDiamondRate}, event={EventRate}, eventStart={EventStart}, eventEnd={EventEnd}, server={ServerNumber}, channel={ChannelNumber}, matchingDungeons={DungeonCount}.",
+            "Clear EXP bonus policy: blackDiamond={BlackDiamondRate}, event={EventRate}, eventStart={EventStart}, eventEnd={EventEnd}, server={ServerNumber}, defaultChannel={ChannelNumber}, matchingDungeons={DungeonCount}.",
             _blackDiamondClearBonusRate, _eventBonusRate, _eventStartsAt, _eventEndsAt,
-            options.Channel.ServerNumber, channelDirectory.Session.Number, _channelBonusRates.Count);
+            _serverNumber, _defaultChannelNumber,
+            GetChannelBonusRates(_defaultChannelNumber).Count);
     }
 
     public int MonsterBaseRewardCount => MonsterBaseRewards.Length;
@@ -81,7 +90,10 @@ public sealed class DungeonExperienceCatalog
 
     public double ClearBonusRate => _rates.ClearBonusRate;
 
-    public double GetChannelBonusRate(ushort dungeonId) => _channelBonusRates.GetValueOrDefault(dungeonId);
+    /// <summary>指定频道的通关经验加成；会话未绑定频道时取目录首条目频道。</summary>
+    public double GetChannelBonusRate(int channelNumber, ushort dungeonId) =>
+        GetChannelBonusRates(channelNumber == 0 ? _defaultChannelNumber : channelNumber)
+            .GetValueOrDefault(dungeonId);
 
     public double GetEventBonusRate(DateTimeOffset now) =>
         (!_eventStartsAt.HasValue || now >= _eventStartsAt.Value)
@@ -226,6 +238,11 @@ public sealed class DungeonExperienceCatalog
             ChannelBonus = Bonus(bonuses.ChannelBonusRate)
         };
     }
+
+    private IReadOnlyDictionary<ushort, double> GetChannelBonusRates(int channelNumber) =>
+        _channelBonusRates.GetOrAdd(
+            channelNumber,
+            number => LoadChannelBonusRates(_scripts, _serverNumber, number));
 
     private static IReadOnlyDictionary<ushort, double> LoadChannelBonusRates(
         ScriptFileSystem scripts, int serverNumber, int channelNumber)

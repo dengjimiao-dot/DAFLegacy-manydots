@@ -14,9 +14,13 @@ public sealed record EntranceChannel(
 /// Builds the decompressed payload consumed by CNEntranceChannel::applyChannelInfo.
 /// The DAFLegacy 1.0.1.9 client requires all nine server-group records, followed by each
 /// group's fixed-width channel records (docs/protocol/60a4-handshake-protocol.md §11.3).
-/// Channel display names come from the catalog (resolved against etc/etc.chn.str);
-/// the game endpoint, capacity and live user count are server-wide values shared by
-/// every record.
+/// The record display name is composed as "{DisplayName} {ChannelNumber}": the client
+/// derives the channel number by concatenating every ASCII digit in that name
+/// (sub_8929C0) and drops the record when the (group, number) pair misses its channel
+/// table, so a digit-free name would register nothing; catalog display names carry no
+/// digits (enforced by ChannelCatalog, re-checked here). Catalog channels advertise
+/// their own per-channel listener port; capacity and the live user count are
+/// server-wide values shared by every record.
 /// </summary>
 public static class EntranceMetadata
 {
@@ -33,17 +37,24 @@ public static class EntranceMetadata
     public const string SingleChannelDisplayName = "Local Channel 1";
 
     public static byte[] BuildSingleLocalChannel(EntranceChannel channel) =>
-        BuildChannels(channel, []);
+        // An empty catalog never takes the per-channel branch, so the port
+        // base is irrelevant here; every record keeps the legacy endpoint.
+        BuildChannels(channel, [], channelPortBase: 0);
 
     /// <summary>
     /// Builds the entrance metadata from a channel catalog: catalog channels land
-    /// in their group (etc group 1 parses to group index 0) and every group
-    /// without entries keeps the single default record, preserving the nine-group
+    /// in their group (etc group 1 parses to group index 0), each advertising its
+    /// own listener endpoint (port = <paramref name="channelPortBase"/> + channel
+    /// number — M2 per-channel listeners) and its own live session count from
+    /// <paramref name="currentUserByChannel"/>; every group without entries keeps
+    /// the single default record on the legacy endpoint, preserving the nine-group
     /// layout the 60A1 client requires.
     /// </summary>
     public static byte[] BuildChannels(
         EntranceChannel channel,
-        IReadOnlyList<ChannelCatalogEntry> entries)
+        IReadOnlyList<ChannelCatalogEntry> entries,
+        int channelPortBase,
+        Func<int, int>? currentUserByChannel = null)
     {
         ValidateChannelDefaults(channel);
         ArgumentNullException.ThrowIfNull(entries);
@@ -100,7 +111,17 @@ public static class EntranceMetadata
             WriteInt32(stream, groups[index].Count, integer);
             foreach (var entry in groups[index])
             {
-                WriteChannelRecord(stream, entry.DisplayName, channel, integer);
+                // Group-0 catalog channels own a dedicated listener; the other
+                // eight groups keep the legacy endpoint on their fallback record.
+                var entryChannel = entry.GroupIndex == 0
+                    ? channel with
+                    {
+                        Port = checked(channelPortBase + entry.ChannelNumber),
+                        CurrentUsers = currentUserByChannel?.Invoke(entry.ChannelNumber)
+                            ?? channel.CurrentUsers
+                    }
+                    : channel;
+                WriteChannelRecord(stream, ComposeRecordDisplayName(entry), entryChannel, integer);
             }
         }
 
@@ -113,6 +134,24 @@ public static class EntranceMetadata
         ArgumentOutOfRangeException.ThrowIfGreaterThan(channel.Port, 65535);
         ArgumentOutOfRangeException.ThrowIfNegative(channel.MaximumUsers);
         ArgumentOutOfRangeException.ThrowIfNegative(channel.CurrentUsers);
+    }
+
+    /// <summary>
+    /// Composes the 60A1 record display name "{DisplayName} {ChannelNumber}". The
+    /// client's atol semantics concatenate every digit in the name, so a digit inside
+    /// the catalog display name would corrupt the derived number; ChannelCatalog
+    /// drops such rows, this guard keeps direct callers honest.
+    /// </summary>
+    private static string ComposeRecordDisplayName(ChannelCatalogEntry entry)
+    {
+        if (entry.DisplayName.Any(char.IsAsciiDigit))
+        {
+            throw new ArgumentException(
+                $"Catalog display name must not contain digits: {entry.DisplayName}.",
+                nameof(entry));
+        }
+
+        return $"{entry.DisplayName} {entry.ChannelNumber}";
     }
 
     private static void WriteChannelRecord(

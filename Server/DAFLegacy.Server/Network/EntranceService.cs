@@ -40,7 +40,6 @@ public sealed class EntranceService(
     ILoggerFactory loggerFactory
 ) : BackgroundService
 {
-    private readonly List<TcpListener> _listeners = [];
     // Protocol-layer dispatch (07 §4.6): mounted command handlers take over
     // their protocol exclusively; unmounted ids keep flowing through the
     // legacy branch chain until their group migrates.
@@ -455,43 +454,95 @@ public sealed class EntranceService(
         }
 
         var address = IPAddress.Parse(options.Entrance.Host);
-        var ports = new[] { options.Entrance.Port }
-            .Concat(options.Entrance.AdditionalPorts)
-            .Where(port => port is > 0 and <= 65535)
-            .Distinct()
-            .ToArray();
-
-        foreach (var port in ports)
+        // M2 per-channel listeners: every catalog channel owns PortBase+number
+        // and the legacy Channel.Port keeps the first-entry identity (fallback
+        // single channel when no catalog). Entrance ports exclude Channel.Port
+        // — that port belongs to the channel listener family.
+        var listeners = new List<(TcpListener Listener, EntranceSessionChannel? Channel)>();
+        var boundPorts = new HashSet<int>();
+        foreach (var port in options.Entrance.AdditionalPorts.Prepend(options.Entrance.Port))
         {
-            var listener = new TcpListener(address, port);
+            if (port is not (> 0 and <= 65535) || !boundPorts.Add(port))
+            {
+                continue;
+            }
+
+            if (port == options.Channel.Port)
+            {
+                RuntimeLogger.Info(
+                    "Entrance port {Port} equals the channel port; it is served by the channel listener.",
+                    port);
+                continue;
+            }
+
+            listeners.Add((new TcpListener(address, port), null));
+        }
+
+        foreach (var entry in channelDirectory.Catalog ?? [])
+        {
+            var port = options.Channel.PortFor(entry.ChannelNumber);
+            if (port is not (> 0 and <= 65535) || !boundPorts.Add(port))
+            {
+                RuntimeLogger.Warn(
+                    "Channel {ChannelNumber} listener port {Port} is invalid or already bound; skipped.",
+                    entry.ChannelNumber,
+                    port);
+                continue;
+            }
+
+            listeners.Add((
+                new TcpListener(IPAddress.Parse(options.Channel.Host), port),
+                new EntranceSessionChannel(entry.ChannelNumber, entry.DisplayName)));
+        }
+
+        if (boundPorts.Add(options.Channel.Port))
+        {
+            listeners.Add((
+                new TcpListener(IPAddress.Parse(options.Channel.Host), options.Channel.Port),
+                channelDirectory.Session));
+        }
+
+        foreach (var (listener, _) in listeners)
+        {
             listener.Start();
-            _listeners.Add(listener);
-            RuntimeLogger.Info("Entrance listener ready at {Address}:{Port}", address, port);
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            RuntimeLogger.Info(
+                "Entrance listener ready at {Address}:{Port}",
+                address,
+                port);
         }
 
         try
         {
-            await Task.WhenAll(_listeners.Select(listener =>
-                AcceptClientConnectionsAsync(listener, ((IPEndPoint)listener.LocalEndpoint).Port, stoppingToken)));
+            await Task.WhenAll(listeners.Select(entry =>
+                AcceptClientConnectionsAsync(
+                    entry.Listener,
+                    ((IPEndPoint)entry.Listener.LocalEndpoint).Port,
+                    entry.Channel,
+                    stoppingToken)));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
         }
         finally
         {
-            foreach (var listener in _listeners)
+            foreach (var (listener, _) in listeners)
             {
                 listener.Stop();
             }
         }
     }
 
-    private async Task AcceptClientConnectionsAsync(TcpListener listener, int port, CancellationToken stoppingToken)
+    private async Task AcceptClientConnectionsAsync(
+        TcpListener listener,
+        int port,
+        EntranceSessionChannel? channel,
+        CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             var client = await listener.AcceptTcpClientAsync(stoppingToken);
-            _ = _clientWhenAny.HandleClientWhenAny(client, port, stoppingToken);
+            _ = _clientWhenAny.HandleClientWhenAny(client, port, channel, stoppingToken);
         }
     }
 

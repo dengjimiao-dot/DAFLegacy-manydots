@@ -28,8 +28,8 @@ public sealed partial class ChannelSessionSenders(
     CharacterPacketBuilders builders
 )
 {
-    /// <summary>会话频道（NOTI 1/130 频道号来源）：目录首条目或单频道回退，
-    /// M1 单监听形态下所有会话共享。</summary>
+    /// <summary>会话频道回退值（M2 后常规取 <see cref="ChannelSessionState.SessionChannel"/>，
+    /// 即 accept 该连接的监听器绑定频道；此属性保留为未绑定会话的兜底）。</summary>
     public EntranceSessionChannel SessionChannel => channelDirectory.Session;
 
     public GameSkillEntry[] GetCurrentGameSkills(ConnectionContext context) => context.State.Skill.Current
@@ -68,16 +68,20 @@ public sealed partial class ChannelSessionSenders(
 
     internal EntranceContent LoadContent()
     {
-        // CurrentUsers 取在线会话数动态值：入口元数据随每次握手现建，
-        // 拥挤度（在线/容量 > 95%）随之实时变化。
+        // CurrentUsers 按频道取该频道已连接会话数（M2）：拥挤度（在线/容量 > 95%）
+        // 逐频道生效，未绑定连接的遗留端点记录取其绑定频道的计数。
         var channel = options.Channel;
         var defaults = new EntranceChannel(
             channel.Host,
             channel.Port,
             channel.MaximumUsers,
-            characterSessions.SessionCount);
+            characterSessions.GetChannelConnectionCount(channelDirectory.Session.Number));
         var metadata = channelDirectory.Catalog is { Count: > 0 } catalog
-            ? EntranceMetadata.BuildChannels(defaults, catalog)
+            ? EntranceMetadata.BuildChannels(
+                defaults,
+                catalog,
+                channel.PortBase,
+                characterSessions.GetChannelConnectionCount)
             : EntranceMetadata.BuildSingleLocalChannel(defaults);
         return new EntranceContent(channelDirectory.ChannelScript, metadata);
     }

@@ -17,7 +17,8 @@ public sealed record PartyPresenceUpdate(
     byte AreaId,
     short X,
     short Y,
-    byte Direction);
+    byte Direction,
+    int ChannelNumber);
 
 /// <summary>
 /// Coordinates party state with cross-session delivery for the 60A1
@@ -273,6 +274,7 @@ public sealed class PartyCoordinator(
             update.X,
             update.Y,
             update.Direction,
+            update.ChannelNumber,
             appearancePacket);
         lock (_presenceLock)
         {
@@ -281,13 +283,13 @@ public sealed class PartyCoordinator(
             {
                 if (previous.TownId != update.TownId || previous.AreaId != update.AreaId)
                 {
-                    leftArea = SameAreaSnapshotLocked(previous.TownId, previous.AreaId, update.SessionId);
+                    leftArea = SameAreaSnapshotLocked(previous.TownId, previous.AreaId, previous.ChannelNumber, update.SessionId);
                 }
 
                 _presenceBySession.Remove(update.SessionId);
             }
             _presenceBySession[update.SessionId] = entry;
-            sameArea = SameAreaSnapshotLocked(update.TownId, update.AreaId, update.SessionId);
+            sameArea = SameAreaSnapshotLocked(update.TownId, update.AreaId, update.ChannelNumber, update.SessionId);
         }
 
         var userArea = TownPacketBuilders.CreateUserArea(
@@ -327,7 +329,7 @@ public sealed class PartyCoordinator(
 
             entry = entry with { X = x, Y = y, Direction = direction };
             _presenceBySession[sessionId] = entry;
-            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, sessionId);
+            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, entry.ChannelNumber, sessionId);
         }
 
         var position = TownPacketBuilders.CreateUserPosition(
@@ -353,7 +355,7 @@ public sealed class PartyCoordinator(
                 return 0;
             }
 
-            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, sessionId);
+            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, entry.ChannelNumber, sessionId);
         }
 
         foreach (var other in sameArea)
@@ -372,12 +374,36 @@ public sealed class PartyCoordinator(
     /// </summary>
     public bool TrySendToName(string targetName, GameServerPacket packet)
     {
+        return TrySendToName(targetName, packet, null, null);
+    }
+
+    /// <summary>
+    /// TrySendToName with a whisper-context preface: NOTI 12 chat lines carry
+    /// only the speaker's area-user id, and the receiver's client resolves
+    /// the line's speaker name in its own town-user table. When the partner
+    /// lives on another channel or area (FIX-08 presence isolation keeps
+    /// their rosters separate), that lookup misses and the line renders
+    /// without a speaker — so the sender's town appearance is delivered
+    /// first, inserting the find-or-create record the line resolves against.
+    /// </summary>
+    public bool TrySendToName(
+        string targetName,
+        GameServerPacket packet,
+        Guid? senderSessionId,
+        GameServerPacket? senderAppearance)
+    {
         ArgumentNullException.ThrowIfNull(targetName);
         ArgumentNullException.ThrowIfNull(packet);
         Guid sessionId;
         lock (_presenceLock)
         {
             PresenceEntry? match = null;
+            PresenceEntry? sender = null;
+            if (senderSessionId.HasValue)
+            {
+                _presenceBySession.TryGetValue(senderSessionId.Value, out sender);
+            }
+
             foreach (var entry in _presenceBySession.Values)
             {
                 if (string.Equals(entry.Name, targetName, StringComparison.Ordinal))
@@ -393,6 +419,14 @@ public sealed class PartyCoordinator(
             }
 
             sessionId = match.SessionId;
+            if (sender is not null
+                && senderAppearance is not null
+                && (sender.TownId != match.TownId
+                    || sender.AreaId != match.AreaId
+                    || sender.ChannelNumber != match.ChannelNumber))
+            {
+                SendToSession(match.SessionId, senderAppearance);
+            }
         }
 
         return SendToSession(sessionId, packet);
@@ -413,7 +447,7 @@ public sealed class PartyCoordinator(
 
             userId = entry.UserId;
             _presenceBySession.Remove(sessionId);
-            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, sessionId);
+            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, entry.ChannelNumber, sessionId);
         }
 
         var leave = TownPacketBuilders.CreateUserLeave(userId);
@@ -662,16 +696,24 @@ public sealed class PartyCoordinator(
         short X,
         short Y,
         byte Direction,
+        int ChannelNumber,
         GameServerPacket Appearance);
 
-    private PresenceEntry[] SameAreaSnapshotLocked(byte townId, byte areaId, Guid excludeSessionId)
+    /// <summary>同城同区域且同频道的在册名册（M2：城镇可见性按频道隔离，
+    /// 不同频道的居民互不下发外观/位置/离开通知）。</summary>
+    private PresenceEntry[] SameAreaSnapshotLocked(
+        byte townId,
+        byte areaId,
+        int channelNumber,
+        Guid excludeSessionId)
     {
         var matches = new List<PresenceEntry>();
         foreach (var entry in _presenceBySession.Values)
         {
             if (entry.SessionId != excludeSessionId &&
                 entry.TownId == townId &&
-                entry.AreaId == areaId)
+                entry.AreaId == areaId &&
+                entry.ChannelNumber == channelNumber)
             {
                 matches.Add(entry);
             }

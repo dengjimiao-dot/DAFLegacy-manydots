@@ -30,12 +30,15 @@ public sealed class CheckConnectionHandler(
         PacketFrame frame,
         CancellationToken cancellationToken)
     {
+        // M2: the channel identity follows the accepting listener; entrance
+        // connections never dispatch here (RequiresChannelPort).
+        var sessionChannel = context.State.SessionChannel ?? channelDirectory.Session;
         var reply = ConnectionPacketBuilders.CreateChannelInfo(
-            ClientEncoding.GetBytes(channelDirectory.Session.DisplayName),
+            ClientEncoding.GetBytes(sessionChannel.DisplayName),
             channelType: 1,
             result: 1,
             serverId: 1,
-            channelNumber: checked((byte)channelDirectory.Session.Number),
+            channelNumber: checked((byte)sessionChannel.Number),
             seed: checked((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
             [Encoding.ASCII.GetBytes(options.GameplayDatagram.Host)],
             port1: checked((uint)options.GameplayDatagram.PrimaryPort),

@@ -200,3 +200,10 @@
 | `Str1` 组名表 | 0xb53d78 | 反编+导出 | 109 项组名指针数组:前 9 项 cain,diregie,siroco,prey,casillas,hilder,ruke,seria,anton(与本项目 `EntranceMetadata.ServerGroups` 同序同集),后 100 项 china_1..china_100 占位 |
 | RTTI `.?AVCNEntranceChannel@@` / `.?AVCNEntranceModule@@` | 0xafdb8c / 0xafdbac | 引用 | 入口频道/入口模块类(与 60A4 样本 §2 清单同族) |
 | `Etc/channel_info.etc` | 0xa6bfe4(引用点 0x720823) | 反汇 | 引用点位于未定义代码区,消费函数待定位(登记为悬置项) |
+| `sub_78C9E0`(this) | 0x78C9E0 | 反编 | UDP NAT 发现阶段状态机 tick(逐帧经 `sub_433B00` 泵):门控=游戏套接字已连接(`dword_BF0A9C+8`)→全局使能字节(`*(dword_B5D6F0+6)+84`)→探测列表非空(`sub_8FF180` 计数 this+456 向量);state1..3 收探测回复,state4 终态 |
+| `sub_78C870`(this, n) | 0x78C870 | 反编 | 状态迁移+探测发送:入口节流(等待标志 this+432 与 10000ms 时限 this+364/420);探测步各带 500ms 等待;同状态重试计数 this+428 ≥10 → 兜底 `sub_78C630`,失败弹「Run Error」并退出;state4 每 10000ms 发 10B keepalive 并重设同长等待 |
+| `sub_78C4F0`(this, a2, natType) | 0x78C4F0 | 反编 | CMD 2 `SET_UDP_IP_PORT` 发送方(经 `sub_8B2650(sock,2)`+`sub_8B2450` 追加字段+`sub_8B24C0` 发送);全局使能字节为 0 时静默不发 |
+| `sub_78CC50`(this) | 0x78CC50 | 反编 | 选角界面(sub_40F290 逐帧)轮询的「上报就绪」入口:缓存端点有效(this+68)直发 CMD 2,否则推动探测选目标 |
+| `sub_78C730` / `sub_78C630` / `sub_78C1B0` | 0x78C730 / 0x78C630 / 0x78C1B0 | 反编 | 探测目标选取(随机列表项+使用位图)/重试耗尽后换未用目标(恒返 1)/对探测主机发 ICMP ping(icmp.dll,1472B 载荷) |
+| `sub_8B2650(sock, id)` / `sub_8B2450` / `sub_8B24C0` | 0x8B2650 / 0x8B2450 / 0x8B24C0 | 反编 | 客户端命令发送三件套:开始(协议号)/追加字段/提交发送(CMD 2 定位即按 100 个调用方筛立即数 2) |
+| IJL15 `ChannelInfoProbeResetHook`(补丁点 0x419647) | 0x419647(call sub_78C3B0) | 反编+字节校验(E8 64 2D 37 00 83) | NOTI 1 探测端口对写入调用重定向至补丁桩:按原签名转发参数后调 `sub_78C3B0`,再清模块跨会话残留(状态 +0x40=0、上报 NAT 类型 +0x44=0、重试计数 +0x1AC=0、等待标志 +0x1B0=0),使每次频道连接(含切频道重连)探测立即重跑;**该补丁两轮真机证伪已撤销**(参数转发修复后仍致 NOTI 1 处理内静默挂死,运行态交互超出静态可证范围,见 PENDING P-32);Config.ini 键(已随补丁撤销移除)。**调用点签名坑**:`sub_78C3B0` 为 `__thiscall(this, port1, port2)`——调用点先右序 push 两端口、被调方 `ret 8` 自清参数;补丁桩必须转发两参并以 `ret 8` 收尾,漏转发/漏清参即探测列表端口错乱(首选频道挂死,2026-09-30 真机踩坑) |

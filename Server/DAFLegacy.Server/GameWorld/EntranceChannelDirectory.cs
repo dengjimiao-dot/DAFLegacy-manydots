@@ -96,8 +96,10 @@ public sealed class EntranceChannelDirectory
     public IReadOnlyList<ChannelCatalogEntry>? Catalog { get; }
 
     /// <summary>
-    /// 会话频道（NOTI 1 displayName/channelNumber、NOTI 130 频道字段与经验加成键的
-    /// 频道号来源）：目录首条目；M1 单监听形态下所有会话共享该值。
+    /// 遗留频道端口（<c>Channel.Port</c>）与无目录回退时的会话频道（NOTI 1
+    /// displayName/channelNumber、喇叭 flag 与经验加成键的频道号来源）：
+    /// 目录首条目。M2 后常规会话频道由 accept 该连接的频道监听器决定
+    /// （<see cref="ChannelSessionState.SessionChannel"/>），本值仅作其回退。
     /// </summary>
     public EntranceSessionChannel Session { get; }
 }

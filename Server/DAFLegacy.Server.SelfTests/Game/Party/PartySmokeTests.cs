@@ -631,7 +631,8 @@ internal static class PartySmokeTests
             AreaId: 1,
             X: 100,
             Y: 120,
-            Direction: 5);
+            Direction: 5,
+            ChannelNumber: 1);
 
     private static List<GameServerPacket> Typed(
         Dictionary<Guid, List<GameServerPacket>> inbox,

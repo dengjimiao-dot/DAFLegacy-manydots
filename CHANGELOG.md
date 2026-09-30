@@ -8,6 +8,51 @@
 
 ## 2026-09-30
 
+### FIX-11 SQLite 种子把物品可空列压成 0：装备耐久恒下发 0（修理不生效的表象）、点击宠物崩溃
+
+- **现象**：以 `act1_schema.sql` + `data_schema.sql` 重建 game.db 后：装备耐久显示恒 0，副本磨损（CMD 51）与修理（CMD 25）在库中真实写入、重登后仍显示 0，表现为「耐久不保存」；背包宠物页点击宠物客户端必崩。
+- **根因结论**：种子导出工具 `tools/export_state_sql.py` 把 `CharacterItemRecord` 的九个可空标量经 `num()/b()/or ""` 压成 0/空串落库，破坏「null 原样存取」约定（`act1_schema.sql` character_items 列注释、`SqliteStateMapper` 头注均明示按 0 落库会改变下发字节）。两条下发链路受害：①线路耐久 = `AvatarAbilityIndex ?? Durability`（`CharacterItemWireProjection.Project`），种子把 `avatar_ability_index` 写成 0 后全部装备耐久恒下发 0，修理/磨损的库值被 0 覆盖，表象即「不保存」；②条目 `add_info` = `AvatarRemainingSeconds ?? CountOrValue`，宠物容器条目的实例 uid 被覆盖为 0，客户端按 uid 查宠物状态对象落空即解引用崩溃（与 `CharacterCreatureInventoryPlanner.NormalizeCreatureInstance` 已登记的客户端空指针机理一致）。库内 `durability` 数值本身一直正确，`SqliteStateMapper.BindItem/ReadItem` 读写链路无误，服务端代码零改动。
+- **改动**（仅种子工具与产物）：九个可空物品列与邮件附件三个可空列改为 null 透传（JSON null → SQL NULL，bool → 0/1）；回放校验从 6 列扩为全部 16 列（含九个可空列与 instance_id），同类回归无法再通过校验；重新生成 `docs/sql/data_schema.sql`（穿戴时装的合法 0 保留，普通装备/宠物饲料/宠物蛋九列恢复 NULL）；产物头部用法指向现行基线路径。
+- **验证**：工具回放逐字段校验通过（341 物品 16 列与 state.json 一致）；以新种子回放内存库模拟 `CharacterItemWireProjection` 投影，装备线路耐久恢复为库值（34/38/30/…）、宠物条目 uid 恢复（宠物蛋 2–5、已装备 1）。**由旧种子重建的存量 game.db 含同样坏数据，需删库后按新种子重建**；真机复测判据见 `PENDING.md` P-28。真机复测（2026-10-01，抓包 + 部署库对账）：判据②③④通过——修理耐久带值且金币扣减与库值一致、宠物列表正常下发且点击不崩、堆叠数量经 `add_info` 正常；①的耐久掉落往返因两轮全程未出现 CMD 51 待补，剩余动作收敛登记于 `PENDING.md` P-28。
+
+### ADD-14 M2 按频道监听：会话频道随所选频道绑定（切频道后右上角/喇叭频道号正确）
+
+- **现象**：M1 单监听形态下，客户端切换到任意频道后右上角恒显示「01 新手-洛兰」，喇叭横幅恒渲染「1频道」。取证确认客户端不在任何包里上报所选频道（三次不同频道状态下 LOGIN 解码正文逐字节一致，尾部仅启动器机器标识；NOTI 130 报文本身无频道字段，「频道N」由客户端以 NOTI 1 给定的频道号渲染）——真服以「每频道独立端口」让服务端凭连接端口识别频道，M1 把全部频道端点写成同一监听后服务端无从区分，NOTI 1 恒下发目录首条目（频道 1）。
+- **改动**（设计见 `docs/servers4a21/feature-backfill-plan-vs-s4a21.md` §4.3 M2，用户确认后实施）：`ServerOptions.ChannelOptions` 新增 `PortBase`（默认 20000），频道 N 监听 `PortBase + N`；`Network/EntranceService.cs` 为目录每条频道起独立 TcpListener，accept 时携带绑定频道，`Channel.Port`（7001）恒保留为遗留频道端口（绑定目录首条目身份，承载其余八组回退记录端点与旧配置直连），入口端口表排除该端口避免双绑；`ChannelSessionState` 新增 `SessionChannel` 落位连接绑定频道；NOTI 1（`CheckConnectionHandler`）、喇叭 NOTI 130 flag（`SendMessageHandler`，跨频道收件人按客户端原生分流走仅横幅渲染）、频道通关经验加成（`DungeonExperienceCatalog` 改为按 etc「额外经验比例」列逐频道懒加载，`SetPlayResultHandler` 传会话频道号）全部改读会话绑定频道；`EntranceMetadata.BuildChannels` 组 0 目录频道记录写各自端点与各自在线人数（`CharacterSessionRegistry` 逐频道连接计数：频道监听 accept 时 +1、读循环收尾 -1，元数据 CurrentUsers 改按频道取值——解决「进游戏后全部频道显示良好」的总数误报），其余八组回退记录保持遗留端口与其绑定频道计数；PVF 无目录时回退单频道监听，行为字节不变。server.json 模板 `Channel` 节新增 `PortBase`；README、`docs/design/08-sqlite-storage.md`、`packet-detail-connection-60cn.md` 同步。
+- **验证**：服务端与 SelfTests 构建 0 警告，`entrance-channel-catalog`、`dungeon-clear-experience`、`megaphone` 套件通过（含逐频道端口字节断言 20001/20006/20010/20011/20200、逐频道在线人数差异化断言（0/4/回退值）、遗留端点 7001 保留断言、频道 15/16 差异化经验加成断言；5 项存量 SQLite 临时库文件锁失败与本次无关，干净树复现一致）；真机复测见 `PENDING.md` P-31（2026-10-01 补：双客户端会话均落 `channel:20001`，按频道监听真机生效；同频道双开的到位/摆摊定位/退出跨会话广播正常，UI 判据待目视）。
+
+### FIX-10 切频道 ~10.7 秒停顿的「NOTI 1 重置 NAT 模块」补丁：两轮真机证伪，已整体撤销
+
+- **最终状态**：路线 A 补丁（重定向 NOTI 1 处理分支 0x419647 的 `call sub_78C3B0`，在探测列表/端口填充后清除模块跨会话残留字段）经两轮真机实验全部证伪并整体撤销，代码已还原：第一版桩漏转发 `port1/port2` 参数且未清参（该调用为 `__thiscall(this, port1, port2)`、被调方 `ret 8` 自清），探测列表端口错乱，`ResetChannelNatDiscoveryOnChannelInfo=1` 时**首次选频挂死**（0/1 对照实验抓出）；修正转发后，**客户端在 NOTI 1 处理中即静默挂死**（AppHangB1，收到 NOTI 1 后连 LOGIN 都不发出），静态层看钩子仅四个字段写+参数透传、行为应良性——运行态交互超出静态可证范围。Config.ini 键与 README 键名一并移除。
+- **取证存档**（对后续有效，全部地址登记 `client-function-register-60cn.md` §10）：①模块 `dword_B5DCE4` 的每次会话再初始化其实大部分已由 NOTI 1 处理内建——`sub_78CE00` 清探测列表/使用位图并置 `this+436=-1`、`sub_78CEB0` 重填主机、`sub_78C3B0`（仅两次赋值 +496/+500）重设端口对；**跨会话残留只有状态 +0x40、上报类型 +0x44、重试计数 +0x1AC、等待标志 +0x1B0 四字段**；②清除这四字段的时机/方式仍不对——挂死点在 NOTI 1 处理内部，提示状态机存在静态未见的隐蔽不变量（或 VMP 运行态差异）；③挂起形态为 AppHangB1 主线程停止响应（事件日志 22:34），非内存违例。
+- **后续路线**（按优先级）：a. 补齐 `sub_78C730` 尾部、`this+504`/`this+436` 生命周期与 state 0 路径的完整契约后再定新钩点；b. 构建带逐 tick 模块状态日志的诊断版 DLL，一次真机挂起复现即可拿到状态轨迹；c. 有真服环境时抓「切频道」服务端字节做对照（最快定谳是否服务端缺信号）。
+
+### FIX-09 跨频道悄悄话不显示发送人：投递前补送发送方城镇外观
+
+- **现象**：M2 后跨频道悄悄话可达但对端聊天行**不显示发送人**（只有文本）；同频道正常。
+- **根因结论**：悄悄话下行 = NOTI 12 type 1（`msgType + 发送者区域 uid + 文本`），报文无名字字段，接收端 case 12（sub_849280 mode 1/7 分支）按 uid 在**本机城镇用户表**解析说话人名字与气泡。FIX-08 名册按频道隔离后，跨频道收发双方不再交换外观，接收方城镇用户表（NOTI 2 mode 0 的 find-or-create @0x4FDF60 建立）没有发送方记录，名字解析落空。与既存登记「跨区域/跨城镇队伍行只显示文本」同源（packet-detail-chat-60cn.md type 2/11 遗留项）。
+- **改动**：`PartyCoordinator.TrySendToName` 增加发送方上下文前置——解析目标后，若发送方与目标不同城/同区域/频道三者任一不满足，先向目标投递一份发送方的 mode-0 城镇外观（`BuildTownAppearancePacket`，仅外观包、无进城副作用序列），为城镇用户表建立可解析记录后再投聊天行；同城同频道维持原单包路径。首登流 CMD 8 列表与既有外观交换不受影响。
+- **验证**：构建 0 警告，`party`/`megaphone` 套件通过；真机复测判据并入 `PENDING.md` P-31。遗留观察项：mode-0 记录是否在接收端渲染静止城镇角色（登记于 P-31；若出现，改走 mode 3 或收缩为用户表注入）。
+
+### FIX-08 城镇可见性跨频道串人：名册按频道隔离（M2 补全）
+
+- **现象**：M2 后不同频道的玩家在同一城镇同区域互相可见（12 频道能看到 14 频道的人），外观/位置/离开通知跨频道串发。
+- **根因结论**：`PartyCoordinator` 城镇名册只按「城镇 + 区域」匹配（`SameAreaSnapshotLocked` 无频道维度）。M1 单频道时代等价于按频道隔离；M2 多频道后同城区跨频道的居民互相进入对方的同区域快照，到达/移动/离开三类广播全部串频道。
+- **改动**：`PartyPresenceUpdate` 与 `PresenceEntry` 携带频道号（取会话绑定频道，`ChannelSessionState.SessionChannel`）；`SameAreaSnapshotLocked` 增加频道相等过滤，到达/位置/离开/区域聊天（`SendToSameArea`）四条路径一并隔离。私聊（按名字定向 `TrySendToName`）保持跨频道可用；组队名册暂未隔离频道（见 `PENDING.md` P-31 备注）。
+- **验证**：构建 0 警告，`party` 套件通过；真机复测判据并入 `PENDING.md` P-31（双客户端不同频道同城应互不可见，同频道互见不变）。
+
+### FIX-07 切频道 ~10.7 秒停顿的「补推角色列表」假设：真机证伪，已撤销
+
+- **最终状态**：该修复（LOGIN 应答后 500ms 未见 CMD 8 则补推角色列表）经真机复测**无效并撤销**——补推确实送达（抓包确认切换会话 LOGIN 后 ~0.5s 出现服务端 NOTI 2），但客户端仍在 LOGIN 后静默 10.7/10.9s 才同毫秒爆发 CMD 2 + CMD 4。由此定谳：**停顿与角色列表无关**，客户端在重连回归流（EXIT + 重连新频道端口）里等待的是其他未知门控。代码已完整回滚（`LoginHandler`/`ChannelSessionState`/`GetUserInfoHandler`），未定论事项与全部取证见 `PENDING.md` P-32。
+- **取证存档**（对后续排查有效）：①停顿时长高度一致（10703/10800/10714ms），是客户端固定超时；②停顿窗口内客户端无任何网络动作（无 CMD 8、无 UDP NAT 探测、无 keepalive、无其他 TCP 连接尝试，netstat 300ms 采样证实）；③新旧连接均正常关闭（netstat 逐连接时间线：旧连接在新连接建立后 ~1s 内消失，无泄漏）；④该停顿先于 M2 存在——M2 前的 EXIT 重连流即有 9.8s/10.8s 静默（旧抓包），M2 使每次切频道都走该路径而全面暴露；⑤同连接的 CMD 7 回归流（不重连）无停顿且客户端正常发 CMD 8。
+
+### FIX-06 多频道改造后选频列表为空：入口元数据记录名未携带频道号
+
+- **现象**：入口频道目录化（回填方案 §4.3 M1）后，客户端登录后选频界面频道列表为空；多频道改造前的单频道回退形态正常。
+- **根因结论**：60A1 客户端应用入口元数据时，从每条记录的显示名提取全部 ASCII 数字字符拼接后 `atol` 作为频道号（`sub_8929C0`，0x892A24 逐字节判定 0x30–0x39），再以（组下标+1, 频道号）查客户端频道表（`sub_71FE80`），未命中则该记录静默跳过不注册（`sub_894B10` 0x894D36–0x894D93，`if (buf[23])` 分支），不抛错也不触发重试。`EntranceMetadata.BuildChannels` 此前把 etc.chn.str 解析出的显示名原样写入记录名，而现网频道名（「格兰之森 A」「新手 - 洛兰」等）不含任何数字——凯恩组 38 条记录全部推出频道号 0、全部脱靶，列表为空。单频道回退名 `Local Channel 1` 自带号数，故旧形态正常。抓包互证：解密本次登录的协议 3 元数据（密钥取自同会话协议 12 明文回包）确认下发记录名确无数字，且协议 1 仅一次交互无重试，与静默跳过吻合。
+- **改动**：`EntranceMetadata.BuildChannels` 记录名组合为「显示名 + 空格 + 频道号」后 CP936 写入，并拒绝含数字的显示名（构造期防御）；`ChannelCatalog.TryParseChannelInfoEtc` 将显示名含 ASCII 数字的行按坏行丢弃（回填方案 §4.3 风险④要求的目录校验落地）；SelfTests `entrance-channel-catalog` 同步组合名断言，新增数字名行丢弃与构造拒绝用例。
+- **验证**：服务端与 SelfTests 全量构建 0 警告，`entrance-channel-catalog` 套件通过（5 项存量 SQLite 临时库文件锁失败与本次无关，干净树复现一致）；静态 IDA 与抓包解密互证如上；真机复测见 `PENDING.md` P-29。
+
 ### FIX-05 自定义队名下行通道定谳：设置段 kind==0 原生读 dstr，撤销 ADD-11 扩展块方案
 
 - **现象**：「设置段 + type 4 扩展块」组合在真机上自定义队名始终不可见。

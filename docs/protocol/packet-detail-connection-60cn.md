@@ -31,7 +31,7 @@
 | 4 | u32 | channelType | 频道类型(服务端固定 1) |
 | 8 | u32 | result | 登录结果(1=成功) |
 | 12 | u8 | serverId | 服务器编号 |
-| 13 | u8 | channelNumber | 频道号;客户端缓存它用于 NOTI 130 频道字段比较(见 packet-detail-chat) |
+| 13 | u8 | channelNumber | 频道号(M2 起为该连接所绑定的监听频道号,见回填方案 §4.3);客户端缓存它用于 NOTI 130 频道字段比较(见 packet-detail-chat) |
 | 14 | u32 | seed | 载荷解密种子 |
 | 18 | u32 | hostCount | host 数量 n |
 | 22 | dstr×n | hosts | 连接地址(每个 < 260B) |

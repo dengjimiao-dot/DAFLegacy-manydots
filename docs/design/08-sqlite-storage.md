@@ -417,10 +417,10 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
   `ServerOptions` 中的 `DropOptions` 与 `ExperienceOptions` 类型已删除。
   启动时读一次并打印（`ServerSettings.Describe()`），
   之后读路径一律用这份不可变快照——掉落与经验判定每只怪、每次通关都触发，不能每次查库。
-- **留在 server.json 的**：端口与监听地址、`Channel.Host` / `Port` / `ServerNumber` 与容量
-  `Channel.MaximumUsers`（默认 10；`Channel.Name` / `ChannelNumber` 与 `Channel.CurrentUsers`
+- **留在 server.json 的**：端口与监听地址、`Channel.Host` / `Port` / `PortBase` / `ServerNumber`
+  与容量 `Channel.MaximumUsers`（默认 10；`Channel.Name` / `ChannelNumber` 与 `Channel.CurrentUsers`
   不再提供——显示名/频道号由 PVF 频道目录提供，当前人数为在线会话
-  动态值）、`DatabasePath` / `ScriptPvfPath` / `SkillScriptPath`（部署锚点）、
+  动态值；M2 起频道 N 监听 `PortBase + N`，`Port` 为遗留单频道端口）、`DatabasePath` / `ScriptPvfPath` / `SkillScriptPath`（部署锚点）、
   `MaximumPacketLength` / `RejectBadCrc32` / `EnablePacketTracing` / `HexDumpLimit`（传输与诊断）。
 - **基线默认按官方行为取值**：
   - `hell_drop_roll_times` = **1**——基线注释原文即「1 = 官方行为（每只怪最多 1 件）」，

@@ -24,7 +24,11 @@ public sealed class ClientWhenAnyHandler(
     ChannelSessionSenders sessionSenders,
     PacketTraceLogger packetTrace)
 {
-    public async Task HandleClientWhenAny(TcpClient client, int localPort, CancellationToken serverToken)
+    public async Task HandleClientWhenAny(
+        TcpClient client,
+        int localPort,
+        EntranceSessionChannel? boundChannel,
+        CancellationToken serverToken)
     {
         using (client)
         {
@@ -41,7 +45,9 @@ public sealed class ClientWhenAnyHandler(
 
             var remoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
             var remote = remoteEndpoint?.ToString() ?? "unknown";
-            var isChannelPort = localPort == options.Channel.Port;
+            // Channel connections are exactly those accepted by a channel
+            // listener (M2: the listener carries the bound channel identity).
+            var isChannelPort = boundChannel is not null;
             var runtimeSession = runtime.Add($"{(isChannelPort ? "channel" : "entrance")}:{localPort}", remote);
             if (isChannelPort && remoteEndpoint is not null)
             {
@@ -55,6 +61,12 @@ public sealed class ClientWhenAnyHandler(
             // of this method live on the state domains now; `session` is the
             // method-wide alias that handlers reach through ctx.State as well.
             var sessionState = new ChannelSessionState();
+            sessionState.SessionChannel = boundChannel;
+            if (boundChannel is { } bound)
+            {
+                characterSessions.AddChannelConnection(bound.Number);
+            }
+
             var session = sessionState;
             // Per-run dungeon dependencies: the run recorder needs its
             // catalog and the return-to-town anchor snapshots the
@@ -622,6 +634,11 @@ public sealed class ClientWhenAnyHandler(
                 partyCoordinator.OnSessionClosed(runtimeSession.Id);
                 characterSessions.Release(session.Character.Lease);
                 session.Character.Lease = null;
+                if (boundChannel is { } releasingChannel)
+                {
+                    characterSessions.RemoveChannelConnection(releasingChannel.Number);
+                }
+
                 characterSessions.DetachPacketChannel(runtimeSession.Id);
                 gameplayDatagram.UnregisterChannelSession(runtimeSession.Id);
                 runtime.Remove(runtimeSession.Id);

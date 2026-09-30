@@ -113,17 +113,17 @@ public sealed class SendMessageHandler(IGameStore store,
             // that resolves the speaker by the packet
             // uid in the town-user table, so same-area
             // residents get the bubble above the
-            // speaker's head. Every session of this
-            // process shares the configured channel, so
-            // one speaker-flagged broadcast per session
-            // is a single, correctly labeled display
-            // with the bubble; the banner-only route is
-            // for other-channel clients, which never
-            // occur in this process.
+            // speaker's head. The flag carries the
+            // speaker's listener-bound channel (M2);
+            // cross-channel recipients fail the
+            // comparison and render the banner-only
+            // copy, which is the client's native
+            // other-channel display.
             var megaphoneRecipients =
                 characterSessions.NotifyMegaphoneAll(
                     (GameMessageType)messageRequest.MessageType,
-                    checked((byte)senders.SessionChannel.Number),
+                    checked((byte)(session.SessionChannel?.Number
+                        ?? senders.SessionChannel.Number)),
                     session.Character.LocalUserId,
                     ClientEncoding.GetBytes(session.Character.Active.Name),
                     messageRequest.MessageBytes);
@@ -170,7 +170,9 @@ public sealed class SendMessageHandler(IGameStore store,
                 ChatPacketBuilders.CreateMessageNotification(
                     GameMessageType.Type01LightGreen,
                     session.Character.LocalUserId,
-                    messageRequest.MessageBytes));
+                    messageRequest.MessageBytes),
+                context.Runtime.Id,
+                senders.BuildTownAppearancePacket(context));
             if (delivered)
             {
                 RuntimeLogger.Info(

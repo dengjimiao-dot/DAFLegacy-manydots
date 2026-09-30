@@ -23,6 +23,13 @@ public sealed class ChannelSessionState
     public PremiumState Premium { get; } = new();
     public WeaknessState Weakness { get; } = new();
 
+    /// <summary>
+    /// 本连接绑定的频道（M2：由 accept 该连接的频道监听器决定；入口握手连接为 null）。
+    /// NOTI 1 的 channelNumber/displayName、喇叭 NOTI 130 的 flag 字节与频道经验加成
+    /// 均以它为源。
+    /// </summary>
+    public EntranceSessionChannel? SessionChannel { get; set; }
+
     public Channel<ConnectionEvent> Events { get; } =
         Channel.CreateUnbounded<ConnectionEvent>(new UnboundedChannelOptions { SingleReader = true });
 

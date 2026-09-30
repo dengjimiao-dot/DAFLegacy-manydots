@@ -46,6 +46,8 @@ public sealed class GameplayDatagramOptions
 /// PVF 内 etc/channel_info.etc（显示名经 etc/etc.chn.str 解析，见
 /// EntranceChannelDirectory）；<c>CurrentUsers</c> 为在线会话数动态值，
 /// <c>MaximumUsers</c> 是容量上报值（客户端以在线/容量 &gt;95% 判拥挤）。
+/// <para>M2 按频道监听：目录里每条频道占 <c>PortBase + 频道号</c> 一个端口；
+/// <c>Port</c> 是遗留单频道端口，恒绑定目录首条目身份（无目录时即单频道回退监听）。</para>
 /// </summary>
 public sealed class ChannelOptions
 {
@@ -53,8 +55,14 @@ public sealed class ChannelOptions
     public string Host { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 7001;
 
+    /// <summary>按频道监听的端口基值；频道 N 的端口 = PortBase + N。</summary>
+    public int PortBase { get; set; } = 20000;
+
     /// <summary>频道容量上报值（元数据 max 字段）。</summary>
     public int MaximumUsers { get; set; } = 10;
+
+    /// <summary>频道 <paramref name="channelNumber"/> 的监听端口（PortBase + 频道号）。</summary>
+    public int PortFor(int channelNumber) => checked(PortBase + channelNumber);
 }
 
 public sealed class AdminOptions

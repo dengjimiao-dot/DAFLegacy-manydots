@@ -17,3 +17,6 @@ backups/
 # CHANGELOG.md
 # AGENTS.md
 .zcode-tmp
+
+# 本地运行服务端产生的 SQLite 运行时数据（R5 锚点默认落 <home>/Data/game.db）
+Server/DAFLegacy.Server/Data/

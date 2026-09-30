@@ -208,6 +208,23 @@ public sealed partial class ChannelSessionSenders
     // ---- Town presence and scene-transition senders (migrated verbatim
     // for the R4 Town group).
 
+    /// <summary>
+    /// Builds the sender's compact mode-zero town appearance (uid, name,
+    /// equipment, alive state) without the town-arrival side effects. The
+    /// whisper path delivers it to out-of-roster partners so their town-user
+    /// table gains the find-or-create record the chat line resolves its
+    /// speaker name against.
+    /// </summary>
+    public GameServerPacket BuildTownAppearancePacket(ConnectionContext context)
+    {
+        return builders.CreateTownAppearancePacket(
+            context.State.Character.Active!,
+            context.State.Character.LocalUserId,
+            context.State.Inventory.Equipped.Values,
+            context.State.Inventory.Creature.Values,
+            HasActivePremiumService(context, GameProtocolConstants.BlackDiamondServiceType));
+    }
+
     public void PublishTownPresence(ConnectionContext context)
     {
         if (context.State.Character.Active is null)
@@ -234,7 +251,8 @@ public sealed partial class ChannelSessionSenders
                 context.State.Character.AreaId,
                 context.State.Character.X,
                 context.State.Character.Y,
-                context.State.Character.Direction),
+                context.State.Character.Direction,
+                context.State.SessionChannel?.Number ?? SessionChannel.Number),
             appearance);
     }
 

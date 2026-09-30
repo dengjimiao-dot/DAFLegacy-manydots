@@ -61,7 +61,7 @@ public sealed class SetQuestTriggerHandler(JsonGameStore store, QuestCatalog que
                 // when rank falls below the requirement. Neither
                 // action may override the authoritative rank.
                 validTrigger = triggerAction is 0 or 1;
-                trigger = senders.GetAuthoritativeQuestTrigger(context, 
+                trigger = senders.GetAuthoritativeQuestTrigger(context,
                     definition, session.Inventory.Main.Values, session.Currency.Gold, session.Currency.VictoryPoints);
             }
             else if (QuestMeetNpcRequirement.IsMeetNpc(definition))

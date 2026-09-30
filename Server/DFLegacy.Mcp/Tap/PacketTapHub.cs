@@ -216,7 +216,7 @@ public sealed class PacketTapHub : IPacketTapSink
             var cursorLapsed = false;
             var events = new List<PacketTapEvent>();
 
-                lock (_gate)
+            lock (_gate)
             {
                 ringOldestSeq = _ring.Count > 0 ? _ring.Peek().Seq : _seq + 1;
                 long replayStart;
@@ -325,12 +325,12 @@ public sealed class PacketTapSubscription : IDisposable
         // 工厂需全限定调用。
         Channel = System.Threading.Channels.Channel.CreateBounded<PacketTapEvent>(
             new BoundedChannelOptions(PacketTapHub.SubscriberChannelCapacity)
-        {
-            // 满时由 hub 手工丢最旧并计数，故用 DropWrite 让 TryWrite 可失败。
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true,
-            SingleWriter = true,
-        });
+            {
+                // 满时由 hub 手工丢最旧并计数，故用 DropWrite 让 TryWrite 可失败。
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = true,
+            });
     }
 
     internal Func<PacketTapEvent, bool> Predicate { get; }

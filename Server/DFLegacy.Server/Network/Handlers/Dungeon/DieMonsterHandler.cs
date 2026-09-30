@@ -11,7 +11,7 @@ public sealed class DieMonsterHandler(
     HellDropCatalog hellDropCatalog,
     MonsterChampionDropCatalog monsterChampionDrops,
     ServerOptions options,
-    ItemCatalog itemCatalog,    JsonGameStore store,
+    ItemCatalog itemCatalog, JsonGameStore store,
     DungeonCatalog dungeonCatalog,
     CharacterExperienceCatalog experienceCatalog,
     DungeonDropGenerator dropGenerator,
@@ -213,7 +213,7 @@ public sealed class DieMonsterHandler(
 
             if (!isBossCascadeDeath && !session.Dungeon.TutorialActive)
             {
-                await senders.GrantMonsterQuestItemsAsync(context, 
+                await senders.GrantMonsterQuestItemsAsync(context,
                     defeatedMonster.MonsterIndex);
             }
 
@@ -301,7 +301,7 @@ public sealed class DieMonsterHandler(
                     if (progression.LeveledUp)
                     {
                         await senders.SendCurrentSkillInfoAsync(context, cancellationToken);
-                        await senders.ValidateAndCorrectCharacterStatsAsync(context, 
+                        await senders.ValidateAndCorrectCharacterStatsAsync(context,
                             "monster experience level-up");
                     }
                 }
@@ -351,7 +351,7 @@ public sealed class DieMonsterHandler(
 
             if (!session.Dungeon.TutorialActive)
             {
-                await senders.CompleteClearQuestTriggersAsync(context, 
+                await senders.CompleteClearQuestTriggersAsync(context,
                     $"map {session.Dungeon.Room!.MapId} monster death");
             }
         }

@@ -30,7 +30,7 @@ public sealed class TutorialCompletionHandler(
             && session.Dungeon.AliveMonsters.Count == 0
             && DungeonPacketBuilders.IsTutorialCompletionModule(request.Body))
         {
-            await senders.CompleteTutorialAndReturnAsync(context, 
+            await senders.CompleteTutorialAndReturnAsync(context,
                 "tutorial-final-module");
         }
     }

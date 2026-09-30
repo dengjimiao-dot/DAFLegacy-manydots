@@ -361,18 +361,18 @@ internal sealed class CreatureInventoryMovePlanner(ItemCatalog itemCatalog)
         ItemDefinition definition,
         ushort slot,
         ushort warehouseCapacity) => listType switch
-    {
-        2 => definition.InventoryCategory != ItemInventoryCategory.Avatar
-            && slot < warehouseCapacity,
-        3 => definition.InventoryCategory == ItemInventoryCategory.Creature
-            && CharacterCreatureInventoryLayout.TryGetEquippedSlot(
-                definition,
-                out var equippedSlot)
-            && equippedSlot == MapCreatureEndpointSlot(3, slot),
-        7 => definition.InventoryCategory == ItemInventoryCategory.Creature
-            && CharacterCreatureInventoryLayout.IsCompatibleSlot(definition, slot),
-        _ => false
-    };
+        {
+            2 => definition.InventoryCategory != ItemInventoryCategory.Avatar
+                && slot < warehouseCapacity,
+            3 => definition.InventoryCategory == ItemInventoryCategory.Creature
+                && CharacterCreatureInventoryLayout.TryGetEquippedSlot(
+                    definition,
+                    out var equippedSlot)
+                && equippedSlot == MapCreatureEndpointSlot(3, slot),
+            7 => definition.InventoryCategory == ItemInventoryCategory.Creature
+                && CharacterCreatureInventoryLayout.IsCompatibleSlot(definition, slot),
+            _ => false
+        };
 
     public static bool IsCreatureMoveSlotValid(
         byte listType,

@@ -24,7 +24,7 @@ public sealed class ScoreScrollStateHandler(
         {
             if (session.Dungeon.ClearEnabled && session.Dungeon.AliveMonsters.Count == 0)
             {
-                await senders.CompleteTutorialAndReturnAsync(context, 
+                await senders.CompleteTutorialAndReturnAsync(context,
                     "tutorial-score-scroll-fallback");
             }
             else

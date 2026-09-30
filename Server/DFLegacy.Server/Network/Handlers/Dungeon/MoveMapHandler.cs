@@ -50,7 +50,7 @@ public sealed class MoveMapHandler(
             {
                 var previousRoomX = session.Dungeon.RoomX;
                 var previousRoomY = session.Dungeon.RoomY;
-                await senders.SettleDungeonCreatureHungerAsync(context, 
+                await senders.SettleDungeonCreatureHungerAsync(context,
                     notifyClient: true,
                     cancellationToken);
                 var moveReply = ConnectionPacketBuilders.CreateCommandReply(
@@ -128,11 +128,11 @@ public sealed class MoveMapHandler(
                 await context.Queue.SendAsync(nextMap, Name, cancellationToken);
                 if (transition.FirstVisit)
                 {
-                    await senders.ConsumeDungeonRoomFatigueAsync(context, 
+                    await senders.ConsumeDungeonRoomFatigueAsync(context,
                         targetX,
                         targetY);
                 }
-                await senders.EnableEmptyBossRoomSettlementAsync(context, 
+                await senders.EnableEmptyBossRoomSettlementAsync(context,
                     session.Dungeon.Room);
                 RuntimeLogger.Info(
                     "Dungeon {DungeonId} moved to room ({RoomX},{RoomY}), map {MapId}, monsters={MonsterCount}, champions={ChampionCount}, mapChampionBase={MapChampionBase}, clientSeed={ClientSeed}, firstVisit={FirstVisit}, reuseClientRoomState={ReuseClientRoomState}, hellPartyMode={HellPartyMode}, hellRoomClearedOnExit={HellRoomClearedOnExit}.",

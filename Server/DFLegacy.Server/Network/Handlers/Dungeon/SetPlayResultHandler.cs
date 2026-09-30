@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// SET_PLAY_RESULT (CMD 49): dungeon clear settlement — experience, fatigue and rewards (07 §5 group 13).
 /// </summary>
 public sealed class SetPlayResultHandler(
-    DungeonExperienceCatalog dungeonExperienceCatalog,    JsonGameStore store,
+    DungeonExperienceCatalog dungeonExperienceCatalog, JsonGameStore store,
     ItemCatalog itemCatalog,
     DungeonCatalog dungeonCatalog,
     CharacterExperienceCatalog experienceCatalog,
@@ -53,7 +53,7 @@ public sealed class SetPlayResultHandler(
                 clientResultValue);
             await context.Queue.SendAsync(playResult, Name, cancellationToken);
 
-            if (await senders.SettleDungeonCreatureHungerAsync(context, 
+            if (await senders.SettleDungeonCreatureHungerAsync(context,
                     notifyClient: true,
                     cancellationToken))
             {
@@ -157,7 +157,7 @@ public sealed class SetPlayResultHandler(
             session.Dungeon.ClearReward ??= clearRewardGenerator.Generate(
                 generationLevel,
                 session.Dungeon.Difficulty,
-                senders.HasActivePremiumService(context, 
+                senders.HasActivePremiumService(context,
                     GameProtocolConstants.BlackDiamondServiceType),
                 !hasDungeonDefinition || settledDungeon.GoldCardUse,
                 partyMemberCount: 1,
@@ -172,7 +172,7 @@ public sealed class SetPlayResultHandler(
                     session.Dungeon.ClearReward.FreeItemId,
                     goldCardEnabled: session.Dungeon.ClearReward.GoldCardEnabled,
                     goldItemId: session.Dungeon.ClearReward.GoldItemId,
-                    premiumCardEnabled: senders.HasActivePremiumService(context, 
+                    premiumCardEnabled: senders.HasActivePremiumService(context,
                         GameProtocolConstants.BlackDiamondServiceType),
                     premiumItemId: session.Dungeon.ClearReward.PremiumItemId,
                     experience: settledClearExperience);
@@ -198,7 +198,7 @@ public sealed class SetPlayResultHandler(
                 if (session.Dungeon.LeveledUp)
                 {
                     await senders.SendCurrentSkillInfoAsync(context, cancellationToken);
-                    await senders.ValidateAndCorrectCharacterStatsAsync(context, 
+                    await senders.ValidateAndCorrectCharacterStatsAsync(context,
                         "dungeon clear experience level-up");
                     await senders.SendAcceptableQuestListAsync(context, cancellationToken);
                 }

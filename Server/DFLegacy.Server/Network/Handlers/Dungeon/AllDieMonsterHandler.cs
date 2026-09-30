@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// ALLDIE_MONSTER (CMD 148): clears all alive monsters of the room (07 §5 group 13).
 /// </summary>
-public sealed class AllDieMonsterHandler(    ) : IGameCommandHandler
+public sealed class AllDieMonsterHandler() : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.ALLDIE_MONSTER;
 

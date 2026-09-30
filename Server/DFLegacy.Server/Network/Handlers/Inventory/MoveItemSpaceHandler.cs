@@ -310,7 +310,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                         out var withdrawalPlan,
                         out var withdrawalFailure))
                 {
-                    await senders.SendInventoryMoveNoOpAsync(context, 
+                    await senders.SendInventoryMoveNoOpAsync(context,
                         sourceListType,
                         sourceSlot,
                         destinationListType,
@@ -344,7 +344,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 {
                     session.Inventory.Warehouse[destinationSlot] = itemToWithdraw;
 
-                    await senders.SendInventoryMoveNoOpAsync(context, 
+                    await senders.SendInventoryMoveNoOpAsync(context,
                         sourceListType,
                         sourceSlot,
                         destinationListType,
@@ -476,7 +476,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
 
             if (session.Character.Active is not null && parsedMove)
             {
-                await senders.SendInventoryMoveNoOpAsync(context, 
+                await senders.SendInventoryMoveNoOpAsync(context,
                     sourceListType,
                     sourceSlot,
                     destinationListType,
@@ -554,7 +554,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 destinationSlot,
                 session.Inventory.WarehouseCapacity))
         {
-            await senders.SendInventoryMoveNoOpAsync(context, 
+            await senders.SendInventoryMoveNoOpAsync(context,
                 sourceListType,
                 sourceSlot,
                 destinationListType,
@@ -570,7 +570,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
             && warehouseDefinition.InventoryCategory
                 == ItemInventoryCategory.Avatar)
         {
-            await senders.SendInventoryMoveNoOpAsync(context, 
+            await senders.SendInventoryMoveNoOpAsync(context,
                 sourceListType,
                 sourceSlot,
                 destinationListType,
@@ -588,7 +588,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 senders.GetActivePremiumServiceTypes(context),
                 equipmentDefinition))
         {
-            await senders.SendInventoryMoveNoOpAsync(context, 
+            await senders.SendInventoryMoveNoOpAsync(context,
                 sourceListType,
                 sourceSlot,
                 destinationListType,
@@ -620,7 +620,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 sourceSlot,
                 session.Inventory.WarehouseCapacity))
         {
-            await senders.SendInventoryMoveNoOpAsync(context, 
+            await senders.SendInventoryMoveNoOpAsync(context,
                 sourceListType,
                 sourceSlot,
                 destinationListType,
@@ -670,7 +670,7 @@ public sealed partial class MoveItemSpaceHandler(JsonGameStore store,
                 : 0;
             if (available == 0)
             {
-                await senders.SendInventoryMoveNoOpAsync(context, 
+                await senders.SendInventoryMoveNoOpAsync(context,
                     sourceListType,
                     sourceSlot,
                     destinationListType,

@@ -99,9 +99,9 @@ internal static class ItemIdentitySmokeTests
             roomY: 4,
             catalog: catalog);
         check(groundItem.PreservedItem is
-            {
-                InstanceId: var groundInstanceId
-            }
+        {
+            InstanceId: var groundInstanceId
+        }
             && groundInstanceId != Guid.Empty
             && DungeonPickupPlanner.TryPlanItem(
                 new Dictionary<ushort, CharacterItemRecord>(),

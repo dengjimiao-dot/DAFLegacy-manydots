@@ -493,7 +493,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                     state.ServiceType == serviceType);
                 if (premiumState?.Active == true)
                 {
-                    await senders.SendPremiumServiceInfoAsync(context, 
+                    await senders.SendPremiumServiceInfoAsync(context,
                         serviceType,
                         premiumState.RemainingSeconds);
                     foreach (var accountCharacter in accountCharacters.Where(
@@ -573,7 +573,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
                 && !string.IsNullOrWhiteSpace(rewardDefinition.Name)
                     ? rewardDefinition.Name
                     : $"item {rewardGroup.Key}";
-            await senders.SendTypedMessageNotificationSafeAsync(context, GameMessageType.Type16Brown, 
+            await senders.SendTypedMessageNotificationSafeAsync(context, GameMessageType.Type16Brown,
                 0,
                 ClientEncoding.GetBytes(
                     $"获得[{rewardName}]{rewardCount}个"));
@@ -581,7 +581,7 @@ public sealed class CeraShopBuyHandler(JsonGameStore store,
 
         if (immediateContainerMailCount > 0)
         {
-            await senders.SendTypedMessageNotificationSafeAsync(context, GameMessageType.Type16Brown, 
+            await senders.SendTypedMessageNotificationSafeAsync(context, GameMessageType.Type16Brown,
                 0,
                 ClientEncoding.GetBytes(
                     "背包空间不足，部分奖励已发送至邮箱。"));

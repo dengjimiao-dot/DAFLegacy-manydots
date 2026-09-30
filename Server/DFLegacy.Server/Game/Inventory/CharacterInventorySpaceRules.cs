@@ -50,13 +50,13 @@ internal static class CharacterInventorySpaceRules
         byte listType,
         ushort slot,
         ushort warehouseCapacity) => listType switch
-    {
-        0 => CharacterInventoryLayout.IsMainItemSlot(slot),
-        1 => CharacterAvatarInventoryLayout.IsBagSlot(slot),
-        2 => slot < warehouseCapacity,
-        3 => slot < 23,
-        _ => false
-    };
+        {
+            0 => CharacterInventoryLayout.IsMainItemSlot(slot),
+            1 => CharacterAvatarInventoryLayout.IsBagSlot(slot),
+            2 => slot < warehouseCapacity,
+            3 => slot < 23,
+            _ => false
+        };
 
     internal static bool IsCompatibleMainInventorySlot(
         ItemCatalog itemCatalog,

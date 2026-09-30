@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// DIE_CHARACTER (CMD 43): dungeon death with the return-to-town countdown (07 §5 group 13).
 /// </summary>
-public sealed class DieCharacterHandler(    ) : IGameCommandHandler
+public sealed class DieCharacterHandler() : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.DIE_CHARACTER;
 

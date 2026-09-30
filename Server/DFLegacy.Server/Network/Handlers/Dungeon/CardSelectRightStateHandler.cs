@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// CARD_SELECT_RIGHT_STATE (CMD 73): clear-card ownership snapshot (07 §5 group 13).
 /// </summary>
-public sealed class CardSelectRightStateHandler(    ) : IGameCommandHandler
+public sealed class CardSelectRightStateHandler() : IGameCommandHandler
 {
     private static readonly TimeSpan ClearRewardCardSelectionTimeout =
         TimeSpan.FromSeconds(4);

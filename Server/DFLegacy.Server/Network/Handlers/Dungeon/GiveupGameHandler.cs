@@ -35,7 +35,7 @@ public sealed class GiveupGameHandler(
         // The in-dungeon Return to Town button uses command
         // 45 in DNF 1.0.1.9. It does not use EPLP (75),
         // which is reserved for the post-settlement screen.
-        await senders.ReturnToTownFromDungeonAsync(context, 
+        await senders.ReturnToTownFromDungeonAsync(context,
             "giveup-game",
             forcedDungeonExit: true);
     }

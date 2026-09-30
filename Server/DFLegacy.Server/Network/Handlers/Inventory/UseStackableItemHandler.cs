@@ -99,7 +99,7 @@ public sealed class UseStackableItemHandler(
             // so the revival decision uses authoritative
             // stomach data rather than a stale snapshot.
             if (session.Dungeon.CurrentDungeonId != 0
-                && !await senders.SettleDungeonCreatureHungerAsync(context, 
+                && !await senders.SettleDungeonCreatureHungerAsync(context,
                     notifyClient: true,
                     cancellationToken))
             {
@@ -242,7 +242,7 @@ public sealed class UseStackableItemHandler(
 
         if (consumedItem.ItemId == FatigueRecoveryItemId)
         {
-            var premiumFatigue = senders.HasActivePremiumService(context, 
+            var premiumFatigue = senders.HasActivePremiumService(context,
                     GameProtocolConstants.BlackDiamondServiceType)
                 ? GameProtocolConstants.BlackDiamondBonusFatigue
                 : (ushort)0;
@@ -336,7 +336,7 @@ public sealed class UseStackableItemHandler(
                         "角色数据异常，升级券使用失败",
                     _ => "升级券使用失败"
                 };
-                await senders.SendPopupNotificationSafeAsync(context, 
+                await senders.SendPopupNotificationSafeAsync(context,
                     ClientEncoding.GetBytes(rejectedMessage));
                 RuntimeLogger.Info(
                     "Rejected level-up coupon {ItemId} at slot {Slot}; failure={Failure}, level={Level}, stack={RemainingCount}.",
@@ -359,13 +359,13 @@ public sealed class UseStackableItemHandler(
                     slot,
                     listType);
             await context.Queue.SendAsync(levelUpItemReply, Name, cancellationToken);
-            await senders.SendTypedMessageNotificationSafeAsync(context, 
+            await senders.SendTypedMessageNotificationSafeAsync(context,
                 GameMessageType.Type16Brown,
                 0,
                 ClientEncoding.GetBytes(LevelUpCouponSuccessMessage));
 
             await senders.SendCurrentSkillInfoAsync(context, cancellationToken);
-            await senders.ValidateAndCorrectCharacterStatsAsync(context, 
+            await senders.ValidateAndCorrectCharacterStatsAsync(context,
                 "level-up coupon");
             await senders.SendAcceptableQuestListAsync(context, cancellationToken);
 
@@ -428,7 +428,7 @@ public sealed class UseStackableItemHandler(
             await context.Queue.SendAsync(pvpInventoryRefresh, Name, cancellationToken);
 
             await senders.SendPvpRecordAsync(context, cancellationToken);
-            await senders.SendTypedMessageNotificationSafeAsync(context, 
+            await senders.SendTypedMessageNotificationSafeAsync(context,
                 GameMessageType.Type16Brown,
                 0,
                 ClientEncoding.GetBytes(
@@ -481,7 +481,7 @@ public sealed class UseStackableItemHandler(
             }
 
             var warehouseUpgradeSettlement =
-                senders.PlanWarehouseUpgradeSettlement(context, 
+                senders.PlanWarehouseUpgradeSettlement(context,
                     boosterPlan.MainInventory.Values,
                     session.Inventory.Warehouse.Values,
                     boosterPlan.Rewards.Select(reward => reward.ItemId));
@@ -572,7 +572,7 @@ public sealed class UseStackableItemHandler(
                     && !string.IsNullOrWhiteSpace(rewardDefinition.Name)
                         ? rewardDefinition.Name
                         : $"item {rewardGroup.Key}";
-                await senders.SendTypedMessageNotificationSafeAsync(context, 
+                await senders.SendTypedMessageNotificationSafeAsync(context,
                     GameMessageType.Type16Brown,
                     // A zero target keeps the legacy chat renderer
                     // from prefixing the local character name.
@@ -583,7 +583,7 @@ public sealed class UseStackableItemHandler(
 
             if (overflowMails.Length > 0)
             {
-                await senders.SendTypedMessageNotificationSafeAsync(context, 
+                await senders.SendTypedMessageNotificationSafeAsync(context,
                     GameMessageType.Type16Brown,
                     0,
                     ClientEncoding.GetBytes(

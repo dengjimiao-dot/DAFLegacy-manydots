@@ -73,7 +73,7 @@ public sealed class AcceptQuestHandler(JsonGameStore store,
 
         var acceptedQuest = new CharacterQuestRecord(
             questId,
-            senders.GetAuthoritativeQuestTrigger(context, 
+            senders.GetAuthoritativeQuestTrigger(context,
                 definition,
                 acceptancePlan.Inventory.Values,
                 session.Currency.Gold,

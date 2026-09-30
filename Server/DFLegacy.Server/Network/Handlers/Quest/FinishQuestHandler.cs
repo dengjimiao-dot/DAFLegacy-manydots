@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// FINISH_QUEST (CMD 36): settles quest rewards, experience and growth-skill changes, then refreshes inventory and skill panels (07 §5 group 7).
 /// </summary>
 public sealed class FinishQuestHandler(
-    CharacterSessionRegistry characterSessions,JsonGameStore store,
+    CharacterSessionRegistry characterSessions, JsonGameStore store,
     ItemCatalog itemCatalog,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
@@ -52,7 +52,7 @@ public sealed class FinishQuestHandler(
             || QuestPvpRankRequirement.IsPvpRank(questDefinition))
         {
             var authoritativeTrigger =
-                senders.GetAuthoritativeQuestTrigger(context, 
+                senders.GetAuthoritativeQuestTrigger(context,
                     questDefinition,
                     session.Inventory.Main.Values,
                     session.Currency.Gold,
@@ -274,7 +274,7 @@ public sealed class FinishQuestHandler(
         var remainingQuests = session.Quest.Current
             .Where((_, index) => index != questIndex)
             .ToList();
-        var nextQuests = senders.RefreshSeekingQuestTriggers(context, 
+        var nextQuests = senders.RefreshSeekingQuestTriggers(context,
             remainingQuests,
             rewardPlan.Inventory,
             rewardPlan.Gold,

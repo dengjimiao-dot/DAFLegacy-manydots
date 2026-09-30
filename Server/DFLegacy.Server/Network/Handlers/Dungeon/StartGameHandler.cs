@@ -7,7 +7,7 @@ namespace DFLegacy.Server;
 /// START_GAME (CMD 15): opens dungeon selection — fatigue gate, return anchor, state/UDP peer packets and eligibility (07 §5 group 13).
 /// </summary>
 public sealed class StartGameHandler(
-    JsonGameStore store,    WorldMapCatalog worldMapCatalog,
+    JsonGameStore store, WorldMapCatalog worldMapCatalog,
     GameplayDatagramService gameplayDatagram,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
@@ -25,7 +25,7 @@ public sealed class StartGameHandler(
         // Walking into a [dungeon gate] emits command 15.
         // DF2008 handles exhausted party members in this command,
         // before entering the dungeon-selection screen.
-        var maximumFatigue = senders.HasActivePremiumService(context, 
+        var maximumFatigue = senders.HasActivePremiumService(context,
                 GameProtocolConstants.BlackDiamondServiceType)
             ? GameProtocolConstants.BlackDiamondMaximumFatigue
             : GameProtocolConstants.DefaultMaximumFatigue;

@@ -16,39 +16,39 @@ public sealed partial class ChannelSessionSenders
     bool force = false,
     CancellationToken cancellationToken = default)
     {
-    if (context.State.Character.Active is null
-        || !context.State.Inventory.Creature.TryGetValue(
-            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
-            out var equippedCreature)
-        || equippedCreature.CountOrValue == 0)
-    {
-        return;
-    }
+        if (context.State.Character.Active is null
+            || !context.State.Inventory.Creature.TryGetValue(
+                CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+                out var equippedCreature)
+            || equippedCreature.CountOrValue == 0)
+        {
+            return;
+        }
 
-    var creatureUid = equippedCreature.CountOrValue;
-    var stomach = Math.Clamp(
-        (int)(equippedCreature.CreatureStomach ?? 100),
-        0,
-        CreatureHungerPlanner.MaximumStomach);
-    if (stomach != 0)
-    {
-        context.State.Weakness.CreatureDeathNotificationsSent.Remove(creatureUid);
-        return;
-    }
+        var creatureUid = equippedCreature.CountOrValue;
+        var stomach = Math.Clamp(
+            (int)(equippedCreature.CreatureStomach ?? 100),
+            0,
+            CreatureHungerPlanner.MaximumStomach);
+        if (stomach != 0)
+        {
+            context.State.Weakness.CreatureDeathNotificationsSent.Remove(creatureUid);
+            return;
+        }
 
-    if (!force
-        && context.State.Weakness.CreatureDeathNotificationsSent.Contains(creatureUid))
-    {
-        return;
-    }
+        if (!force
+            && context.State.Weakness.CreatureDeathNotificationsSent.Contains(creatureUid))
+        {
+            return;
+        }
 
-    var died = PetsPacketBuilders.CreateDiedCreature(context.State.Character.LocalUserId);
-    await context.Queue.SendAsync(died, "CREATURE_DIED", cancellationToken);
-    context.State.Weakness.CreatureDeathNotificationsSent.Add(creatureUid);
-    RuntimeLogger.Info(
-        "Sent DIED_CREATURE for Creature uid {CreatureUid}, area user {UserId}.",
-        creatureUid,
-        context.State.Character.LocalUserId);
+        var died = PetsPacketBuilders.CreateDiedCreature(context.State.Character.LocalUserId);
+        await context.Queue.SendAsync(died, "CREATURE_DIED", cancellationToken);
+        context.State.Weakness.CreatureDeathNotificationsSent.Add(creatureUid);
+        RuntimeLogger.Info(
+            "Sent DIED_CREATURE for Creature uid {CreatureUid}, area user {UserId}.",
+            creatureUid,
+            context.State.Character.LocalUserId);
     }
 
     public async Task SendEquippedCreatureHungerAsync(
@@ -56,39 +56,39 @@ public sealed partial class ChannelSessionSenders
     bool forceDeathNotification = false,
     CancellationToken cancellationToken = default)
     {
-    if (context.State.Character.Active is null
-        || !context.State.Inventory.Creature.TryGetValue(
-            CharacterCreatureInventoryLayout.EquippedCreatureSlot,
-            out var equippedCreature)
-        || equippedCreature.CountOrValue == 0)
-    {
-        return;
-    }
+        if (context.State.Character.Active is null
+            || !context.State.Inventory.Creature.TryGetValue(
+                CharacterCreatureInventoryLayout.EquippedCreatureSlot,
+                out var equippedCreature)
+            || equippedCreature.CountOrValue == 0)
+        {
+            return;
+        }
 
-    var creatureState = PetsPacketBuilders.CreateCreatureState(
-        equippedCreature.CountOrValue,
-        (uint)Math.Clamp(
-            (int)(equippedCreature.CreatureStomach ?? 100),
-            0,
-            CreatureHungerPlanner.MaximumStomach));
-    await context.Queue.SendAsync(creatureState, "CREATURE_STATE", cancellationToken);
-    await SendEquippedCreatureDeathAsync(context, forceDeathNotification, cancellationToken);
+        var creatureState = PetsPacketBuilders.CreateCreatureState(
+            equippedCreature.CountOrValue,
+            (uint)Math.Clamp(
+                (int)(equippedCreature.CreatureStomach ?? 100),
+                0,
+                CreatureHungerPlanner.MaximumStomach));
+        await context.Queue.SendAsync(creatureState, "CREATURE_STATE", cancellationToken);
+        await SendEquippedCreatureDeathAsync(context, forceDeathNotification, cancellationToken);
     }
 
     public async Task SendEquippedCreatureResponseAsync(
     ConnectionContext context,
     CancellationToken cancellationToken = default)
     {
-    if (context.State.Character.Active is null
-        || !context.State.Inventory.Creature.ContainsKey(
-            CharacterCreatureInventoryLayout.EquippedCreatureSlot))
-    {
-        return;
-    }
+        if (context.State.Character.Active is null
+            || !context.State.Inventory.Creature.ContainsKey(
+                CharacterCreatureInventoryLayout.EquippedCreatureSlot))
+        {
+            return;
+        }
 
-    var creatureResponse =
-        PetsPacketBuilders.CreateCreatureResponse(context.State.Character.LocalUserId);
-    await context.Queue.SendAsync(creatureResponse, "CREATURE_RESPONSE", cancellationToken);
+        var creatureResponse =
+            PetsPacketBuilders.CreateCreatureResponse(context.State.Character.LocalUserId);
+        await context.Queue.SendAsync(creatureResponse, "CREATURE_RESPONSE", cancellationToken);
     }
 
     public async Task SendInventoryMoveNoOpAsync(
@@ -100,61 +100,61 @@ public sealed partial class ChannelSessionSenders
     string reason,
     CancellationToken cancellationToken = default)
     {
-    var noOpReply = InventoryPacketBuilders.CreateMoveItemSpaceReply(
-        sourceListType,
-        sourceSlot,
-        movedCount: 0,
-        destinationListType,
-        destinationSlot);
-    await context.Queue.SendAsync(noOpReply, "INVENTORY_DELTA", cancellationToken);
+        var noOpReply = InventoryPacketBuilders.CreateMoveItemSpaceReply(
+            sourceListType,
+            sourceSlot,
+            movedCount: 0,
+            destinationListType,
+            destinationSlot);
+        await context.Queue.SendAsync(noOpReply, "INVENTORY_DELTA", cancellationToken);
 
-    if (sourceListType == 0 || destinationListType == 0)
-    {
-        var mainRefresh = builders.CreateMainInventoryPacket(
-            context.State.Currency.Gold,
-            context.State.Currency.VictoryPoints,
-            context.State.Inventory.Main.Values);
-        await context.Queue.SendAsync(mainRefresh, "INVENTORY_DELTA", cancellationToken);
-    }
-
-    if (sourceListType == 2 || destinationListType == 2)
-    {
-        var warehouseRefresh = builders.CreateWarehousePacket(
-            context.State.Inventory.Warehouse.Values,
-            context.State.Inventory.WarehouseCapacity);
-        await context.Queue.SendAsync(warehouseRefresh, "INVENTORY_DELTA", cancellationToken);
-    }
-
-    if (sourceListType == 1 || destinationListType == 1)
-    {
-        var avatarRefresh = builders.CreateAvatarInventoryPacket(
-            context.State.Inventory.Avatar.Values);
-        await context.Queue.SendAsync(avatarRefresh, "INVENTORY_DELTA", cancellationToken);
-    }
-
-    if (sourceListType == 7 || destinationListType == 7)
-    {
-        foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
-                     context.State.Inventory.Creature.Values))
+        if (sourceListType == 0 || destinationListType == 0)
         {
-            await context.Queue.SendAsync(creatureRefresh, "INVENTORY_DELTA", cancellationToken);
+            var mainRefresh = builders.CreateMainInventoryPacket(
+                context.State.Currency.Gold,
+                context.State.Currency.VictoryPoints,
+                context.State.Inventory.Main.Values);
+            await context.Queue.SendAsync(mainRefresh, "INVENTORY_DELTA", cancellationToken);
         }
-    }
 
-    if ((sourceListType == 3 || destinationListType == 3)
-        && sourceListType != 7
-        && destinationListType != 7)
-    {
-        await SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
-    }
+        if (sourceListType == 2 || destinationListType == 2)
+        {
+            var warehouseRefresh = builders.CreateWarehousePacket(
+                context.State.Inventory.Warehouse.Values,
+                context.State.Inventory.WarehouseCapacity);
+            await context.Queue.SendAsync(warehouseRefresh, "INVENTORY_DELTA", cancellationToken);
+        }
 
-    RuntimeLogger.Info(
-        "Completed rejected inventory move as a no-op from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}: {Reason}.",
-        sourceListType,
-        sourceSlot,
-        destinationListType,
-        destinationSlot,
-        reason);
+        if (sourceListType == 1 || destinationListType == 1)
+        {
+            var avatarRefresh = builders.CreateAvatarInventoryPacket(
+                context.State.Inventory.Avatar.Values);
+            await context.Queue.SendAsync(avatarRefresh, "INVENTORY_DELTA", cancellationToken);
+        }
+
+        if (sourceListType == 7 || destinationListType == 7)
+        {
+            foreach (var creatureRefresh in builders.CreateCreatureInventoryPackets(
+                         context.State.Inventory.Creature.Values))
+            {
+                await context.Queue.SendAsync(creatureRefresh, "INVENTORY_DELTA", cancellationToken);
+            }
+        }
+
+        if ((sourceListType == 3 || destinationListType == 3)
+            && sourceListType != 7
+            && destinationListType != 7)
+        {
+            await SendCurrentEquipmentStateAsync(context, cancellationToken: cancellationToken);
+        }
+
+        RuntimeLogger.Info(
+            "Completed rejected inventory move as a no-op from {SourceList}:{SourceSlot} to {DestinationList}:{DestinationSlot}: {Reason}.",
+            sourceListType,
+            sourceSlot,
+            destinationListType,
+            destinationSlot,
+            reason);
     }
 
     public async Task SendMainInventoryMoveDeltaAsync(
@@ -162,16 +162,16 @@ public sealed partial class ChannelSessionSenders
     CancellationToken cancellationToken,
     params ushort[] slots)
     {
-    foreach (var slot in slots
-                 .Where(CharacterInventoryLayout.IsMainItemSlot)
-                 .Distinct())
-    {
-        var entry = context.State.Inventory.Main.TryGetValue(slot, out var item)
-            ? builders.ToGameInventoryEntry(item)
-            : new GameInventoryEntry(slot, ushort.MaxValue, 0);
-        var update = InventoryPacketBuilders.CreateUpdateItemList(0, [entry]);
-        await context.Queue.SendAsync(update, "INVENTORY_DELTA", cancellationToken);
-    }
+        foreach (var slot in slots
+                     .Where(CharacterInventoryLayout.IsMainItemSlot)
+                     .Distinct())
+        {
+            var entry = context.State.Inventory.Main.TryGetValue(slot, out var item)
+                ? builders.ToGameInventoryEntry(item)
+                : new GameInventoryEntry(slot, ushort.MaxValue, 0);
+            var update = InventoryPacketBuilders.CreateUpdateItemList(0, [entry]);
+            await context.Queue.SendAsync(update, "INVENTORY_DELTA", cancellationToken);
+        }
     }
 
     internal bool TryPlanCreatureInventoryMove(
@@ -228,33 +228,33 @@ public sealed partial class ChannelSessionSenders
     ConnectionContext context,
     byte creatureLevel)
     {
-    decimal bonusRate = 0;
-    foreach (var artifactSlot in new[]
-             {
+        decimal bonusRate = 0;
+        foreach (var artifactSlot in new[]
+                 {
                  CharacterCreatureInventoryLayout.EquippedArtifactRedSlot,
                  CharacterCreatureInventoryLayout.EquippedArtifactBlueSlot,
                  CharacterCreatureInventoryLayout.EquippedArtifactGreenSlot
              })
-    {
-        if (!context.State.Inventory.Creature.TryGetValue(artifactSlot, out var artifact)
-            || !itemCatalog.TryGetDefinition(
-                artifact.ItemId,
-                out var definition)
-            || !CharacterCreatureInventoryLayout.TryGetEquippedSlot(
-                definition,
-                out var expectedSlot)
-            || expectedSlot != artifactSlot
-            || definition.CreatureExperienceAmountRate is not decimal rate
-            || definition.CreatureMinimumLevel is int minimumLevel
-                && minimumLevel > 0
-                && creatureLevel < minimumLevel)
         {
-            continue;
+            if (!context.State.Inventory.Creature.TryGetValue(artifactSlot, out var artifact)
+                || !itemCatalog.TryGetDefinition(
+                    artifact.ItemId,
+                    out var definition)
+                || !CharacterCreatureInventoryLayout.TryGetEquippedSlot(
+                    definition,
+                    out var expectedSlot)
+                || expectedSlot != artifactSlot
+                || definition.CreatureExperienceAmountRate is not decimal rate
+                || definition.CreatureMinimumLevel is int minimumLevel
+                    && minimumLevel > 0
+                    && creatureLevel < minimumLevel)
+            {
+                continue;
+            }
+
+            bonusRate += rate;
         }
 
-        bonusRate += rate;
-    }
-
-    return bonusRate;
+        return bonusRate;
     }
 }

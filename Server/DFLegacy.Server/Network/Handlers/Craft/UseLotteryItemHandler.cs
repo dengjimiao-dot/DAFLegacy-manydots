@@ -71,7 +71,7 @@ public sealed class UseLotteryItemHandler(JsonGameStore store,
         }
 
         var lotteryWarehouseSettlement =
-            senders.PlanWarehouseUpgradeSettlement(context, 
+            senders.PlanWarehouseUpgradeSettlement(context,
                 lotteryPlan.MainInventory.Values,
                 session.Inventory.Warehouse.Values,
                 lotteryPlan.Reward.ItemId == 0

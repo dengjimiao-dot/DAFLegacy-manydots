@@ -8,7 +8,7 @@ namespace DFLegacy.Server;
 /// </summary>
 public sealed class UseSkillHandler(
     RuntimeState runtime,
-    ServerOptions options,    SkillCatalog skillCatalog
+    ServerOptions options, SkillCatalog skillCatalog
     ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.USE_SKILL;

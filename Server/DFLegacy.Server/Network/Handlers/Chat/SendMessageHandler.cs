@@ -64,7 +64,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
                         or ChannelMegaphoneItemId)
                 || megaphoneItem.CountOrValue == 0)
             {
-                await senders.SendPopupNotificationSafeAsync(context, 
+                await senders.SendPopupNotificationSafeAsync(context,
                     ClientEncoding.GetBytes("喇叭使用失败，请确认道具状态"));
                 RuntimeLogger.Warn(
                     "Rejected megaphone message type {MessageType} from character {CharacterId}; target={TargetOrItemSpace}, slot/reserved={SlotOrReserved}.",
@@ -183,7 +183,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
             }
             else
             {
-                await senders.SendTypedMessageNotificationSafeAsync(context, 
+                await senders.SendTypedMessageNotificationSafeAsync(context,
                     GameMessageType.Type00DualRouteBrown,
                     0,
                     ClientEncoding.GetBytes(
@@ -255,7 +255,7 @@ public sealed class SendMessageHandler(JsonGameStore store,
             return;
         }
 
-        await senders.SendTypedMessageNotificationSafeAsync(context, 
+        await senders.SendTypedMessageNotificationSafeAsync(context,
             GameMessageType.Type03White,
             session.Character.LocalUserId,
             messageRequest.MessageBytes);

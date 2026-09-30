@@ -40,7 +40,7 @@ public sealed class SelectCardHandler(
             }
             else if (cardType == 0 && !session.Dungeon.FreeCardIndex.HasValue)
             {
-                var freeGrant = await senders.GrantFreeClearRewardAsync(context, 
+                var freeGrant = await senders.GrantFreeClearRewardAsync(context,
                     selectedCardIndex);
                 if (freeGrant.Saved)
                 {
@@ -55,7 +55,7 @@ public sealed class SelectCardHandler(
                 && session.Dungeon.ClearReward.GoldCardCost <= int.MaxValue
                 && session.Currency.Gold >= (int)session.Dungeon.ClearReward.GoldCardCost)
             {
-                var goldGrant = await senders.SaveClearRewardEquipmentAsync(context, 
+                var goldGrant = await senders.SaveClearRewardEquipmentAsync(context,
                     session.Currency.Gold - (int)session.Dungeon.ClearReward.GoldCardCost,
                     [session.Dungeon.ClearReward.GoldItemId]);
                 if (goldGrant.Saved)

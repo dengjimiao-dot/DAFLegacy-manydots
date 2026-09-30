@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// SELECT_DUNGEON (CMD 16): enters the chosen dungeon map and streams the room bootstrap (07 §5 group 13).
 /// </summary>
-public sealed class SelectDungeonHandler(    JsonGameStore store,
+public sealed class SelectDungeonHandler(JsonGameStore store,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
     CharacterPacketBuilders builders,
@@ -370,7 +370,7 @@ public sealed class SelectDungeonHandler(    JsonGameStore store,
         await context.Queue.SendAsync(startMap, Name, cancellationToken);
         session.Dungeon.CreatureStomachCheckpointSeconds =
             DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        await senders.ConsumeDungeonRoomFatigueAsync(context, 
+        await senders.ConsumeDungeonRoomFatigueAsync(context,
             session.Dungeon.RoomX,
             session.Dungeon.RoomY);
         await senders.EnableEmptyBossRoomSettlementAsync(context, session.Dungeon.Room);

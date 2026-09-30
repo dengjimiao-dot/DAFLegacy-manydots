@@ -39,7 +39,7 @@ public sealed class EplpHandler(
             && session.Dungeon.ClearReward is not null
             && !session.Dungeon.FreeCardIndex.HasValue)
         {
-            if (!await senders.TryAutomaticallySelectFreeCardAsync(context, 
+            if (!await senders.TryAutomaticallySelectFreeCardAsync(context,
                 "eplp-fallback"))
             {
                 RuntimeLogger.Warn(
@@ -57,7 +57,7 @@ public sealed class EplpHandler(
         if (state == 1)
         {
             var freeCardWasSelected = session.Dungeon.FreeCardIndex.HasValue;
-            await senders.ReturnToTownFromDungeonAsync(context, 
+            await senders.ReturnToTownFromDungeonAsync(context,
                 freeCardWasSelected
                     ? "settlement-after-card"
                     : "settlement-without-card");

@@ -836,18 +836,18 @@ public sealed class ItemCatalog
 
     private static CeraBoosterRewardKind ParseCeraBoosterRewardKind(
         string tag) => tag switch
-    {
-        "avatar" => CeraBoosterRewardKind.Avatar,
-        "special avatar" => CeraBoosterRewardKind.SpecialAvatar,
-        "cera" => CeraBoosterRewardKind.Cera,
-        "creature" => CeraBoosterRewardKind.Creature,
-        "equipment" => CeraBoosterRewardKind.Equipment,
-        "stackable" => CeraBoosterRewardKind.Stackable,
-        "etc" => CeraBoosterRewardKind.Etc,
-        "special creature" => CeraBoosterRewardKind.SpecialCreature,
-        "emblem" => CeraBoosterRewardKind.Emblem,
-        _ => throw new InvalidDataException($"Unsupported Cera booster reward tag '{tag}'.")
-    };
+        {
+            "avatar" => CeraBoosterRewardKind.Avatar,
+            "special avatar" => CeraBoosterRewardKind.SpecialAvatar,
+            "cera" => CeraBoosterRewardKind.Cera,
+            "creature" => CeraBoosterRewardKind.Creature,
+            "equipment" => CeraBoosterRewardKind.Equipment,
+            "stackable" => CeraBoosterRewardKind.Stackable,
+            "etc" => CeraBoosterRewardKind.Etc,
+            "special creature" => CeraBoosterRewardKind.SpecialCreature,
+            "emblem" => CeraBoosterRewardKind.Emblem,
+            _ => throw new InvalidDataException($"Unsupported Cera booster reward tag '{tag}'.")
+        };
 
     private static IncreaseStatusEffect? ReadIncreaseStatusEffect(string scriptPath) =>
         scriptPath.Replace('\\', '/') switch

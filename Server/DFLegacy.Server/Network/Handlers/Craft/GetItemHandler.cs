@@ -189,7 +189,7 @@ public sealed class GetItemHandler(JsonGameStore store,
                 == ItemInventoryCategory.Creature)
         {
             var creatureGroundItem = groundItem.PreservedItem is
-                { } preservedCreatureItem
+            { } preservedCreatureItem
                 ? preservedCreatureItem with
                 {
                     Slot = ushort.MaxValue,

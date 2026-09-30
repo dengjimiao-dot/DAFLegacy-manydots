@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// BOSS_DIE_CHECK (CMD 127): checks boss-death progress and unlocks the clear (07 §5 group 13).
 /// </summary>
-public sealed class BossDieCheckHandler(    ) : IGameCommandHandler
+public sealed class BossDieCheckHandler() : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.BOSS_DIE_CHECK;
 

@@ -394,7 +394,7 @@ public static class CharacterInventoryPlanner
                 continue;
             }
 
-                overflow.AddRange(CreateMailAttachments(item, catalog));
+            overflow.AddRange(CreateMailAttachments(item, catalog));
         }
 
         var result = normalized.Values.OrderBy(item => item.Slot).ToArray();

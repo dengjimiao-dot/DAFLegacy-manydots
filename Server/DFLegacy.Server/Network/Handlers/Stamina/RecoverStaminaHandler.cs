@@ -6,7 +6,7 @@ namespace DFLegacy.Server;
 /// <summary>
 /// RECOVER_STAMINA (CMD 9): gold-cost weakness recovery with the stamina notification (07 §5 group 4).
 /// </summary>
-public sealed class RecoverStaminaHandler(    JsonGameStore store,
+public sealed class RecoverStaminaHandler(JsonGameStore store,
     StaminaRecoveryCatalog staminaRecoveryCatalog
     ) : IGameCommandHandler
 {

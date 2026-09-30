@@ -70,7 +70,7 @@ public sealed class DisjointItemHandler(JsonGameStore store,
         }
 
         var disjointWarehouseSettlement =
-            senders.PlanWarehouseUpgradeSettlement(context, 
+            senders.PlanWarehouseUpgradeSettlement(context,
                 disjointPlan.MainInventory.Values,
                 session.Inventory.Warehouse.Values,
                 disjointPlan.ResponseRewards.Select(reward =>

@@ -272,11 +272,11 @@ public sealed partial class SelectCharacterHandler(
                 CharacterItemSealing.UnsealWhenEquipped(
                     item,
                     itemCatalog) with
-            {
-                Durability = itemCatalog.NormalizeDurability(
+                {
+                    Durability = itemCatalog.NormalizeDurability(
                     item.ItemId,
                     item.Durability)
-            };
+                };
             if (item.Slot is >= 9 and < 23
                 && session.Inventory.Equipped.TryAdd(
                     item.Slot,
@@ -318,7 +318,7 @@ public sealed partial class SelectCharacterHandler(
             .Concat(normalizedCreatureInventory.OverflowItems)
             .ToArray();
         var normalizedWarehouseUpgrades =
-            senders.PlanWarehouseUpgradeSettlement(context, 
+            senders.PlanWarehouseUpgradeSettlement(context,
                 normalizedInventory.Inventory.Values,
                 normalizedWarehouse.Warehouse.Values,
                 loginOverflowCandidates.Select(item => item.ItemId));

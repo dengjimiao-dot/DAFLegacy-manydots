@@ -1,6 +1,6 @@
 # 06 · 随机源降级为纯托管实现（服务端与 DAFLegacy.RandomNative 解耦，模块保留至 Client 层）
 
-- 状态：**已实施**（2026-09-24 标注）。服务端随机源托管化已落地（`Server/DAFLegacy.Server/Infrastructure/`；2026-09-29 目录修订：原 `Random/` 三文件已并入 `Infrastructure/`，契约由本档与类头注释约束，见 07 §11）；**修订：`DAFLegacy.RandomNative` 不删除**，保留至 `Client/DAFLegacy.RandomNative/`，仅解除服务端耦合。下文以"删除模块"为结论的表述按此修订理解
+- 状态：**已实施**（2026-09-24 标注）。服务端随机源托管化已落地（`Server/DAFLegacy.Server/Infrastructure/`，契约由本档与类头注释约束，见 07 §11）。`DAFLegacy.RandomNative` 不删除，保留至 `Client/DAFLegacy.RandomNative/`，仅解除服务端耦合
 - 上级文档：[00 开档总纲](00-kickoff.md) · [01 目标架构](01-target-architecture.md) · [02 可移植性契约](02-portability-contracts.md) · [03 构建、发布与 CI](03-build-release-ci.md) · [04 迁移计划](04-migration-plan.md)
 - 参考实现：`ServerS4A21`（下称"参考项目"）
 - **取代 [05 · RandomNative 跨平台化提案](05-randomnative-crossplatform.md)**：本提案不做原生模块的跨平台移植；服务端与模块解耦（模块保留至 Client 层），05 的结论仍作废
@@ -20,7 +20,7 @@
 | --- | --- |
 | 写死的 `LibraryName = "DAFLegacy.RandomNative.dll"` | 服务端代码里不再有任何原生库名（本就是"搬目录"解决不了的那条，见 §3.4） |
 | 跨平台编译（M6） | 不做：服务端只剩 C#，模块保持 Windows 专属 |
-| `.slnx` 成员资格（`MSB4278`） | 2026-09-23 修订：原生项目回到解决方案（仅 IDE 可见，`<Build Project="false" />` 不参与构建），`MSB4278` 对解决方案级 `dotnet build` 重新成立——服务端按项目构建，不受影响 |
+| `.slnx` 成员资格（`MSB4278`） | 原生项目在解决方案中仅 IDE 可见（`<Build Project="false" />` 不参与构建），`MSB4278` 对解决方案级 `dotnet build` 重新成立——服务端按项目构建，不受影响 |
 | `ProjectReference` / `BuildRandomNativeReference` / `RandomNativeBinary` / 硬编码 `Content`（4 处编译期耦合） | 全部删除 |
 | RID 布局、`SetDllImportResolver`、探测顺序（02 · R2 的机制） | 服务端无实例，规则可留可删 |
 | CTest `rdseed_native`、`build-native.ps1`、CMake 预设 | 随模块保留至 Client 层，不再属于服务端交付 |
@@ -173,7 +173,7 @@ DAFLegacy 有 `ClientRandomSeed` 的概念，但它只是**由裁决随机生成
 
 ### 3.4 顺带说明：`LibraryName` 与目录位置无关
 
-上一轮已经实测清楚（对照实验：同一份原生库放下 `runtimes/osx-arm64/native/libDAFLegacy.RandomNative.dylib`）：
+实测已经确认（对照实验：同一份原生库放下 `runtimes/osx-arm64/native/libDAFLegacy.RandomNative.dylib`）：
 
 ```text
 A) DllImport("DAFLegacy.RandomNative") + SetDllImportResolver → 调用成功
@@ -316,15 +316,15 @@ public sealed record GameRandomStatus(string Provider);
 
 **没有"子模块"这一层。** 这里要避免一个术语陷阱：在托管世界里，`Random/` 是一个**模块目录**，不是子模块、不是独立程序集、不是独立构建单元——它就是同一个 `DAFLegacy.Server.dll` 里的一组 `.cs` 文件。这与 [D3](00-kickoff.md#5-关键设计决策) 的决定一致（4 个托管项目收成 1 个项目 + 模块目录）。引入"子模块"只会凭空多出一个构建单元，而它没有任何可独立交付的边界。
 
-**目录**（M0 之后的形态；当前 `GameRandomSource.cs` 平铺在项目根）：
+**目录**（现行形态；随机源文件随目录收敛位于 `Infrastructure/`）：
 
 ```text
 Server/DAFLegacy.Server/
-  Random/                          ← 模块目录（当前不存在）
+  Infrastructure/
     IDropRandomSource.cs           ← 消费缝，仅 1 个成员
     GameRandomSource.cs            ← 生产实现（Random.Shared），约 20 行
     SeededRandomSource.cs          ← 确定性实现，自测与问题复现用
-    （可选）ClientLcg.cs            ← 仅当 §7 · Q1 的答案是"客户端会复算"
+    （未引入）ClientLcg.cs          ← 仅当 §7 · Q1 的答案是"客户端会复算"
 ```
 
 **调用关系**（方向不要画反）：
@@ -340,7 +340,7 @@ GameRandomSource
 
 所以准确的描述不是"新模块被 `GameRandomSource` 调用"，而是 **`GameRandomSource` 本身就是那个模块的生产实现**。在两者之间再插一层门面没有收益——它们同属一个程序集、同一份 CI、同一次编译。
 
-**命名决定：不保留 `RandomNative` 这个名字。** 实现里已经不含任何原生代码，留着这个名字只会延续一类误解——原 `01 · 6.1` 曾专门指出"这个名字、以及它曾经的位置，都容易引出错误结论"（该节已随服务端解耦移除）。模块按 [01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) 的目标命名叫 `Random/`，类型按职责命名。
+**命名决定：不保留 `RandomNative` 这个名字。** 实现里已经不含任何原生代码，留着这个名字只会延续一类误解。模块目录按 [01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) 的规则命名（现随目录收敛位于 `Infrastructure/`），类型按职责命名。
 
 **一处可选的重命名**：[01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) 与 [04 · M2](04-migration-plan.md) 规划的是 `IRandomSource`，本提案为换取零调用点改动而保留 `IDropRandomSource`。取舍是：改名更贴合设计文档的既有命名，但纯机械地触及 16 个文件、42 处调用点；不改名则业务代码一行不动。**建议先按 `IDropRandomSource` 落地，把重命名留作独立提交**——理由与 [01 · 9.4](01-target-architecture.md#94-命名空间策略分两步) 把"移动文件"和"改命名空间"拆成两步相同。
 
@@ -352,17 +352,17 @@ GameRandomSource
 
 | 对象 | 说明 |
 | --- | --- |
-| `src/DAFLegacy.RandomNative/` 整目录 | **移至 `Client/DAFLegacy.RandomNative/` 保留**（修订：不再删除）。8 个文件：`CMakeLists.txt`、`build-native.ps1`、`DAFLegacy.RandomNative.vcxproj{,.filters}`、`include/daflegacy_random.h`、`src/daflegacy_random.cpp`、`src/daflegacy_random.def`、`tests/random_native_tests.cpp` |
-| `DAFLegacy.Emulator.slnx` | ~~移除 `RandomNative` 条目~~ 2026-09-23 修订：条目保留（原生项目回到解决方案，仅 IDE 可见，不参与构建） |
+| `src/DAFLegacy.RandomNative/` 整目录 | **移至 `Client/DAFLegacy.RandomNative/` 保留**（不删除，仅解除服务端耦合）。8 个文件：`CMakeLists.txt`、`build-native.ps1`、`DAFLegacy.RandomNative.vcxproj{,.filters}`、`include/daflegacy_random.h`、`src/daflegacy_random.cpp`、`src/daflegacy_random.def`、`tests/random_native_tests.cpp` |
+| `DAFLegacy.Emulator.slnx` | `RandomNative` 条目保留（原生项目仅 IDE 可见，`<Build Project="false" />` 不参与构建） |
 | `DAFLegacy.Server.csproj:8,9,17-19,23-28` | `RandomNativeBinary`、`BuildRandomNativeReference`、`ProjectReference`、硬编码 `Content` |
 | `GameRandomSource.cs:145-250` | `NativeRdSeed` 与 `NativeMethods`（P/Invoke、探测、异常分类、`DllImportSearchPaths`） |
 | `artifacts/native/random/` | 构建产物（已在 `.gitignore` 中，无需提交动作） |
 
 ## 6. 需要同步修订的既有设计
 
-删除原生模块会让若干既有设计条目失去对象。**这些不是可选项——留着会让后续实施者照着一份有对象的规则去建一个不存在的组件。**
+解除服务端与原生模块的耦合会让若干既有设计条目失去对象。**这些不是可选项——留着会让后续实施者照着一份有对象的规则去建一个不存在的组件。**
 
-> **状态：本节已执行**（2026-09 修订：`DAFLegacy.RandomNative` 改为保留至 Client 层，上文涉及"删除模块"的表述已随之再次修订，本表"删除原生模块"的处置相应改为"迁移保留"）。涉及**代码**的条目（自测 5 处、`Program.cs` 两处、`GameRandomSource` 本体）已随 M2 实施。
+> **状态：本节已执行。** 关联文档（00–04）中失去对象的条目已按本表同步修订，[05](05-randomnative-crossplatform.md) 已标注作废；涉及**代码**的条目（自测 5 处、`Program.cs` 两处、`GameRandomSource` 本体）已随 M2 实施。涉及"删除模块"的表述按"迁移保留至 Client 层"理解。
 
 | 文档 | 条目 | 处置 |
 | --- | --- | --- |
@@ -393,7 +393,7 @@ GameRandomSource
 | 检查 | 判据 |
 | --- | --- |
 | 源码无原生痕迹 | `git grep -i "RandomNative" Server/` 无结果（模块保留在 `Client/DAFLegacy.RandomNative/`）；`git grep "DllImport" Server/DAFLegacy.Server/` 无结果 |
-| 构建图 | `DAFLegacy.Server.csproj` 的 `ProjectReference` 不含原生项目（`.slnx` 2026-09-23 修订后重新含 `.vcxproj`，不以此为准） |
+| 构建图 | `DAFLegacy.Server.csproj` 的 `ProjectReference` 不含原生项目（`.slnx` 含 `.vcxproj` 但不参与构建，不以解决方案成员为准） |
 | 三平台启动 | 服务端在 win-x64 / linux-x64 / osx-arm64 均正常启动，日志 provider 字段为托管实现，无任何原生相关字段 |
 | 分布式行为不变 | 42 处调用点的分布抽样行为与改动前一致（掉落/奖励/强化/合成各抽样自测） |
 | 密码学未退化 | `git grep "RandomNumberGenerator" Server/DAFLegacy.Server/` 仍命中 `Network/Protocol/EntranceHandshakeReplies.cs` |

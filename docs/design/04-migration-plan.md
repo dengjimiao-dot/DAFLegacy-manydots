@@ -22,7 +22,7 @@
 | **M2** | 随机源收拢 | 服务端随机源改为纯托管单一实现（`Server/DAFLegacy.Server/Random/`）；服务端与 `DAFLegacy.RandomNative` 解耦（模块保留至 `Client/`），删除 csproj 的编译期耦合 | M1 | ✅ 承诺 |
 | **M3** | PVF 脚本模块收拢 | `Server/DAFLegacy.Server/PvfScript/` 补齐编码契约与路径归一；自测项目对应目录 | M2 | ✅ 承诺 |
 | **M4** | 路径与数据契约 | `PathResolver`、`DAFLEGACY_HOME`、降级一致性、SIGTERM | M3 | ✅ 承诺 |
-| **M5** | 独立打包与发布 | `publish.sh`（RID 探测）、分层出包、CI 发布矩阵 | M4 | ✅ 承诺 |
+| **M5** | 独立打包与发布 | `publish.sh`（RID 探测）、CI 发布 Linux 服务端包 | M4 | ✅ 承诺 |
 
 **M0 是本计划中最重的一步**，它把四件互相牵连的事捆在一起（目录重组、解决方案成员变化、Launcher 解耦、配置文件归位）。四件事必须在同一提交内完成——只做一半会落到半旧半新的路径上，任何构建都失败。后续里程碑则都是小范围的语义改动。
 
@@ -35,25 +35,24 @@
 **任务**
 
 - 提交本文档集（`docs/design/00`–`04`）。
-- `.gitignore`：开档时计划调整为 `/docs/*` + `!/docs/design/` 以使 `docs/design/**` 可跟踪；实际最终保留 `/docs` 整体忽略，文档仅本地维护（[00 · 两个约定](00-kickoff.md)）。
+- `.gitignore`：`docs/` 不在忽略之列，`docs/design/**` 随仓库跟踪；新增内容一律写入 `docs/design/`（[00 · 两个约定](00-kickoff.md)）。
 - **目录三极重组**（纯 `git mv`，[01 · 10.1](01-target-architecture.md#101-完整影响清单) 给出完整影响清单）：
   - `src/DAFLegacy.Server/` → `Server/DAFLegacy.Server/`，其 79 个 `.cs` 按 [01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) 的机械规则归位：
     - **`GameWorld/`**（25 个）：全部 `*Catalog` / `*Definition`，**平铺**，即从 PVF 解析出的只读定义与目录。
     - **`Game/<业务域>/`**（39 个，9 个域）：运行时业务规则，按业务域分目录——`Dungeon/`(11)、`Inventory/`(9)、`Quest/`(8)、`Compound/`(3)、`Shop/`(3)、`ItemUpgrade/`(2)、`Account/`(1)、`Creature/`(1)、`Drop/`(1)。域内平铺。
-    - 技术职责模块：`Protocol/`(11，来自原独立项目)、`PvfScript/`(1)、`Random/`(1)、`Network/`(4)、`Persistence/`(3)、`Hosting/`(3)、`Services/`(2，两个 `IHostedService` 周期服务)。
-      > 2026-09-29 修订：目录已重组（`Protocol/`→`Network/{Core,Protocol}`、`Hosting/`→`Infrastructure/`、`Random/`→`Infrastructure/`、`Persistence/` 瘦身至 `JsonGameStore`）；现行形态以 07 §11 实施记录为准。
-    - 79 个文件**全部有确定归属**，归类规则见该节，实施时不再逐个讨论。
+    - 技术职责模块：`Network/`（含 `Core/`、`Protocol/`、`Dispatch/`、`Sessions/`、`Timers/` 基建与 `Handlers/<组>/`、`Builders/<组>/`、`Parsers/<组>/` 协议组目录）、`PvfScript/`、`Infrastructure/`（随机源、运行态、路径、宿主选项、后台服务；原 `Random/`、`Hosting/`、`Persistence/`、`Services/` 均已并入）。
+    - 79 个文件**全部有确定归属**，归类规则见该节，实施时不再逐个讨论；目录形态的现行登记见 [07 · §11](07-protocol-layer-refactor.md)。
   - `src/DAFLegacy.Protocol/` 的 11 个 `.cs` → `Server/DAFLegacy.Server/Protocol/`，**`DAFLegacy.Protocol.csproj` 删除**（项目并入主项目）。
   - `src/DAFLegacy.Launcher/`、`src/DAFLegacy.Ijl15/` → `Client/` 下同名目录。
   - `third_party/d3d8to9/v1.15.1/` → `Client/Patch/`，并把 `LICENSE.md` / `README.md` 改名为 `LICENSE-d3d8to9.md` / `README-d3d8to9.md`（`Patch/` 将容纳多个补丁资产，通用名会歧义）。**`third_party/` 目录随之消失**。
   - `tests/DAFLegacy.SmokeTests/` → `Server/DAFLegacy.Server.SelfTests/`，项目名改为 `DAFLegacy.Server.SelfTests`，11 个用例**按 [01 · 4.3](01-target-architecture.md#现有-11-个用例的域归属) 的表格直接归位**（`Game/Compound/` 2、`Game/Dungeon/` 2、`Game/Inventory/` 2、`Game/Quest/` 2、`Game/ItemUpgrade/` 2、`GameWorld/` 1），`Program.cs` 留在项目根。
   - **命名空间保持 `DAFLegacy.Server` 扁平不动**（分两步走，见 [01 · 9.4](01-target-architecture.md#94-命名空间策略分两步)）。
-- **从 `DAFLegacy.Emulator.slnx` 移出两个 `.vcxproj`**，并改写全部 `<Project Path>`。文件名不变。
+- **解决方案成员改造**：两个 `.vcxproj` 标注 `<Build Project="false" />` 不参与解决方案构建（文件名不变，IDE 全量可见，原生构建统一走 `patch.bat`）。
 - **两个运行时配置文件归位**：`server.json` → `Server/DAFLegacy.Server/`，`launcher.json` → `Client/DAFLegacy.Launcher/`。两个项目用的 SDK 不同，项类型分别是 `Content` 与 `None`，写成一样会**静默丢失文件**——详见 [01 · 8.4](01-target-architecture.md#84-两个运行时配置文件归位)。
 - **Launcher 原生解耦**（原计划的独立里程碑，现因是单解决方案的前置条件而并入 M0）：
-  - `DAFLegacy.Launcher.csproj` 的 `BuildIjl15` / `CopyIjl15ToOutput` / `CopyIjl15ToPublish` 三个 Target 改为：`ijl15.dll` 作为 `Condition="Exists(...)"` 的可选内容项；原生构建改为显式 opt-in（[03 · 4.3](03-build-release-ci.md#43-daflegacyijl15-的构建与-launcher-解耦m0-改造)；该 `-p:BuildIjl15Native=true` 开关随 2026-09-23 修订删除，见 [03 · 4.5](03-build-release-ci.md)）。
+  - `DAFLegacy.Launcher.csproj` 的 `BuildIjl15` / `CopyIjl15ToOutput` / `CopyIjl15ToPublish` 三个 Target 删除：`ijl15.dll` 作为 `Condition="Exists(...)"` 的可选内容项，原生产物在位即自动随包（[03 · 4.3](03-build-release-ci.md#43-daflegacyijl15-的构建与-launcher-解耦m0-改造)）；原生与客户端产物统一由 `patch.bat` 构建（[03 · 4.5](03-build-release-ci.md)）。
   - **删除对 `DAFLegacy.Protocol` 的 `ProjectReference`**（死引用，[01 · 3.0](01-target-architecture.md#30-先修正一处事实launcher-对-protocol-的引用是死引用)）。
-  - `publish.bat` 保持一键发布入口；2026-09-23 修订后收敛为仅发布服务端包（仅 .NET SDK），原生与客户端产物由 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）。
+  - `publish.bat` 保持一键发布入口，仅发布服务端包（仅 .NET SDK）；原生与客户端产物由 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）。
   - 确认 `Ijl15ReplacementInstaller` 在 `ijl15.dll` 缺失时报"模块不可用"而非抛未处理异常。
   - IJL15 原生产物目录改为 `artifacts/native/ijl15/<config>/win-x86/`。
 - 新增内容一律写入 `docs/design/`，**不修改仓库根 `README.md`**。
@@ -62,7 +61,7 @@
 
 ```bash
 # 三个平台均须成功（这是本阶段的核心验收）
-# 2026-09-23 修订：解决方案含 .vcxproj、仅 MSBuild 可构建，跨平台验收改为按项目构建
+# 解决方案含 .vcxproj、仅 MSBuild 可构建，跨平台验收按项目构建
 dotnet build Server/DAFLegacy.Server/DAFLegacy.Server.csproj -c Release
 dotnet build Server/DAFLegacy.Server.SelfTests/DAFLegacy.Server.SelfTests.csproj -c Release
 
@@ -100,8 +99,8 @@ ls dist/client-win-x64/launcher.json
 
 - **新增 CI 源码扫描**（唯一需要自建的一步）：检查 `Server/` 与 `tests/` 下有没有 Windows 系统库 `DllImport`（Z5）。几行 grep，**不写 MSBuild 目标、不新增共享 props**——[01 · 3.3](01-target-architecture.md#33-强制手段编译器承担绝大部分只补一处源码扫描) 说明了为什么其余 Z 规则交给编译器。
 - **确认 `EnableWindowsTargeting` 只出现在 `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj` 内**，仓库根与 `Server/` 下不存在 `Directory.Build.props`。这是护栏生效的前提——放到全局会让 Z2 的 WinForms/WPF 分支静默通过。
-- `build.yml` 落地护栏扫描与服务端构建自测。**2026-09-23 修订**后收敛为单 job（护栏扫描 + 服务端自测 + `publish.bat` + 服务端包内容校验，见 [03 · 4.5](03-build-release-ci.md)）；**2026-09-30 修订**后再收敛为只自测（护栏扫描 + 服务端自测），发布与包产物步骤移除；修订前的 portable 矩阵 + windows-full 双 job 设计见 [03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构)。
-- `windows-full` job 补上原生项目的 CTest（当前 CI 未运行 `RUN_TESTS`，而 `build-native.ps1` 早已提供 `-RunTests` 开关）。
+- `build.yml` 落地护栏扫描与服务端构建自测：单 job（`windows-latest`）只做护栏扫描（Z5 源码扫描 + `EnableWindowsTargeting` 位置 + 禁共享构建配置）与服务端自测构建执行，不产出任何包产物（见 [03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构)）。
+- 原生项目的 CTest（`build-native.ps1` 的 `-RunTests` 开关）由本地执行：`patch.bat` 把额外开关转发给两个 `build-native.ps1`；CI 不构建原生项目。
 - 新增 CI 源码扫描步骤：Server 层项目的 `.cs` 中出现 Windows 系统库 `DllImport`（`d3d9.dll`、`user32.dll`、`kernel32.dll` 等）即失败。
 - 记录基线，作为后续里程碑的回归比对基准：
   - Windows 全量构建与**发布产物清单**（逐文件）。
@@ -130,7 +129,7 @@ M0 已把 `GameRandomSource.cs` 移入 `Random/`。本阶段**在 `Random/` 内�
 - 先确认 [06 · Q1](06-random-source-managed.md#7-待确认问题)（客户端是否从 `ClientRandomSeed` 复算掉落），以决定是否需要移植客户端 LCG。
 - 按 [06 · 4.3](06-random-source-managed.md#4-设计提案) 把 `GameRandomSource` 改为 `Random.Shared` 的单一实现（约 249 行 → 约 20 行）。**保留 `IDropRandomSource` 缝与 `GameRandomSource.Shared` 名字**，42 处调用点零改动；新增确定性实现 `SeededRandomSource`（自测与问题复现用）。
 - 按 [06 · 4.4](06-random-source-managed.md#4-设计提案) 收缩状态面：`GameRandomStatus` 由 9 个字段降为一个 provider 字段，同步改写 6 处消费点。
-- 按 [06 · 5](06-random-source-managed.md#5-原生资产处置清单) 处置原生资产：`src/DAFLegacy.RandomNative/` 整目录（8 个文件）**移至 `Client/DAFLegacy.RandomNative/` 保留**（相对深度不变，内部路径无需改动）；移除 `DAFLegacy.Emulator.slnx` 的 `RandomNative` 项目条目与 `GameRandomSource.cs` 内的 `NativeRdSeed` 与 `NativeMethods`。
+- 按 [06 · 5](06-random-source-managed.md#5-原生资产处置清单) 处置原生资产：`src/DAFLegacy.RandomNative/` 整目录（8 个文件）**移至 `Client/DAFLegacy.RandomNative/` 保留**（相对深度不变，内部路径无需改动）；`RandomNative` 在 `DAFLegacy.Emulator.slnx` 的条目保留（原生项目仅 IDE 可见、不参与构建）；删除 `GameRandomSource.cs` 内的 `NativeRdSeed` 与 `NativeMethods`。
 - **删除** `Server/DAFLegacy.Server/DAFLegacy.Server.csproj` 中指向 `DAFLegacy.RandomNative.vcxproj` 的 `ProjectReference`、`BuildRandomNativeReference`、`RandomNativeBinary` 属性与硬编码 `Content`（4 处编译期耦合）。
 - 自测项目新增 `Random/` 目录，改用 `SeededRandomSource` 与既有替身覆盖接口语义，删除断言三级链与拒绝采样的用例。
 - 按 [06 · 6](06-random-source-managed.md#6-需要同步修订的既有设计) 同步修订 00–03 中失去对象的条目，并把 [05](05-randomnative-crossplatform.md) 标注作废。
@@ -204,9 +203,9 @@ dotnet Server/DAFLegacy.Server.SelfTests/bin/Release/net10.0/DAFLegacy.Server.Se
 
 - 新增 `publish.sh`，自探测 RID（[03 · 6.1](03-build-release-ci.md#61-publishsh-的-rid-处理)），支持 `PUBLISH_ALL=1` 产出全部目标。
 - 发布命令显式带 RID（`-r win-x64` / `-r linux-x64`），`publish.bat` 同步更新。
-- `release.yml` 矩阵化，产出包与各自 `.sha256`。**2026-09-23 修订**：只产出两个**服务端**包——`DAFLegacy-<tag>-linux-x64.zip`（`ubuntu-latest`）与 `DAFLegacy-<tag>-server-win-x64.zip`（`windows-latest`），只单独构建服务端项目；合并包与纯客户端包不再由 CI 产出，客户端产物由本地 `patch.bat` 发布（[03 · 4.5](03-build-release-ci.md)）。**2026-09-29 修订**：移除 `windows-server` job，CI 发布仅保留 `DAFLegacy-<tag>-linux-x64.zip`（[03 · 6](03-build-release-ci.md#6-发布流程releaseyml)）。
+- `release.yml` 按标签触发，唯一交付物为 `DAFLegacy-<tag>-linux-x64.zip`（含 `.sha256`），只单独构建服务端项目；Windows 服务端包与客户端产物分别由本地 `publish.bat` / `patch.bat` 产出，不进 CI（[03 · 4.5](03-build-release-ci.md)、[03 · 6](03-build-release-ci.md#6-发布流程releaseyml)）。
 - **把 `d3d8.dll` 真正放进包**（[Q13](#5-待决问题) 已决：需要分发）：在 `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj` 里加 `Content` 项指向 `Client/Patch/` 下的**三个文件**——`d3d8.dll` 以及 `LICENSE-d3d8to9.md` / `README-d3d8to9.md`（[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll) 说明了后两者的许可义务：BSD 式条款要求二进制再分发必须随附版权声明），写法与 `Config.ini` 一致。**不要写在 CI 里**——那会让本地 `publish.bat` 与 CI 产出的包内容不一致。今天它零引用、从未进包（[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll)），所以这是 M5 的**新增**步骤，基线里没有它。
-- **包内容校验**：按 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的表在 CI 加一步检查——每个包该有的文件实际存在，缺失即失败。它拦的是 `Content`/`None` 项类型写错导致的**静默丢文件**（构建成功但文件不在包里）。
+- **包内容校验**：按 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的表在 CI 校验 Linux 服务端包内容（`DAFLegacy.Server`、`server.json`、`wwwroot`），缺失即失败。它拦的是 `Content`/`None` 项类型写错导致的**静默丢文件**（构建成功但文件不在包里）。
 - **更新 [03](03-build-release-ci.md) 的发布布局与发布命令章节**：把 Linux 一条路径写完整，并说明 Linux 包不含 Launcher 与 `ijl15.dll` 及其原因。**不修改仓库根 `README.md`**——面向使用者的 Windows 部署说明保持原样，Linux 相关说明一律落在 `docs/design/` 内。
 
 **验收**
@@ -214,9 +213,8 @@ dotnet Server/DAFLegacy.Server.SelfTests/bin/Release/net10.0/DAFLegacy.Server.Se
 | 场景 | 期望 |
 | --- | --- |
 | `ubuntu-latest` 发布 Linux 服务端包 | 产物中 apphost 经 `file` 确认为 ELF x86-64 |
-| `windows-latest` 发布 `server-win-x64` 服务端包 | 已随 2026-09-29 修订移除该 job；Windows 服务端包由本地 `publish.bat` 产出，包内容与 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的服务端列一致 |
-| 包内容校验 | CI 按 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 按包分列校验，缺失即失败 |
-| 各 job | 相互独立，任一失败不阻断另一个已产出的产物（`fail-fast: false`） |
+| Windows 服务端包 | 由本地 `publish.bat` 产出，包内容与 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的服务端列一致 |
+| 包内容校验 | `release.yml` 在打包前校验 Linux 服务端包内容（`DAFLegacy.Server`、`server.json`、`wwwroot`），缺失即失败 |
 | 文档 | [03](03-build-release-ci.md) 记录的 Linux 发布步骤可在干净机器上照做即得可用产物 |
 | 仓库根文档 | `git diff --stat` 中不出现 `README.md` |
 
@@ -255,9 +253,9 @@ dotnet Server/DAFLegacy.Server.SelfTests/bin/Release/net10.0/DAFLegacy.Server.Se
 | Q9 | **是否需要 systemd unit / 服务安装脚本？** | **M5 后按需** | 与 Q2 联动。参照项目提供了 `start-server.sh` / `cleanup.sh` 等 Unix 脚本双胞胎，DAFLegacy 至少需要 `stop.sh` 对应现有的 `stop.bat`，可先做这一项 |
 | Q10 | **是否需要 macOS 发布包？** | **不需要** | 见 Q3。macOS 上只需保证 `dotnet build` 与测试可用 |
 | Q11 | **是否引入托管扩展契约（程序集级插件）？** | **现在不引入** | 见 [01 · 6.3](01-target-architecture.md#63-将来若需要托管扩展)。原先的判据是"今天的唯一需求是可选原生资产，用 RID 探测 + 降级即可覆盖"；该需求已随 [06](06-random-source-managed.md) 服务端与 `DAFLegacy.RandomNative` 的解耦消失（模块保留至 Client 层，不再被服务端引用），结论不变但理由更强——今天服务端连可选原生资产都没有了。等到出现必须用托管程序集承载的 Windows 专属能力（事件日志、性能计数器），再评估——那时才有真实需求可供设计 |
-| Q12 | **`EnableWindowsTargeting` 让 Client 层能在非 Windows 上交叉编译，是否应纳入常规流程？** | **是，但只用于验证** | 它让 macOS/Linux 开发者能验证 Launcher 的托管代码改动而无需 Windows。**不用于产出正式 Windows 发布包**——正式包仍在 `windows-latest` 上构建，以保证 apphost 与资源嵌入与 MSBuild 路径一致 |
+| Q12 | **`EnableWindowsTargeting` 让 Client 层能在非 Windows 上交叉编译，是否应纳入常规流程？** | **是，但只用于验证** | 它让 macOS/Linux 开发者能验证 Launcher 的托管代码改动而无需 Windows。**不用于产出正式 Windows 发布包**——正式 Windows 形态由本地 `publish.bat` / `patch.bat` 在 Windows 上构建，以保证 apphost 与资源嵌入与 MSBuild 路径一致 |
 | Q13 | ~~**`d3d8.dll` 是否仍需要分发？**~~ | **已决：需要分发** | 实测确认它当前零引用、从未进入任何发布包（[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll)）。**决定保留并分发**，因此 M5 增加一个复制步骤，推荐用 `Launcher.csproj` 的 `Content` 项实现（与 `Config.ini` 一致），而不是写在 CI 里 |
-| Q14 | **DAFLegacy 自己的 `LICENSE`（0BSD）是否随发布包分发？** | **建议随包** | 当前所有发布包都**不含任何许可文本**（`release.yml` 只压缩 `dist/`）。项目自身是 BSD Zero Clause（0BSD）——它**不要求**署名，所以不随包并不违规；但既然 M5 起要为 `d3d8.dll` 附带第三方许可（[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll)），把项目自己的 `LICENSE` 一起放进包更一致，也让用户知道使用条款。成本是一个 `Content` 项 |
+| Q14 | **DAFLegacy 自己的 `LICENSE`（0BSD）是否随发布包分发？** | **随包** | `Launcher.csproj` 的 `Content` 项已把仓库根 `LICENSE` 一并复制进客户端产物（与 `d3d8.dll` 的第三方许可同步落地，[01 · 2.4](01-target-architecture.md#24-补丁资产-clientpatchd3d8dll)）。项目自身是 BSD Zero Clause（0BSD），不要求署名；随包分发让用户知悉使用条款，成本是一个 `Content` 项 |
 
 ## 6. 风险登记
 
@@ -265,14 +263,14 @@ dotnet Server/DAFLegacy.Server.SelfTests/bin/Release/net10.0/DAFLegacy.Server.Se
 | --- | --- | --- | --- | --- | --- |
 | K1 | **M0 之后、M1 之前缺少 Z5 扫描与三平台矩阵** | 高 | 中——Z1–Z3 仍由编译器无条件守卫（写错的跨层引用与 `.vcxproj` 引用当场被拦），但这段时间里 Windows 系统库 P/Invoke 不会被发现，"产物在三平台上是否真的可用"也没人验证 | M0 与 M1 连续完成，不拉开；把「连续」写进执行原则（[第 1 节](#1-执行原则)第 2 条） | [00 · D4](00-kickoff.md) |
 | K2 | 把 `EnableWindowsTargeting` 误放到仓库根或共享 props | 中 | 高——Z2 的 WinForms/WPF 违规会在 Linux 上静默通过，护栏失效且无报错 | 它**只写在 `Client/DAFLegacy.Launcher/DAFLegacy.Launcher.csproj`** 内；M0 验收增加一项：仓库根不存在 `Directory.Build.props`，且 `EnableWindowsTargeting` 只出现在该文件 | [01 · 3.3](01-target-architecture.md#33-强制手段编译器承担绝大部分只补一处源码扫描) |
-| K3 | `.vcxproj` 移出后 `msbuild DAFLegacy.Emulator.slnx` 不再构建原生项目 | 高 | 中——开发者以为原生已构建 | `publish.bat` 显式调用 `build-native.ps1`；在 [03 · 7](03-build-release-ci.md#7-迁移期的构建兼容性) 显式标注为"唯一的行为退化"；CI 的 `windows-full` job 始终构建原生 | [03 · 7](03-build-release-ci.md#7-迁移期的构建兼容性) |
+| K3 | `.vcxproj` 移出后 `msbuild DAFLegacy.Emulator.slnx` 不再构建原生项目 | 高 | 中——开发者以为原生已构建 | 原生构建统一走 `patch.bat`（两个 `build-native.ps1`）；在 [03 · 7](03-build-release-ci.md#7-迁移期的构建兼容性) 显式标注为"唯一的行为退化" | [03 · 7](03-build-release-ci.md#7-迁移期的构建兼容性) |
 | K4 | 搬运 `Server/DAFLegacy.Server/PvfScript/` 时引入细微行为差异 | 中 | 高——脚本数据读取错误会广泛影响业务 | M3 的 PR 只做移动；行为不变项逐条对照清单；先补齐特征测试再搬运 | [01 · 4.2](01-target-architecture.md#42-模块职责要点) |
 | K5 | 降级一致性改动（R9）掩盖真实配置错误 | 中 | 中——服务端"启动成功"但功能缺失 | 缺失数据一律 `Error` 级日志 + 启动完成时汇总缺失清单；不做静默降级 | [02 · R9](02-portability-contracts.md#r9--降级一致性) |
 | K6 | Linux 上缺少 `Script.pvf` 导致 M4 无法完整验收 | 高 | 中——里程碑卡在人工验收项 | 用目录回退模式（`SkillScriptPath` 指向最小脚本集）构造验收夹具；真实 PVF 验收单独记录 | [00 · 3.2](00-kickoff.md#32-服务端在-macos-上的真实启动行为) |
 | K7 | 目录回退模式的大小写索引改写引入新行为 | 中 | 中——开发/测试路径受影响 | 保留原查询作为回退；新索引只解决大小写，不改变返回路径的大小写形式 | [02 · R8](02-portability-contracts.md#r8--文件系统语义) |
 | K9 | `EnableWindowsTargeting` 放在共享 props 中对 Server 层项目产生意外影响 | 低 | 低 | 该属性只影响面向 Windows 的项目还原；Server 层项目 TFM 不含 `-windows`，不触发 | [03 · 2](03-build-release-ci.md#2-不引入共享构建配置) |
 | K11 | `EntranceService`（14,264 行）对可移植性改动的耦合面未知 | 中 | 中——M3/M4 可能需要改动该文件 | 优先通过适配层（命名空间 / 扩展方法）避免修改其内部；仅在编码注册与路径解析两处触及 | [01 · 4.1](01-target-architecture.md#41-daflegacyserver主项目) |
-| K12 | 四个发布包的组合让 release 流程变复杂，某个包长期无人验证而悄悄坏掉 | 中 | 中——用户在需要那个包时才发现不可用 | 两个必需包在 CI 中每次发布都产出；两个可选包若长期不用，应果断删掉而不是保留 | [03 · 6](03-build-release-ci.md#6-发布流程releaseyml) |
+| K12 | Windows 服务端包与客户端产物不在 CI 覆盖内，本地形态可能悄悄坏掉 | 中 | 中——用户在需要该形态时才发现不可用 | 两者与 CI 的 Linux 包同源（同一 csproj 的 `dotnet publish`）；客户端产物由 `patch.bat` 一并构建原生与 Launcher，原生产物在位即自动带上插件；发版前按 [03 · 3.0](03-build-release-ci.md#30-包内容来源与复制责任) 的表逐项核对 | [03 · 6](03-build-release-ci.md#6-发布流程releaseyml) |
 
 ## 7. 下一步
 

@@ -114,15 +114,6 @@ DAFLegacy.Server ──✗──► DAFLegacy.Mcp      （编译期零引用，�
 // 服务端声明"我能对外提供协议流原始数据"的端口；不含任何 MCP 概念
 public enum TapDecodeMode { None, ClientCmd, Server }  // 富化提示，按现有 LogPacket 两个重载的选择逻辑传入
 
-> 2026-09-29 修订（多端口与逐包捕获）：漏斗由单槽扩展为「单槽端口 + 注册端口」并集分发
-> （`RuntimeState.AddTapSink/RemoveTapSink`，任一 `Active` 即发布）；新增
-> `Network/Core/PacketFileLogSink.cs`（自参考项目 PacketFileLogger 迁移的逐包十六进制捕获，
-> 默认关闭，`DAFLegacy:PacketCapture` 配置，64MB 轮转），与 DAF-MCP hub 并存互不挤占。
-> 统一文件日志 `Network/Core/BoundedQueueFileLoggerProvider.cs`（`DAFLegacy:Logging` 配置）经
-> Microsoft.Extensions.Logging 管线全量落盘 `logs/server.log`，与包捕获分离；
-> `Logging.Enabled` 默认 `false`，需显式开启（关闭时不注册提供器，见 CHANGELOG ADD-08）。
-
-
 public interface IPacketTapSink
 {
     bool Active { get; }            // 漏斗热路径上唯一的读取项（一次布尔判断）
@@ -134,6 +125,8 @@ public interface IPacketTapSink
         ReadOnlySpan<byte> body, ReadOnlySpan<byte>? wire);
 }
 ```
+
+漏斗为「单槽端口 + 注册端口」并集分发：`RuntimeState.TapSink` 单槽（兼容既有调用）之外提供 `AddTapSink` / `RemoveTapSink` 注册端口，任一端口 `Active` 即发布。两个独立的落盘通道与 DAF-MCP hub 并存、互不挤占，且均默认关闭：`Network/Core/PacketFileLogSink.cs`（自参考项目 PacketFileLogger 迁移的逐包十六进制捕获，`DAFLegacy:PacketCapture` 配置，64MB 轮转）与统一文件日志 `Network/Core/BoundedQueueFileLoggerProvider.cs`（`DAFLegacy:Logging` 配置，经 Microsoft.Extensions.Logging 管线全量落盘 `logs/server.log`，与包捕获分离）；`Logging.Enabled` 默认 `false`，需显式开启（关闭时不注册提供器，见 CHANGELOG ADD-08）。
 
 - 原始参数直传（风格与现有 `TraceDatagram(…, ReadOnlySpan<byte> datagram)` 一致），Server 不拥有任何 MCP 形状的数据类型。
 - 该接缝是**通用遥测端口**：SelfTests 直接实现它测漏斗（§12）；未来 pcap 导出等非 MCP 消费者同走这里。

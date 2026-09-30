@@ -120,76 +120,13 @@ foreach (var m in members) {    // 5B/条
 }
 ```
 
-## 6. 实例二:物品使用(服务器喇叭)的缺陷定位(IDA + 抓包互证)
-
-> **本节为喇叭实现前的缺陷定位记录（历史留档）**。最终格式与实现结论以 [packet-detail-chat-60cn.md](packet-detail-chat-60cn.md) 的 CMD 17 / NOTI 130 节为准：type 14↔物品 37 已由 IDA 实证（客户端 `//echophone` 标签硬编码）；flag 语义已定案为 channelNo=频道号、speakerUid=0；§6.3 缺陷清单所列各项均已随喇叭实现落地。
-
-PVF 解析:物品 **36 = 服务器喇叭**,**37 = 频道喇叭**(堆叠消耗品,主背包 listType 0)。
-
-### 6.1 抓包实证:客户端使用喇叭**不走 CMD 47**
-
-使用服务器喇叭输入 "hello" 的真实会话(包追踪日志,密文已由服务端解出):
-
-```
-CMD Packet=17(0x11) len=28 body=(18B)
-[0E 00 0D 00 00 08 00 00 00 05 00 00 00 68 65 6C 6C 6F]
-```
-
-SEND_MESSAGE(CMD 17)请求体布局(喇叭场景):
-
-| 偏移 | 宽度 | 抓包值 | 含义 |
-|---:|---|---|---|
-| 0 | u16 | 0x000E | 序号 seq |
-| 2 | u8 | 0x0D=13 | 消息类型:**13=服务器喇叭**(物品 36) |
-| 3 | u16 | 0 | target/item-space |
-| 5 | u16 | 8 | **喇叭所在槽位**(服务端凭此扣道具) |
-| 7 | u16 | 0 | 保留 |
-| 9 | u32 | 5 | 文本长度 |
-| 13 | 变长 | "hello" | CP936 文本 |
-
-服务端现状(`EntranceService.cs` CMD 17 分支)只放行 `type==3`(地图白字),type 13 落入 `Unsupported SEND_MESSAGE type 13` warning 后**静默丢弃**——没有任何回包,这就是"使用服务器喇叭无响应"的直接原因。物品 37 频道喇叭对应 type 14(后经 IDA 实证为客户端 `//echophone` 标签硬编码,见 [packet-detail-chat-60cn.md](packet-detail-chat-60cn.md) CMD 17 节);type 15 未被任何脚本标签使用。
-
-### 6.2 NOTI 130 MEGAPHONE_MSG:客户端的喇叭显示包(IDA 实证)
-
-`sub_419420` case 130(`0x427414..0x427626`),布局见 §5 表格:
-
-```
-u8  messageType   // 13/14/15,三种喇叭都走本包
-u8  flag          // 与本地玩家某单字节值(0x404A60(dword_B5B434))比较
-u16 target        // 传给显示函数(同 NOTI 12 的 target 位)
-dstr senderName   // cap=0x1E(30B),发送者角色名
-dstr message      // cap=0x200(512B)
-```
-
-显示分支:flag **匹配本地值** → 写入普通聊天窗口(`sub_849280`,即发送者自己);**不匹配**且 type 为 13/14/15 → **大横幅喇叭渲染**(`sub_845B60`,颜色 0xFF00F2FF 黄白)。因此服务端广播 NOTI 130 给全部会话(含发送者)即可,客户端自行区分显示形态。flag 字节语义后经实测定案:flag=channelNo(消息所属频道号,与本地 B5B434 比较)、target=speakerUid 发 0 抑制气泡,见 [packet-detail-chat-60cn.md](packet-detail-chat-60cn.md) NOTI 130 节。
-
-### 6.3 缺陷清单与需要更新的数据
-
-缺陷(按处理顺序):
-
-1. **CMD 17 只放行 type=3**(`EntranceService.cs` 聊天分支):13/14/15 被拒且无任何应答。
-2. **不扣喇叭**:喇叭不经 CMD 47,必须在 CMD 17 type∈{13,14} 时按 body 内 slot 扣减(校验:槽上物品 = 36/13 或 37/14 对应、listType=0、数量>0),否则放行即成无限喇叭。
-3. **无广播**:全服没有任何 NOTI 发出。
-
-需要补全/更新的数据:
-
-| 项 | 内容 |
-|---|---|
-| 请求解析 | CMD 17 按 §6.1 布局取出 type/target/slot/保留/文本(现解析器未覆盖 slot 之后的保留 u16 与文本段) |
-| 物品扣减 | `mainInventory[slot]` count-1(为 0 移除槽位)→ `SaveCharacterInventoryAsync` 持久化 |
-| 库存刷新(自己) | NOTI 14 UPDATE_ITEM_LIST 单条目 `{slot, item, n-1, st, dur, seal}`(或 count=0 时 item=0xFFFF 清槽),与抓包中物品移动同格式 |
-| 广播(全服) | **NOTI 130**(§6.2 布局)给所有在线会话:`characterSessions` 现有 `NotifyMessageAll` 只发 NOTI 12,需新增 megaphone 通知通道(新 builder `CreateMegaphoneNotification` + registry 租约方法 + 全服遍历);服务器喇叭(13)= 全服,频道喇叭(14)= 本频道,单频道架构下先同全服、留范围注释 |
-| 兜底 | type 13/14 但 slot 校验失败 → `CreateUseStackableItemError`/静默+日志,不广播 |
-| 文档/明文 | `client-packet-enums-60cn.md` NOTI 130 行补 ✅ 与长度公式(12+a+b);`PacketPlainText.cs` 补 NOTI 130 与 CMD 17 type 13/14/15 的明文解码 case(该解码器当前保留未接入,补 case 属重新接入时的工作) |
-| 待确认 | type 14 ↔ 物品 37 映射(抓一次频道喇叭);flag 字节语义;type 15 属于哪种喇叭 |
-
-## 7. 工具与产物
+## 6. 工具与产物
 
 - `tools/extract_noti_readers.py`:对指定 NOTI 批量提取读取序列(`python tools/extract_noti_readers.py 58 59 60 61 62 63 64 70 71`;`--all` 全表)。输出为平铺序列,含一次循环体(标 `fixed>=`),循环结构与计数字段需按其打印的 case 区间人工核对。
 - 提取结果按仓库惯例回填两处:`docs/protocol/client-packet-enums-60cn.md` 对应行的"回包字节/长度"列;`Network/Core/PacketPlainText.cs` 的 `DecodeNoti` 加 case(该解码器当前保留未接入,重新接入后包追踪日志即可输出明文字段而非 hex 兜底)。
 - 实现顺序遵循 `docs/servers4a21/feature-backfill-plan-vs-s4a21.md` 的"文档先行"约定:布局进文档 → 评审 → 动代码。
 
-## 8. 坑与注意事项
+## 7. 坑与注意事项
 
 1. **`sub_419420` 不可反编译**(Hex-Rays 返回 None),一切 NOTI 分析走"跳转表 → case 区间反汇编";不要试图重建函数。
 2. **case 边界靠排序推断**,尾部 `0x42A069` 是共享 default;仅被 default 引用的 id(见 §4)没有本路径解析。

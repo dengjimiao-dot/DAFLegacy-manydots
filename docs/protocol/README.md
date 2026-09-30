@@ -11,7 +11,7 @@
 | [packet-frame-crypto-60cn.md](packet-frame-crypto-60cn.md) | 帧层权威：12B/6B 帧头、LCG 密钥调度、CHECK_CONNECTION 例外、字节示例约定 |
 | [client-send-crypto-analysis-60cn.md](client-send-crypto-analysis-60cn.md) | 发包加密实证附录：密钥调度推导、157 帧抓包回放、服务端实现建议 |
 | [60a4-handshake-protocol.md](60a4-handshake-protocol.md) | 60A4 样本（另一版本客户端）入口握手；与 60A1 帧协议互不适用 |
-| [confirm-reply-packet-format-60cn.md](confirm-reply-packet-format-60cn.md) | 回包格式确认方法论（五步法）；§5 公会组布局（当前唯一登记处）、§6 喇叭缺陷定位（历史留档） |
+| [confirm-reply-packet-format-60cn.md](confirm-reply-packet-format-60cn.md) | 回包格式确认方法论（五步法）；§5 公会组布局（当前唯一登记处） |
 
 ## 枚举与登记
 

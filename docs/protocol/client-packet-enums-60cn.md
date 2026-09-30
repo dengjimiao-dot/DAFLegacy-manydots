@@ -248,7 +248,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 
 | CMD ID | 发包(客户端→服务端) | 状态 | NOTI ID | 回包(服务端→客户端) | 状态 | 配对说明 |
 |---:|---|---|---:|---|---|---|
-| 12 | `ENUM_CMDPACKET_SET_PARTY_INFO` | ✅ | 9 | `ENUM_NOTIPACKET_PARTY_INFO` | ✅ | 建队/改设置↔队伍信息；队名 6 条预设本地渲染，自定义名经设置段 kind==0 的 dstr 原生下行（所有客户端直接显示，2026-09-30 更正，原 type 4 扩展方案已撤销）；改名请求的容量字节可越界（服务端按原容量修正，见分册） |
+| 12 | `ENUM_CMDPACKET_SET_PARTY_INFO` | ✅ | 9 | `ENUM_NOTIPACKET_PARTY_INFO` | ✅ | 建队/改设置↔队伍信息；队名 6 条预设本地渲染，自定义名经设置段 kind==0 的 dstr 原生下行（所有客户端直接显示）；改名请求的容量字节可越界（服务端按原容量修正，见分册） |
 | 13 | `ENUM_CMDPACKET_LEAVE_PARTY` | ✅ | 10 | `ENUM_NOTIPACKET_WALKOUT` | ✅ | 退队↔离队播报 |
 | 10 | `ENUM_CMDPACKET_REQUEST_PEER` | ✅ | 7 | `ENUM_NOTIPACKET_REQUEST_PEER` | ✅ | 邀请/申请↔邀请弹窗 |
 | 11 | `ENUM_CMDPACKET_RESPONSE_PEER` | ✅ | 8 | `ENUM_NOTIPACKET_RESPONSE_PEER` | ✅ | 接受/拒绝↔回执 |

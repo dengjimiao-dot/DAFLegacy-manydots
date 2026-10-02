@@ -51,7 +51,7 @@ internal static class EntranceChannelCatalogSmokeTests
             "etc parser resolves bare-name rows (current-network layout)");
 
         var tabbed = ChannelCatalog.TryParseChannelInfoEtc(
-            "[server]\n1\n11\t`<4::chn_a>`\t1\t`[sky_catle]`\t5\n",
+            "[server]\n1\n11    `<4::chn_a>`    1    `[sky_catle]`    5\n",
             new Dictionary<string, string> { ["chn_a"] = "斯顿雪域 B" });
         check(tabbed is { Count: 1 } && tabbed[0].ChannelNumber == 11 && tabbed[0].Type == 1,
             "etc parser splits tab-separated rows");
@@ -69,6 +69,57 @@ internal static class EntranceChannelCatalogSmokeTests
             """, displayNames);
         check(lenient is { Count: 1 } && lenient[0].ChannelNumber == 11,
             "etc parser drops out-of-range, typeless, unresolved and digit-bearing name rows");
+        // ServerGroup 配置：默认收组 1；指定 2 时改收组 2 且 GroupIndex 相应 +1。
+        var twoGroups = """
+[server]
+1
+11 `<4::a>` 1 `[t]` 5
+2
+21 `<4::a>` 1 `[t]` 7
+""";
+        var groupOne = ChannelCatalog.TryParseChannelInfoEtc(twoGroups, displayNames);
+        check(groupOne is not null
+            && groupOne.Count == 1
+            && groupOne[0].ChannelNumber == 11
+            && groupOne[0].GroupIndex == 0,
+            "default server group 1 collects the first group with group index 0");
+        var groupTwo = ChannelCatalog.TryParseChannelInfoEtc(twoGroups, displayNames, serverGroup: 2);
+        check(groupTwo is not null
+            && groupTwo.Count == 1
+            && groupTwo[0].ChannelNumber == 21
+            && groupTwo[0].GroupIndex == 1,
+            "server group 2 collects the second group with group index 1");
+
+        // 真实 PVF 样本形态：组号行带行内注释（1 // 凯恩）、整行注释、
+        // 15 列频道行（编号/名称/分类/分类名/额外经验/十个等级区间）。
+        var realStyleSourceText = """
+            [server]                
+            1 // 凯恩                
+            // 脚本用数据
+            // 频道编号、频道名称、频道分类、分类名称、额外经验比例、1~10…
+                1    <4::channel_info_cname_1>    2    `[elven_guard]`    10    0    0    0    0    0    0    0    0    0    0
+                6    <4::a>    3    `[none]`    0    0    0    0    0    0    0    0    0    0    0
+                10    <4::channel_info_dname_0>    0    `[granfloris]`    5    0    0    0    0    0    0    0    0    0    0
+            [/server]                
+
+            [server]                
+            2 // 狄瑞吉                
+                1    <4::channel_info_cname_1>    2    `[elven_guard]`    10    0    0    0    0    0    0    0    0    0    0
+            [/server]
+            """;
+        var realStyle = ChannelCatalog.TryParseChannelInfoEtc(realStyleSourceText, displayNames);
+        check(realStyle is { Count: 3 }
+            && realStyle[0] is { GroupIndex: 0, ChannelNumber: 1, Type: 2 }
+            && realStyle[0].DisplayName == "新手 - 洛兰"
+            && realStyle[1] is { ChannelNumber: 6, Type: 3 }
+            && realStyle[2] is { ChannelNumber: 10, Type: 0, GroupIndex: 0 },
+            "real-style group line (inline comment) and 15-column rows parse with correct types");
+        var realStyleTwo = ChannelCatalog.TryParseChannelInfoEtc(realStyleSourceText, displayNames, serverGroup: 2);
+        check(realStyleTwo is { Count: 1 }
+            && realStyleTwo[0].ChannelNumber == 1
+            && realStyleTwo[0].GroupIndex == 1,
+            "server group 2 selects the second block by its group number");
+
         check(ChannelCatalog.TryParseChannelInfoEtc(null, displayNames) is null,
             "missing etc text parses to no catalog");
         check(ChannelCatalog.TryParseChannelInfoEtc("[server]\n1\n11 `<4::a>` 1 `[t]` 5\n", null) is null,

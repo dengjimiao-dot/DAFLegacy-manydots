@@ -36,6 +36,8 @@ public sealed class EntranceService(
     HellDropCatalog hellDropCatalog,
     ClearRewardGenerator clearRewardGenerator,
     GameplayDatagramService gameplayDatagram,
+    TownPresenceService townPresence,
+    TradeSessionRegistry trades,
     EntranceChannelDirectory channelDirectory,
     ILoggerFactory loggerFactory
 ) : BackgroundService
@@ -144,7 +146,9 @@ public sealed class EntranceService(
         // 交易锁定状态设置 CMD 26 (0x1A) ENUM_CMDPACKET_SET_ITEMTRADE_STATE
         registry.Register("economy.shop", new ItemTradeStateHandler(
             store: store,
-            itemCatalog: itemCatalog));
+            itemCatalog: itemCatalog,
+            trades: trades,
+            characterSessions: characterSessions));
         // 生成点券票据 CMD 68 (0x44) ENUM_CMDPACKET_GEN_CERATICKET
         registry.Register("economy.shop", new GenerateCeraTicketHandler());
         // 点券余额刷新查询 CMD 66 (0x42) ENUM_CMDPACKET_CERA
@@ -251,8 +255,22 @@ public sealed class EntranceService(
             senders: _sessionSenders));
         // 个人商店列表轮询 CMD 82 (0x52) ENUM_CMDPACKET_CALL_MEMER_LIST
         registry.Register("world.town", new PrivateStorePollHandler());
-        // 交换服角色信息应答 CMD 130 (0x82) ENUM_CMDPACKET_REQUEST_BLACKLIST
-        registry.Register("world.town", new ExchangeServerCharacterInfoHandler());
+        // 个人商店（11 号 P4，economy.personal-shop 组）：88/90/86/87/89 请求侧
+        // 布局已取证（P-35）；上架物品通道与 85 购买应答细节待真机（P-36）。
+        var storeRegistry = new PrivateStoreRegistry();
+        registry.Register("economy.personal-shop", new CreatePrivateStoreHandler(storeRegistry, townPresence));
+        registry.Register("economy.personal-shop", new CompletePrivateStoreHandler(storeRegistry));
+        registry.Register("economy.personal-shop", new EnterPrivateStoreHandler(storeRegistry, townPresence));
+        registry.Register("economy.personal-shop", new ExitPrivateStoreHandler());
+        registry.Register("economy.personal-shop", new RemovePrivateStoreHandler(storeRegistry));
+
+        // 好友与黑名单（11 号 P2，social.friends 组）：CMD 130 由 canned 应答升级为
+        // 真实黑名单查询（P-35 布局取证）。
+        registry.Register("social.friends", new AddFriendHandler(store, townPresence, characterSessions));
+        registry.Register("social.friends", new RemoveFriendHandler(store, townPresence, characterSessions));
+        registry.Register("social.friends", new RegisterToBlacklistHandler(store));
+        registry.Register("social.friends", new DeleteToBlacklistHandler(store));
+        registry.Register("social.friends", new RequestBlacklistHandler(store));
         {
             // Party family (07 §4.6 族接管): one shared core, five thin shells.
             var partyCore = new PartyHandlerCore(partyCoordinator);
@@ -266,6 +284,8 @@ public sealed class EntranceService(
             registry.Register("social.party", new LeavePartyHandler(partyCore));
             // 队长移除队员 CMD 14 (0x0E) ENUM_CMDPACKET_WALKOUT_PARTY_MEMBER
             registry.Register("social.party", new WalkoutPartyMemberHandler(partyCore));
+            // 转让队长 CMD 131 (0x83) ENUM_CMDPACKET_CHANGE_HOST（无应答，NOTI 26/9 广播）
+            registry.Register("social.party", new TransferLeaderHandler(partyCore));
         }
         // 整理背包 CMD 20 (0x14) ENUM_CMDPACKET_SORT_ITEM
         registry.Register("economy.inventory", new SortItemHandler(
@@ -423,6 +443,7 @@ public sealed class EntranceService(
             spCatalog,
             creatureExperienceCatalog,
             characterSessions,
+            townPresence,
             partyCoordinator,
             questCatalog,
             dungeonCatalog,
@@ -441,7 +462,8 @@ public sealed class EntranceService(
             _gameCommands,
             _gameCommandDispatcher,
             _sessionSenders,
-            _packetTrace);
+            _packetTrace,
+            trades);
 
         // Startup listing of the mounted dispatch table (07 §4.6): one line
         // per registered group so a mis-mounted protocol is visible at boot.

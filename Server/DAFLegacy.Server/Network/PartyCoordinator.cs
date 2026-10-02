@@ -26,11 +26,14 @@ public sealed record PartyPresenceUpdate(
 /// party, REQUEST_PEER type 0 invites (or applies), RESPONSE_PEER type 0
 /// accepts, LEAVE_PARTY walks out, WALKOUT_PARTY_MEMBER kicks by slot.
 ///
-/// The coordinator also keeps the town presence table. The ACT1 client can
-/// only target users present in its local town-user table, which is created
-/// by USERINFO mode 0 (find-or-create at 0x4FDF60) and positioned by
-/// USER_AREA / AREA_USERS — both update-only for known records — so every
-/// town arrival exchanges appearances with the other residents of the area.
+/// Town presence itself lives in <see cref="TownPresenceService"/> (docs/design/10
+/// §4.1 G4, batch 3): this coordinator is a consumer — its presence methods
+/// delegate to the hub, and the ACT1 client targeting model below still
+/// applies through the hub's table. The client can only target users present
+/// in its local town-user table, which is created by USERINFO mode 0
+/// (find-or-create at 0x4FDF60) and positioned by USER_AREA / AREA_USERS —
+/// both update-only for known records — so every town arrival exchanges
+/// appearances with the other residents of the area.
 ///
 /// After every membership change the coordinator also publishes the party's
 /// UDP endpoint table (NOTI 11). The peer records advertise the server's
@@ -43,11 +46,11 @@ public sealed record PartyPresenceUpdate(
 public sealed class PartyCoordinator(
     ServerOptions options,
     CharacterSessionRegistry characterSessions,
+    TownPresenceService town,
     GameplayDatagramService gameplayDatagram)
 {
     private readonly PartyManager _parties = new();
-    private readonly object _presenceLock = new();
-    private readonly Dictionary<Guid, PresenceEntry> _presenceBySession = new();
+    private readonly TownPresenceService _town = town;
 
     private const byte WalkoutReasonLeft = 0;
     private const byte WalkoutReasonKicked = 1;
@@ -139,6 +142,21 @@ public sealed class PartyCoordinator(
         return result;
     }
 
+    /// <summary>CHANGE_HOST（CMD 131）：转让队长并广播 NOTI 26（房主槽位）+ NOTI 9
+    /// （花名册）。60A1 对该命令无应答 case（P-35），客户端以 NOTI 变更感知结果。</summary>
+    public PartyOpResult TransferLeader(PartyMemberIdentity leader, byte targetSlot)
+    {
+        var result = _parties.TransferLeader(leader.UserId, leader.SessionId, targetSlot);
+        if (!result.Ok)
+        {
+            return result;
+        }
+
+        SendUdpHost(result.Party!);
+        SendFormation(result.Party!);
+        return result;
+    }
+
     /// <summary>REQUEST_PEER type 0: invite a town user, or apply to join
     /// their party when they already lead one. Other request types (item
     /// trade, PvP room) are not implemented and are rejected silently.</summary>
@@ -226,12 +244,15 @@ public sealed class PartyCoordinator(
         }
 
         // Formation phases follow the ServerS4A21 reference order (proven
-        // against official captures): endpoints pre-roster, the accept ack to
-        // the inviter, the roster LAST, then endpoints again so the bindings
-        // land on the final member objects, then the host designation. No
-        // USERINFO detail snapshots are exchanged here: the mode-3 tail fires
-        // the client's inspect-window UI slots, and town presence already
-        // delivered every member's appearance record to both clients.
+        // against official captures): mode-3 detail snapshots first (each
+        // member receives every peer's USERINFO mode 3 — the only packet that
+        // creates the peer connection object at user+0x110 the dungeon-gate
+        // P2P handshake requires; town presence appearances do NOT create it,
+        // see packet-detail-party-60cn.md 数据面第 2 条), then endpoints
+        // pre-roster, the accept ack to the inviter, the roster LAST, then
+        // endpoints again so the bindings land on the final member objects,
+        // then the host designation.
+        ExchangePartyDetails(result.Party!);
         BroadcastPartyEndpoints(result.Party!);
         SendToSession(
             inviter.SessionId,
@@ -243,227 +264,49 @@ public sealed class PartyCoordinator(
     }
 
     // ------------------------------------------------------------------
-    // Town presence.
+    // Town presence (delegated to TownPresenceService, batch 3).
     // ------------------------------------------------------------------
 
-    /// <summary>
-    /// Upserts the sender's presence and exchanges town entities with the
-    /// other residents of the area: they learn the arrival through its
-    /// appearance packet plus USER_AREA, and the arrival receives the cached
-    /// appearance packets of everyone already present. Each session builds
-    /// its own appearance packet because only the owning connection has the
-    /// character's equipment state; the coordinator replays the cached bytes.
-    /// </summary>
+    /// <summary>Delegates to the hub: upsert plus area entity exchange.</summary>
     public void PublishTownPresence(
         PartyPresenceUpdate update,
         GameServerPacket appearancePacket)
     {
         ArgumentNullException.ThrowIfNull(appearancePacket);
-        PresenceEntry[] sameArea;
-        PresenceEntry[] leftArea;
-        var entry = new PresenceEntry(
-            update.SessionId,
-            update.CharacterId,
-            update.AccountUid,
-            update.UserId,
-            update.Name,
-            update.Level,
-            update.Job,
-            update.TownId,
-            update.AreaId,
-            update.X,
-            update.Y,
-            update.Direction,
-            update.ChannelNumber,
-            appearancePacket);
-        lock (_presenceLock)
-        {
-            leftArea = [];
-            if (_presenceBySession.TryGetValue(update.SessionId, out var previous))
-            {
-                if (previous.TownId != update.TownId || previous.AreaId != update.AreaId)
-                {
-                    leftArea = SameAreaSnapshotLocked(previous.TownId, previous.AreaId, previous.ChannelNumber, update.SessionId);
-                }
-
-                _presenceBySession.Remove(update.SessionId);
-            }
-            _presenceBySession[update.SessionId] = entry;
-            sameArea = SameAreaSnapshotLocked(update.TownId, update.AreaId, update.ChannelNumber, update.SessionId);
-        }
-
-        var userArea = TownPacketBuilders.CreateUserArea(
-            update.TownId,
-            update.AreaId,
-            new GameTownUser(update.UserId, update.X, update.Y, update.Direction));
-        foreach (var other in leftArea)
-        {
-            SendToSession(other.SessionId, TownPacketBuilders.CreateUserLeave(update.UserId));
-        }
-        foreach (var other in sameArea)
-        {
-            // The resident learns the arrival...
-            SendToSession(other.SessionId, appearancePacket);
-            SendToSession(other.SessionId, userArea);
-            // ...and the arrival learns the resident.
-            SendToSession(update.SessionId, other.Appearance);
-            SendToSession(update.SessionId, TownPacketBuilders.CreateUserArea(
-                other.TownId,
-                other.AreaId,
-                new GameTownUser(other.UserId, other.X, other.Y, other.Direction)));
-        }
+        _town.PublishTownPresence(update, appearancePacket);
     }
 
-    /// <summary>Movement sync: updates the stored position and pushes
-    /// USER_POSITION to the other residents of the area.</summary>
-    public void UpdatePresencePosition(Guid sessionId, short x, short y, byte direction)
-    {
-        PresenceEntry? entry;
-        PresenceEntry[] sameArea;
-        lock (_presenceLock)
-        {
-            if (!_presenceBySession.TryGetValue(sessionId, out entry))
-            {
-                return;
-            }
+    /// <summary>Delegates to the hub: movement sync.</summary>
+    public void UpdatePresencePosition(Guid sessionId, short x, short y, byte direction) =>
+        _town.UpdatePresencePosition(sessionId, x, y, direction);
 
-            entry = entry with { X = x, Y = y, Direction = direction };
-            _presenceBySession[sessionId] = entry;
-            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, entry.ChannelNumber, sessionId);
-        }
+    /// <summary>Delegates to the hub: same-area delivery.</summary>
+    public int SendToSameArea(Guid sessionId, GameServerPacket packet) =>
+        _town.SendToSameArea(sessionId, packet);
 
-        var position = TownPacketBuilders.CreateUserPosition(
-            new GameTownUser(entry.UserId, x, y, direction));
-        foreach (var other in sameArea)
-        {
-            SendToSession(other.SessionId, position);
-        }
-    }
+    /// <summary>Delegates to the hub: name lookup delivery.</summary>
+    public bool TrySendToName(string targetName, GameServerPacket packet) =>
+        _town.TrySendToName(targetName, packet);
 
-    /// <summary>
-    /// Delivers a packet to the other residents of the sender's town area
-    /// (town presence table). Returns the number of recipients reached.
-    /// </summary>
-    public int SendToSameArea(Guid sessionId, GameServerPacket packet)
-    {
-        ArgumentNullException.ThrowIfNull(packet);
-        PresenceEntry[] sameArea;
-        lock (_presenceLock)
-        {
-            if (!_presenceBySession.TryGetValue(sessionId, out var entry))
-            {
-                return 0;
-            }
-
-            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, entry.ChannelNumber, sessionId);
-        }
-
-        foreach (var other in sameArea)
-        {
-            SendToSession(other.SessionId, packet);
-        }
-
-        return sameArea.Length;
-    }
-
-    /// <summary>
-    /// Delivers a packet to the online character with the given name,
-    /// resolved through the town presence table (the same table the ACT1
-    /// client builds its chat target list from). False when nobody of that
-    /// name currently has a town presence.
-    /// </summary>
-    public bool TrySendToName(string targetName, GameServerPacket packet)
-    {
-        return TrySendToName(targetName, packet, null, null);
-    }
-
-    /// <summary>
-    /// TrySendToName with a whisper-context preface: NOTI 12 chat lines carry
-    /// only the speaker's area-user id, and the receiver's client resolves
-    /// the line's speaker name in its own town-user table. When the partner
-    /// lives on another channel or area (FIX-08 presence isolation keeps
-    /// their rosters separate), that lookup misses and the line renders
-    /// without a speaker — so the sender's town appearance is delivered
-    /// first, inserting the find-or-create record the line resolves against.
-    /// </summary>
+    /// <summary>Delegates to the hub: name lookup delivery with the whisper
+    /// appearance preface (see hub remarks).</summary>
     public bool TrySendToName(
         string targetName,
         GameServerPacket packet,
         Guid? senderSessionId,
-        GameServerPacket? senderAppearance)
-    {
-        ArgumentNullException.ThrowIfNull(targetName);
-        ArgumentNullException.ThrowIfNull(packet);
-        Guid sessionId;
-        lock (_presenceLock)
-        {
-            PresenceEntry? match = null;
-            PresenceEntry? sender = null;
-            if (senderSessionId.HasValue)
-            {
-                _presenceBySession.TryGetValue(senderSessionId.Value, out sender);
-            }
+        GameServerPacket? senderAppearance) =>
+        _town.TrySendToName(targetName, packet, senderSessionId, senderAppearance);
 
-            foreach (var entry in _presenceBySession.Values)
-            {
-                if (string.Equals(entry.Name, targetName, StringComparison.Ordinal))
-                {
-                    match = entry;
-                    break;
-                }
-            }
+    /// <summary>Area departure via the hub. Called on return-to-character-select.</summary>
+    public void RemovePresence(Guid sessionId) => _town.RemovePresence(sessionId);
 
-            if (match is null)
-            {
-                return false;
-            }
-
-            sessionId = match.SessionId;
-            if (sender is not null
-                && senderAppearance is not null
-                && (sender.TownId != match.TownId
-                    || sender.AreaId != match.AreaId
-                    || sender.ChannelNumber != match.ChannelNumber))
-            {
-                SendToSession(match.SessionId, senderAppearance);
-            }
-        }
-
-        return SendToSession(sessionId, packet);
-    }
-
-    /// <summary>Area departure: drops the presence and tells the area the
-    /// user left. Called on return-to-character-select and disconnect.</summary>
-    public void RemovePresence(Guid sessionId)
-    {
-        PresenceEntry[] sameArea;
-        ushort userId;
-        lock (_presenceLock)
-        {
-            if (!_presenceBySession.TryGetValue(sessionId, out var entry))
-            {
-                return;
-            }
-
-            userId = entry.UserId;
-            _presenceBySession.Remove(sessionId);
-            sameArea = SameAreaSnapshotLocked(entry.TownId, entry.AreaId, entry.ChannelNumber, sessionId);
-        }
-
-        var leave = TownPacketBuilders.CreateUserLeave(userId);
-        foreach (var other in sameArea)
-        {
-            SendToSession(other.SessionId, leave);
-        }
-    }
-
-    /// <summary>Full disconnect cleanup: town presence plus party membership
-    /// (leadership passes to the lowest occupied slot, generation preserved).
-    /// The disconnecting connection cannot receive packets anymore.</summary>
+    /// <summary>Full disconnect cleanup: town presence via the hub plus party
+    /// membership (leadership passes to the lowest occupied slot, generation
+    /// preserved). The disconnecting connection cannot receive packets anymore.</summary>
     public void OnSessionClosed(Guid sessionId)
     {
-        var userId = FindPresenceBySession(sessionId)?.UserId;
-        RemovePresence(sessionId);
+        var userId = _town.FindBySession(sessionId)?.UserId;
+        _town.RemovePresence(sessionId);
         if (userId is not { } memberUserId)
         {
             return;
@@ -482,6 +325,10 @@ public sealed class PartyCoordinator(
                 result.Reason);
         }
     }
+
+    private TownPresenceEntry? FindPresenceBySession(Guid sessionId) => _town.FindBySession(sessionId);
+
+    private TownPresenceEntry? FindPresence(ushort userId) => _town.FindByUserId(userId);
 
     // ------------------------------------------------------------------
     // Party packet publication.
@@ -583,6 +430,27 @@ public sealed class PartyCoordinator(
         return party.Members.Count;
     }
 
+    /// <summary>组队成员互发 mode-3 详情快照：每个成员收到每个队友的 USERINFO
+    /// mode 3（对端连接对象的唯一创建源；数据面前置，11 号 P0）。</summary>
+    private void ExchangePartyDetails(Party party)
+    {
+        foreach (var recipient in party.Members)
+        {
+            foreach (var member in party.Members)
+            {
+                if (member.SessionId == recipient.SessionId)
+                {
+                    continue;
+                }
+
+                if (characterSessions.TryBuildDetails(member.SessionId, out var details))
+                {
+                    SendToSession(recipient.SessionId, details);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// NOTI 11 with one record per member, built per recipient: the
     /// recipient's own record keeps its real reported endpoint while every
@@ -680,71 +548,8 @@ public sealed class PartyCoordinator(
             party.TitleBytes);
 
     // ------------------------------------------------------------------
-    // Presence storage and delivery helpers.
+    // Party delivery helper.
     // ------------------------------------------------------------------
-
-    private sealed record PresenceEntry(
-        Guid SessionId,
-        Guid CharacterId,
-        uint AccountUid,
-        ushort UserId,
-        string Name,
-        byte Level,
-        byte Job,
-        byte TownId,
-        byte AreaId,
-        short X,
-        short Y,
-        byte Direction,
-        int ChannelNumber,
-        GameServerPacket Appearance);
-
-    /// <summary>同城同区域且同频道的在册名册（M2：城镇可见性按频道隔离，
-    /// 不同频道的居民互不下发外观/位置/离开通知）。</summary>
-    private PresenceEntry[] SameAreaSnapshotLocked(
-        byte townId,
-        byte areaId,
-        int channelNumber,
-        Guid excludeSessionId)
-    {
-        var matches = new List<PresenceEntry>();
-        foreach (var entry in _presenceBySession.Values)
-        {
-            if (entry.SessionId != excludeSessionId &&
-                entry.TownId == townId &&
-                entry.AreaId == areaId &&
-                entry.ChannelNumber == channelNumber)
-            {
-                matches.Add(entry);
-            }
-        }
-
-        return matches.ToArray();
-    }
-
-    private PresenceEntry? FindPresenceBySession(Guid sessionId)
-    {
-        lock (_presenceLock)
-        {
-            return _presenceBySession.TryGetValue(sessionId, out var entry) ? entry : null;
-        }
-    }
-
-    private PresenceEntry? FindPresence(ushort userId)
-    {
-        lock (_presenceLock)
-        {
-            foreach (var entry in _presenceBySession.Values)
-            {
-                if (entry.UserId == userId)
-                {
-                    return entry;
-                }
-            }
-        }
-
-        return null;
-    }
 
     private bool SendToSession(Guid sessionId, GameServerPacket packet)
     {

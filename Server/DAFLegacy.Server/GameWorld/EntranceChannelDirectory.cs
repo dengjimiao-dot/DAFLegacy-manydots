@@ -6,7 +6,7 @@ public sealed record EntranceSessionChannel(int Number, string DisplayName);
 
 /// <summary>
 /// 入口频道目录的一次性解析快照（启动期构建）。频道目录唯一真源是 PVF 内
-/// etc/channel_info.etc（[server] 组 1），显示名经 etc/etc.chn.str 的名称引用解析；
+/// etc/channel_info.etc（[server] 组号由 Channel.ServerGroup 配置，默认 1），显示名经 etc/etc.chn.str 的名称引用解析；
 /// server.json 的 Channel 节只承载协议面身份（Host/Port/容量），不提供频道目录。
 /// 目录缺失或无有效行时回退单频道默认记录
 /// （<see cref="EntranceMetadata.SingleChannelDisplayName"/>），行为与旧单频道一致。
@@ -51,7 +51,10 @@ public sealed class EntranceChannelDirectory
                 scripts.SourceDescription);
         }
 
-        Catalog = ChannelCatalog.TryParseChannelInfoEtc(channelInfoEtc, displayNames);
+        Catalog = ChannelCatalog.TryParseChannelInfoEtc(
+            channelInfoEtc,
+            displayNames,
+            options.Channel.ServerGroup);
         ChannelScript = channelScript;
         Session = Catalog is { Count: > 0 } catalog
             ? new EntranceSessionChannel(catalog[0].ChannelNumber, catalog[0].DisplayName)

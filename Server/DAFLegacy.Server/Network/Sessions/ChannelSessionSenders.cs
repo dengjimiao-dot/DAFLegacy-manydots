@@ -21,6 +21,7 @@ public sealed partial class ChannelSessionSenders(
     CharacterSpCatalog spCatalog,
     CreatureExperienceCatalog creatureExperienceCatalog,
     CharacterSessionRegistry characterSessions,
+    TownPresenceService townPresence,
     PartyCoordinator partyCoordinator,
     QuestCatalog questCatalog,
     DungeonCatalog dungeonCatalog,
@@ -36,6 +37,31 @@ public sealed partial class ChannelSessionSenders(
         .OrderBy(skill => skill.Slot)
         .Select(skill => new GameSkillEntry(skill.SkillId, skill.Level, skill.Slot))
         .ToArray();
+
+    /// <summary>会话现场的 mode-3 详情快照（组队成员互发；11 号 P0）。未选角返回 null。</summary>
+    public GameServerPacket? BuildMode3Details(ChannelSessionState state)
+    {
+        var active = state.Character.Active;
+        if (active is null)
+        {
+            return null;
+        }
+
+        return CharactersPacketBuilders.CreateCurrentCharacterDetails(
+            state.Character.LocalUserId,
+            experience: active.Experience,
+            learnedSkills: state.Skill.Current
+                .OrderBy(skill => skill.Slot)
+                .Select(skill => new GameSkillEntry(skill.SkillId, skill.Level, skill.Slot))
+                .ToArray(),
+            combatStats: state.Character.LastProjectedCombatStats,
+            equippedItems: builders.CreateWornEquipmentSnapshot(
+                state.Inventory.Equipped.Values,
+                state.Inventory.Creature),
+            equippedCreatureLevel: CharacterPacketBuilders.GetEquippedCreatureLevel(
+                state.Inventory.Creature),
+            mode: 3);
+    }
 
     public bool HasActivePremiumService(ConnectionContext context, byte serviceType) =>
         context.State.Premium.ExpiryUnix.TryGetValue(serviceType, out var expiryUnix)
@@ -68,20 +94,21 @@ public sealed partial class ChannelSessionSenders(
 
     internal EntranceContent LoadContent()
     {
-        // CurrentUsers 按频道取该频道已连接会话数（M2）：拥挤度（在线/容量 > 95%）
-        // 逐频道生效，未绑定连接的遗留端点记录取其绑定频道的计数。
+        // CurrentUsers 按频道取中枢连接注册数（批次 3：TownPresenceService 是人口
+        // 唯一真源）：拥挤度（在线/容量 > 95%）逐频道生效，未绑定连接的遗留端点
+        // 记录取其绑定频道的计数。
         var channel = options.Channel;
         var defaults = new EntranceChannel(
             channel.Host,
             channel.Port,
             channel.MaximumUsers,
-            characterSessions.GetChannelConnectionCount(channelDirectory.Session.Number));
+            townPresence.GetChannelPopulation(channelDirectory.Session.Number));
         var metadata = channelDirectory.Catalog is { Count: > 0 } catalog
             ? EntranceMetadata.BuildChannels(
                 defaults,
                 catalog,
                 channel.PortBase,
-                characterSessions.GetChannelConnectionCount)
+                townPresence.GetChannelPopulation)
             : EntranceMetadata.BuildSingleLocalChannel(defaults);
         return new EntranceContent(channelDirectory.ChannelScript, metadata);
     }

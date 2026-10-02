@@ -387,6 +387,37 @@ public sealed class PartyManager
     }
 
     /// <summary>Leader-only kick resolved by the WALKOUT slot byte.</summary>
+    /// <summary>CHANGE_HOST（CMD 131，60A1 fire-and-forget 无应答，P-35）：队长把队长位
+    /// 转给目标槽位的成员。请求者必须为现任队长且会话一致；目标槽位必须已有成员。</summary>
+    public PartyOpResult TransferLeader(ushort leaderUserId, Guid leaderSessionId, byte targetSlot)
+    {
+        lock (_lock)
+        {
+            if (!TryGetMemberLocked(leaderUserId, out var party, out var leader) ||
+                leader.SessionId != leaderSessionId ||
+                party.LeaderUserId != leaderUserId)
+            {
+                return PartyOpResult.Fail("not_leader");
+            }
+
+            var target = party.GetMemberBySlot(targetSlot);
+            if (target is null)
+            {
+                return PartyOpResult.Fail("empty_slot");
+            }
+
+            party.LeaderUserId = target.UserId;
+            return new PartyOpResult
+            {
+                Ok = true,
+                Party = party,
+                TargetUserId = target.UserId,
+                LeaderChanged = true,
+                NewLeaderUserId = target.UserId,
+            };
+        }
+    }
+
     public PartyOpResult Kick(byte targetSlot, ushort byUserId, Guid expectedBySessionId)
     {
         lock (_lock)

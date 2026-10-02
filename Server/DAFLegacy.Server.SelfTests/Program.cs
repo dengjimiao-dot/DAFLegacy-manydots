@@ -69,6 +69,37 @@ RegisterSelfTest("megaphone", () =>
     MegaphoneSmokeTests.Run(Check);
     return Task.CompletedTask;
 });
+RegisterSelfTest("nat-probe-hardening", () =>
+{
+    NatProbeHardeningSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("endpoint-claim", () =>
+{
+    GameplayEndpointClaimSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("town-presence-hub", () =>
+{
+    TownPresenceHubSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("social-packet-builders", () =>
+{
+    SocialPacketBuildersSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("social-store", () => SocialStoreSmokeTests.RunAsync(Check));
+RegisterSelfTest("trade-protocol", () =>
+{
+    TradeProtocolSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("pvp-room", () =>
+{
+    PvpRoomSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
 RegisterSelfTest("protocol-golden", () => ProtocolGoldenSmokeTests.RunAsync(Check));
 RegisterSelfTest("entrance-channel-catalog", () =>
 {

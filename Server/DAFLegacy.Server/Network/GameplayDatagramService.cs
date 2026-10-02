@@ -7,15 +7,32 @@ namespace DAFLegacy.Server;
 
 public sealed class GameplayDatagramService(
     ServerOptions options,
-    RuntimeState runtime
+    RuntimeState runtime,
+    TownPresenceService town
 ) : BackgroundService
 {
-    private readonly ConcurrentDictionary<Guid, GameplaySession> _sessions = new();
+    // 连接与端点状态的唯一归属是 TownPresenceService（docs/design/10 批次 3）；
+    // 本服务保留认领/解析算法、观测缓存与收发循环，经中枢读写连接态。
+    private readonly TownPresenceService _town = town;
+    private readonly ConcurrentDictionary<Guid, RuntimeSession> _sessionRuntimes = new();
     private readonly ConcurrentDictionary<string, IPEndPoint> _observedByAddress = new();
-    private readonly ConcurrentDictionary<string, Guid> _sessionsByEndpoint = new();
     private Func<Guid, IReadOnlyList<Guid>?>? _relayResolver;
     private UdpClient? _primary;
     private UdpClient? _secondary;
+    // 数据面遥测（docs/design/10 §4.4）：Interlocked 计数 + 5 秒聚合汇报，
+    // 逐包 Info 日志同步降为 Debug；tap 捕获（TraceDatagram）通道不受影响。
+    private NatProbeRateLimiter? _rateLimiter;
+    private long _rxNatProbe;
+    private long _rxKeepalive;
+    private long _rxGameplay;
+    private long _rxRelayed;
+    private long _rxNoPeerEndpoint;
+    private long _rxUnattributed;
+    private long _rxRateLimited;
+    private long _rxMalformed;
+    private long _rxClaimSkipped;
+    private int _malformedWarned;
+    private int _claimSkippedWarned;
 
     /// <summary>
     /// Registers the resolver that maps a datagram sender's session to the
@@ -31,47 +48,37 @@ public sealed class GameplayDatagramService(
         _relayResolver = resolver;
     }
 
-    public void RegisterChannelSession(RuntimeSession runtimeSession, IPAddress tcpAddress)
+    public void RegisterChannelSession(RuntimeSession runtimeSession, int channelNumber, IPAddress tcpAddress)
     {
         ArgumentNullException.ThrowIfNull(runtimeSession);
         ArgumentNullException.ThrowIfNull(tcpAddress);
-        _sessions[runtimeSession.Id] = new GameplaySession(
-            runtimeSession,
-            tcpAddress.MapToIPv4());
+        _sessionRuntimes[runtimeSession.Id] = runtimeSession;
+        _town.AcquireConnection(runtimeSession.Id, channelNumber, runtimeSession, tcpAddress);
     }
 
     public void UnregisterChannelSession(Guid sessionId)
     {
-        if (!_sessions.TryRemove(sessionId, out var session))
-        {
-            return;
-        }
-
-        lock (session.Gate)
-        {
-            if (session.DatagramEndpoint is not null)
-            {
-                _sessionsByEndpoint.TryRemove(
-                    EndpointKey(session.DatagramEndpoint),
-                    out _);
-            }
-        }
+        _sessionRuntimes.TryRemove(sessionId, out _);
+        _town.ReleaseConnection(sessionId);
     }
 
     public void SetNatReport(Guid sessionId, GameNatReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
-        if (!_sessions.TryGetValue(sessionId, out var session))
+        if (!_sessionRuntimes.TryGetValue(sessionId, out _)
+            || !_town.TryGetTcpAddress(sessionId, out var tcpAddress))
         {
             return;
         }
 
-        lock (session.Gate)
-        {
-            session.NatReport = report;
-            var endpoint = SelectDatagramEndpoint(session, report);
-            SetDatagramEndpoint(session, endpoint);
-        }
+        _town.SetSelfReport(sessionId, report);
+        var endpoint = ResolveEndpoint(
+            _town.GetClaimedEndpoint(sessionId),
+            tcpAddress,
+            _town.IsSharedTcpIp(tcpAddress),
+            _observedByAddress,
+            report);
+        _town.SetResolvedEndpoint(sessionId, endpoint);
 
         RuntimeLogger.Info(
             "UDP endpoint registered for channel session {SessionId}: nat={NatType} local={LocalAddress} public={PublicAddress}:{PublicPort} mtu={Mtu} target={Target}",
@@ -81,7 +88,7 @@ public sealed class GameplayDatagramService(
             report.PublicAddress,
             report.PublicPort,
             report.Mtu,
-            session.DatagramEndpoint);
+            endpoint);
     }
 
     public bool TryGetPeerInfo(
@@ -91,34 +98,28 @@ public sealed class GameplayDatagramService(
         out GamePeerInfo peer)
     {
         peer = null!;
-        if (!_sessions.TryGetValue(sessionId, out var session))
+        var report = _town.GetSelfReport(sessionId);
+        if (report is null)
         {
             return false;
         }
 
-        lock (session.Gate)
+        var publicPort = report.PublicPort;
+        var resolved = _town.GetResolvedEndpoint(sessionId);
+        if (publicPort == 0 && resolved is not null)
         {
-            if (session.NatReport is not { } report)
-            {
-                return false;
-            }
-
-            var publicPort = report.PublicPort;
-            if (publicPort == 0 && session.DatagramEndpoint is not null)
-            {
-                publicPort = checked((ushort)session.DatagramEndpoint.Port);
-            }
-
-            peer = new GamePeerInfo(
-                userId,
-                report.LocalAddress.MapToIPv4(),
-                report.PublicAddress.MapToIPv4(),
-                publicPort,
-                accountId,
-                report.NatType,
-                report.Mtu);
-            return true;
+            publicPort = checked((ushort)resolved.Port);
         }
+
+        peer = new GamePeerInfo(
+            userId,
+            report.LocalAddress.MapToIPv4(),
+            report.PublicAddress.MapToIPv4(),
+            publicPort,
+            accountId,
+            report.NatType,
+            report.Mtu);
+        return true;
     }
 
     public async ValueTask<bool> SendSetActiveObjectHpAsync(
@@ -131,23 +132,13 @@ public sealed class GameplayDatagramService(
         CancellationToken cancellationToken)
     {
         if (_primary is null
-            || !_sessions.TryGetValue(sessionId, out var session))
+            || !_sessionRuntimes.TryGetValue(sessionId, out var sessionRuntime)
+            || _town.GetResolvedEndpoint(sessionId) is not { } endpoint)
         {
             return false;
         }
 
-        IPEndPoint endpoint;
-        uint sequence;
-        lock (session.Gate)
-        {
-            if (session.DatagramEndpoint is null)
-            {
-                return false;
-            }
-
-            endpoint = session.DatagramEndpoint;
-            sequence = session.NextSequence++;
-        }
+        var sequence = _town.NextSequence(sessionId);
 
         var application = GameDatagramProtocol.CreateSetActiveObjectHpApplication(
             objectType,
@@ -160,9 +151,9 @@ public sealed class GameplayDatagramService(
             flag: 0,
             application);
         await _primary.SendAsync(datagram, endpoint, cancellationToken);
-        Interlocked.Increment(ref session.Runtime.SentPackets);
+        Interlocked.Increment(ref sessionRuntime.SentPackets);
         runtime.TraceDatagram(
-            session.Runtime,
+            sessionRuntime,
             "TX-UDP",
             datagram,
             options.HexDumpLimit,
@@ -209,16 +200,20 @@ public sealed class GameplayDatagramService(
             options.GameplayDatagram.SecondaryPort);
         _primary = new UdpClient(primaryEndpoint);
         _secondary = new UdpClient(secondaryEndpoint);
+        // 双端口共用同一限流器实例：客户端以同一 socket 交替探测两端口（docs/design/10 §4.3）。
+        _rateLimiter = new NatProbeRateLimiter(options.GameplayDatagram.NatProbeRateLimit);
         RuntimeLogger.Info(
-            "Gameplay UDP primary/secondary listeners ready at {Primary} and {Secondary}",
+            "Gameplay UDP primary/secondary listeners ready at {Primary} and {Secondary} (nat probe rate limit {RateLimit}/s per IP)",
             primaryEndpoint,
-            secondaryEndpoint);
+            secondaryEndpoint,
+            options.GameplayDatagram.NatProbeRateLimit);
 
         try
         {
             await Task.WhenAll(
                 ReceiveLoopAsync(_primary, "primary", stoppingToken),
-                ReceiveLoopAsync(_secondary, "secondary", stoppingToken));
+                ReceiveLoopAsync(_secondary, "secondary", stoppingToken),
+                ReportLoopAsync(stoppingToken));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -229,11 +224,61 @@ public sealed class GameplayDatagramService(
             _secondary.Dispose();
             _primary = null;
             _secondary = null;
-            _sessionsByEndpoint.Clear();
+            _rateLimiter = null;
+            // 连接态与端点归属在中枢（连接级生命周期），不随本服务停机清理。
+            _sessionRuntimes.Clear();
             _observedByAddress.Clear();
-            _sessions.Clear();
         }
     }
+
+    /// <summary>每 5 秒一条聚合汇总，有活动才输出（形态对齐参考实现的周期流量报告）。</summary>
+    private async Task ReportLoopAsync(CancellationToken cancellationToken)
+    {
+        var previous = SnapshotCounters();
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var current = SnapshotCounters();
+                var active = false;
+                for (var index = 0; index < current.Length; index++)
+                {
+                    if (current[index] != previous[index])
+                    {
+                        active = true;
+                        break;
+                    }
+                }
+
+                if (active)
+                {
+                    RuntimeLogger.Info(
+                        "UDP dataplane aggregate: probe={Probe} keepalive={Keepalive} gameplay={Gameplay} relayed={Relayed} noPeerEndpoint={NoPeerEndpoint} unattributed={Unattributed} rateLimited={RateLimited} malformed={Malformed} claimSkipped={ClaimSkipped}",
+                        current[0], current[1], current[2], current[3],
+                        current[4], current[5], current[6], current[7], current[8]);
+                }
+
+                previous = current;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private long[] SnapshotCounters() =>
+    [
+        Interlocked.Read(ref _rxNatProbe),
+        Interlocked.Read(ref _rxKeepalive),
+        Interlocked.Read(ref _rxGameplay),
+        Interlocked.Read(ref _rxRelayed),
+        Interlocked.Read(ref _rxNoPeerEndpoint),
+        Interlocked.Read(ref _rxUnattributed),
+        Interlocked.Read(ref _rxRateLimited),
+        Interlocked.Read(ref _rxMalformed),
+        Interlocked.Read(ref _rxClaimSkipped),
+    ];
 
     private async Task ReceiveLoopAsync(
         UdpClient listener,
@@ -251,7 +296,15 @@ public sealed class GameplayDatagramService(
                     remote,
                     out var response))
             {
+                // 超限静默丢弃：不回包、不学习端点，客户端按既有节奏重试（docs/design/10 §4.3）。
+                if (!_rateLimiter!.TryAcquire(remote.Address))
+                {
+                    Interlocked.Increment(ref _rxRateLimited);
+                    continue;
+                }
+
                 var firstContact = ObserveEndpoint(remote);
+                Interlocked.Increment(ref _rxNatProbe);
                 await listener.SendAsync(response, remote, cancellationToken);
                 TraceDatagram(remote, datagram, "RX-UDP-NAT");
                 TraceDatagram(remote, response, "TX-UDP-NAT", countReceived: false);
@@ -266,6 +319,7 @@ public sealed class GameplayDatagramService(
 
             if (GameDatagramProtocol.IsNatKeepAlive(datagram))
             {
+                Interlocked.Increment(ref _rxKeepalive);
                 ObserveEndpoint(remote);
                 TraceDatagram(remote, datagram, "RX-UDP-NAT-KEEPALIVE");
                 RuntimeLogger.Debug(
@@ -276,7 +330,8 @@ public sealed class GameplayDatagramService(
             }
 
             TraceDatagram(remote, datagram, "RX-UDP");
-            RuntimeLogger.Info(
+            Interlocked.Increment(ref _rxGameplay);
+            RuntimeLogger.Debug(
                 "Gameplay UDP datagram from {Remote}: {Length} bytes, head {Head}",
                 remote,
                 datagram.Length,
@@ -298,11 +353,12 @@ public sealed class GameplayDatagramService(
         CancellationToken cancellationToken)
     {
         if (_relayResolver is null
-            || !_sessionsByEndpoint.TryGetValue(
+            || !_town.TryGetSessionByEndpoint(
                 EndpointKey(remote),
                 out var senderSessionId))
         {
-            RuntimeLogger.Info(
+            Interlocked.Increment(ref _rxUnattributed);
+            RuntimeLogger.Debug(
                 "Gameplay UDP datagram from {Remote} could not be attributed to a session; not relaying.",
                 remote);
             return;
@@ -311,7 +367,7 @@ public sealed class GameplayDatagramService(
         var peers = _relayResolver(senderSessionId);
         if (peers is null)
         {
-            RuntimeLogger.Info(
+            RuntimeLogger.Debug(
                 "Gameplay UDP datagram from session {SenderSessionId} has no relay peers (not in a party).",
                 senderSessionId);
             return;
@@ -319,26 +375,30 @@ public sealed class GameplayDatagramService(
 
         foreach (var peerSessionId in peers)
         {
-            if (peerSessionId == senderSessionId
-                || !_sessions.TryGetValue(peerSessionId, out var peer))
+            if (peerSessionId == senderSessionId)
             {
                 continue;
             }
 
-            IPEndPoint endpoint;
-            lock (peer.Gate)
+            var endpoint = _town.GetResolvedEndpoint(peerSessionId);
+            if (endpoint is null)
             {
-                if (peer.DatagramEndpoint is null)
+                if (_sessionRuntimes.ContainsKey(peerSessionId))
                 {
-                    continue;
+                    Interlocked.Increment(ref _rxNoPeerEndpoint);
                 }
 
-                endpoint = peer.DatagramEndpoint;
+                continue;
             }
 
             _ = listener.SendAsync(datagram, endpoint, cancellationToken);
-            Interlocked.Increment(ref peer.Runtime.SentPackets);
-            RuntimeLogger.Info(
+            Interlocked.Increment(ref _rxRelayed);
+            if (_sessionRuntimes.TryGetValue(peerSessionId, out var peerRuntime))
+            {
+                Interlocked.Increment(ref peerRuntime.SentPackets);
+            }
+
+            RuntimeLogger.Debug(
                 "Relayed a {Length}-byte gameplay datagram (head {Head}) from session {SenderSessionId} to {Endpoint}.",
                 datagram.Length,
                 Convert.ToHexString(datagram, 0, Math.Min(datagram.Length, 8)),
@@ -354,32 +414,86 @@ public sealed class GameplayDatagramService(
         var firstContact = !_observedByAddress.ContainsKey(addressKey);
         _observedByAddress[addressKey] = observed;
 
-        foreach (var session in _sessions.Values)
+        // 端点学习按会话认领（docs/design/10 §4.2）：观测端点精确命中唯一连接的自报
+        // 公网端点 → 只认领该连接；无命中且该 IP 仅一个连接 → 沿用整体学习（现行语义，
+        // 单会话等价性由本支保证）；多连接且无法区分 → 不学习、不覆盖任何连接。
+        var candidates = _town.GetConnectionsOnTcpIp(remote.Address);
+        var claim = FindUniqueClaimTarget(candidates, observed);
+        if (claim is not null)
         {
-            lock (session.Gate)
+            _town.SetClaimedEndpoint(claim.Value, observed);
+            _town.SetResolvedEndpoint(claim.Value, observed);
+        }
+        else if (candidates.Count == 1)
+        {
+            _town.SetResolvedEndpoint(candidates[0].SessionId, observed);
+        }
+        else
+        {
+            Interlocked.Increment(ref _rxClaimSkipped);
+            if (Interlocked.Exchange(ref _claimSkippedWarned, 1) == 0)
             {
-                if (!string.Equals(
-                        AddressKey(session.TcpAddress),
-                        addressKey,
-                        StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                SetDatagramEndpoint(session, observed);
+                RuntimeLogger.Warn(
+                    "Endpoint observation from {Remote} matched no self-reported endpoint across {Count} sessions on {Address}; skipping endpoint learning (first occurrence)",
+                    remote,
+                    candidates.Count,
+                    addressKey);
             }
         }
 
         return firstContact;
     }
 
-    private IPEndPoint? SelectDatagramEndpoint(
-        GameplaySession session,
+    /// <summary>
+    /// 精确认领匹配：返回自报公网端点与观测端点精确相等的唯一连接；无命中或多连接
+    /// 自报同端点（无法区分）时返回 null。纯函数，快照上判定。
+    /// </summary>
+    internal static Guid? FindUniqueClaimTarget(
+        IReadOnlyList<TownConnectionView> candidates,
+        IPEndPoint observed)
+    {
+        Guid? match = null;
+        foreach (var candidate in candidates)
+        {
+            var report = candidate.SelfReport;
+            if (report is null
+                || report.PublicPort == 0
+                || !report.PublicAddress.Equals(observed.Address)
+                || report.PublicPort != observed.Port)
+            {
+                continue;
+            }
+
+            if (match is not null)
+            {
+                return null;
+            }
+
+            match = candidate.SessionId;
+        }
+
+        return match;
+    }
+
+    /// <summary>
+    /// 解析总序（docs/design/10 §4.2）：认领端点 &gt; 非共享 IP 的观测端点（现行语义）
+    /// &gt; 自报公网端点 &gt; 无。共享 IP 且无认领时不得采用按 IP 共享的观测值——
+    /// 这是相对现行唯一收紧，单连接场景与现行严格等价。
+    /// </summary>
+    internal static IPEndPoint? ResolveEndpoint(
+        IPEndPoint? claimedEndpoint,
+        IPAddress tcpAddress,
+        bool sharedIp,
+        IReadOnlyDictionary<string, IPEndPoint> observedByAddress,
         GameNatReport report)
     {
-        if (_observedByAddress.TryGetValue(
-                AddressKey(session.TcpAddress),
-                out var observed))
+        if (claimedEndpoint is not null)
+        {
+            return claimedEndpoint;
+        }
+
+        if (!sharedIp
+            && observedByAddress.TryGetValue(AddressKey(tcpAddress), out var observed))
         {
             return observed;
         }
@@ -391,27 +505,7 @@ public sealed class GameplayDatagramService(
             return null;
         }
 
-        return new IPEndPoint(
-            report.PublicAddress.MapToIPv4(),
-            report.PublicPort);
-    }
-
-    private void SetDatagramEndpoint(
-        GameplaySession session,
-        IPEndPoint? endpoint)
-    {
-        if (session.DatagramEndpoint is not null)
-        {
-            _sessionsByEndpoint.TryRemove(
-                EndpointKey(session.DatagramEndpoint),
-                out _);
-        }
-
-        session.DatagramEndpoint = endpoint;
-        if (endpoint is not null)
-        {
-            _sessionsByEndpoint[EndpointKey(endpoint)] = session.Runtime.Id;
-        }
+        return new IPEndPoint(report.PublicAddress.MapToIPv4(), report.PublicPort);
     }
 
     private void TraceDatagram(
@@ -420,25 +514,25 @@ public sealed class GameplayDatagramService(
         string direction,
         bool countReceived = true)
     {
-        if (!_sessionsByEndpoint.TryGetValue(
+        if (!_town.TryGetSessionByEndpoint(
                 EndpointKey(remote),
                 out var sessionId)
-            || !_sessions.TryGetValue(sessionId, out var session))
+            || !_sessionRuntimes.TryGetValue(sessionId, out var sessionRuntime))
         {
             return;
         }
 
         if (countReceived)
         {
-            runtime.CountPacket(session.Runtime);
+            runtime.CountPacket(sessionRuntime);
         }
         else
         {
-            Interlocked.Increment(ref session.Runtime.SentPackets);
+            Interlocked.Increment(ref sessionRuntime.SentPackets);
         }
 
         runtime.TraceDatagram(
-            session.Runtime,
+            sessionRuntime,
             direction,
             datagram,
             options.HexDumpLimit);
@@ -455,11 +549,16 @@ public sealed class GameplayDatagramService(
                     out var consumed)
                 || consumed <= 0)
             {
-                RuntimeLogger.Warn(
-                    "Ignored malformed gameplay UDP datagram from {Remote} at offset {Offset}; length={Length}",
-                    remote,
-                    offset,
-                    datagram.Length);
+                Interlocked.Increment(ref _rxMalformed);
+                if (Interlocked.Exchange(ref _malformedWarned, 1) == 0)
+                {
+                    RuntimeLogger.Warn(
+                        "Ignored malformed gameplay UDP datagram from {Remote} at offset {Offset}; length={Length} (first occurrence; further occurrences are counted in the aggregate)",
+                        remote,
+                        offset,
+                        datagram.Length);
+                }
+
                 return;
             }
 
@@ -497,16 +596,4 @@ public sealed class GameplayDatagramService(
 
     private static string EndpointKey(IPEndPoint endpoint) =>
         $"{AddressKey(endpoint.Address)}:{endpoint.Port}";
-
-    private sealed class GameplaySession(
-        RuntimeSession runtimeSession,
-        IPAddress tcpAddress)
-    {
-        public object Gate { get; } = new();
-        public RuntimeSession Runtime { get; } = runtimeSession;
-        public IPAddress TcpAddress { get; } = tcpAddress;
-        public GameNatReport? NatReport { get; set; }
-        public IPEndPoint? DatagramEndpoint { get; set; }
-        public uint NextSequence { get; set; }
-    }
 }

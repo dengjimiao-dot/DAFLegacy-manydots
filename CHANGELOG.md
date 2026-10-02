@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-10-03
+
+### ADD-18 网络数据面整体优化三批次落地（设计 `docs/design/10-udp-nat-dataplane.md`，状态已实现）
+
+- **现象**：①同 IP 多会话（同机双开/同一 NAT 出口）下 UDP 端点学习按 TCP 源 IP 整体赋予，后到探测覆盖先到端点，中继转发错位或落「无法归属」（party 分册数据面第 3 条登记缺陷）；②NAT 探测入口无长度校验、无限流、逐包日志（洪水即日志洪水）；③城镇在场表挂在组队域、端点状态散在三处，无唯一归属。
+- **改动**（三批次，全部经 SelfTests 新套件守护）：批次 1——`NatProbeRateLimiter`（按源 IP 固定 1 秒窗口、默认 32 次/秒、双端口监听共用实例、`TimeProvider` 注入、`NatProbeRateLimit` 可配 `<=0` 旁路）+ `TryCreateNatProbeResponse` 长度==1 校验（协议锚：客户端 sendto 恒 1 字节）+ 9 计数器与每 5 秒聚合汇总、逐包日志降 Debug；批次 2——端点学习按会话认领（自报公网端点精确唯一命中→只认领该会话；无命中且单会话→沿用整体学习；多会话无法区分→不学习），解析总序四级（认领>非共享观测>自报>null），单会话行为与现行严格等价；批次 3——新增 `TownPresenceService` 城镇广播中枢（在场注册/三级广播/查找服务/状态翻转钩子/解析端点反查/频道人口统计），`PartyCoordinator` 瘦身为纯组队消费方，`EntranceMetadata.CurrentUsers` 改取中枢连接注册数（原 registry 计数职责移除）。
+- **验证**：SelfTests 全量绿（新套件 `nat-probe-hardening`/`endpoint-claim`/`town-presence-hub`：认领三支路径、混合场景、解析总序单会话等价性、限流边界与窗口翻转、人口计数、反查归属）；探测回包/NOTI 11/中继帧**线上字节零变更**；真机项（双开进副本端点各归其位、抓包逐字节比对）归 `PENDING.md` P-36。
+
+### ADD-19 好友与黑名单（`social.friends` 组，docs/design/11 §P2，已实现真机待 P-36）
+
+- **协议取证**（P-35）：应答分发器 `sub_40F290` 跳表键值 = `dec eax`（var=协议号−1）后按现存 var 线性排列，**IDA case 标注即协议号**——据此定位 CMD 63 应答=0x414986、64=0x414BA7、129=0x414D34、130=0x414D97；NOTI 56 记录=42B 固定（名字内联@[3..]、uid u16@[36]）；NOTI 54/55={u8,dstr(31),u8}；CMD 130 应答={u8 count;count×{dstr 名字,u8 日,u8 月−1,u8 年−1900}}；CMD 63 请求=单 dstr 名字。**J1 裁决**：客户端黑名单管理器键为名字（角色名），角色级锚定与客户端兼容。
+- **改动**：五 handler（63/64 增删好友、128/129 黑名单增删、130 黑名单查询——替换原 canned 应答并删除 `ExchangeServerCharacterInfoHandler`）；存储切片（`character_friends`/`character_blacklist` 启用，CharacterNo 整型键，独立小表紧随主状态写落盘，跨重启持久化有断言）；`SocialPacketBuilders`（NOTI 56/54/55 与五应答，dstr 遵守 1..30 游标约束）；`SocialPresenceNotifier`（城镇翻转钩子：进城推 NOTI 56 初始列表+反向边扇出 NOTI 54，离城扇出 NOTI 55）；增删成功即重发 NOTI 56 全量（用户定案：列表实时刷新，不依赖重选角色）。密语拦截与联动规则未实现（60A1 无证据，见 11 号 §3.9 T3/T4）。
+- **验证**：`social-store`（CRUD/幂等/反向边/跨重启）与 `social-packet-builders`（逐偏移）套件绿；值域对拍归 P-36。
+
+### ADD-20 组队补完：CMD 131 队长转让 + NOTI 2 mode 3 成员互发（docs/design/11 §P0）
+
+- **取证**：CMD 131 二进制权威名 = `ENUM_CMDPACKET_CHANGE_HOST`，**无应答 case**（fire-and-forget）；载荷 = 1 字节目标座位号（发送点 0x852326）。mode 3 与 mode 1 共享读序分支（0x41A764→0x41A780，构建器尾段 0x41AEE0 已实现）——mode 3 字节即 `CreateCurrentCharacterDetails(mode:3)`，无需逐字段新取证。
+- **改动**：`PartyManager.TransferLeader`（现任队长+会话一致+目标槽位占用校验）→ `PartyCoordinator` 广播 NOTI 26（1B 新队长槽位）+ NOTI 9 花名册，handler 层对 131 抑制 Type-1 应答；`CharacterSessionRegistry` 详情现场构建通道（`SetDetailsProvider`/`TryBuildDetails`）+ `ChannelSessionSenders.BuildMode3Details`（实时技能/投影属性/穿戴快照）+ `PartyCoordinator.ExchangePartyDetails`（组队成立时成员互发 mode 3，插在端点表之前——对端连接对象 user+0x110 的唯一创建源，P-12 前置补齐）。
+- **验证**：`party` 套件扩展（转让四分支断言；互发帧与相位顺序 mode3→endpoints→ack→roster→endpoints→host 断言）绿；双客户端进副本端到端归 P-36。
+
+### ADD-21 玩家交易协议落地第一步 + 个人商店骨架 + PVP 房间骨架（docs/design/11 §P3/P4/P6）
+
+- **交易**（协议定界 P-35 全记录）：NOTI 15={u16,u16,u32,u8,u16}/16={u16 count;count×{u16,u8,u16}}/17={u16,u8}/18={u16×3}；**CMD 26 状态域实证 {1/0}确认、{2}取消、{3}双锁**（与 A12 状态机同构、编号+1 错位）——`ItemTradeStateHandler` 改双形态（body 3 字节→`TradeSessionRegistry` 状态机并向对方广播 NOTI 17；锁定体→既有 NPC 路径），断线拆对；`TradePacketBuilders` 四构建器。**待办**：交易发起流（CMD 10 无 type-1 发送点，真机抓包定案）、CMD 19 交易格分支、值域 0/4（P-36/T6-T8）。
+- **个人商店**：请求侧全族取证（88={u8 标志}、90 上架={dstr 标题≤40}、86={u32 店主 uid}、89/87=空；发送点聚簇 0x7B2690..0x7B28F8）——`PrivateStoreRegistry`（每角色一店）+五 handler（88/90/86/87/89）+ NOTI 78 建摊广播构建器；CMD 82 维持社交轮询裁决。**待办**：85 购买（应答八字段值域）、上架通道、79-85 接线、两表落库（T9-T11）。
+- **PVP**：`PvpRoomRegistry` 房间状态机骨架（8 座两队/准备/开战校验/击杀计数/断线清理与最低座继任）+ NOTI 44/46 全量与 45 头部构建器；CMD 53={u8,u32 条件,dstr 标题}、56={u8,u8}。**待办**：handler 接线、41/43/47 复合布局、结算公式 J7（T14-T16）。
+- **验证**：`trade-protocol`/`pvp-room` 套件绿（状态机转移矩阵、房间生命周期、构建器线序）；房间挪位残留 SessionId 缺陷在自测中暴露并修复。
+
+### CHANGE 配置与存储变更
+
+- `Channel.ServerGroup` 配置化（默认 1，此前写死）：PVF `etc/channel_info.etc` 只收配置组号的 `[server]` 行，元数据 GroupIndex=ServerGroup−1；README 运行配置节同步。
+- 存档更名 `game.db` → **`game.sqlite`**：`ServerOptions.DatabasePath` 默认值、`server.json`（仓库+dist）、README、`docs/design/08`、`docs/sql/data_schema.sql` 用法、P-26/P-33/P-36 同步；既有部署手动改名旧档即可沿用。
+- `act1_schema.sql` 基线调整（P-36 重建窗口内，无迁移需求）：`character_blacklist.created_at` TEXT→INTEGER（unix 秒，CMD 130 按 tm 消费）；`private_store_items` 增 `count` 列（可堆叠上架）；四组表注释按实现状态刷新。
+- 种子库重建：部署库 `dist/server-osx-arm64/Data/game.sqlite` 与仓库 `Server/DAFLegacy.Server/Data/game.sqlite` 均按基线 100 + 种子重建（test 账号/4 角色/341 物品/7 邮件/125 技能，integrity_check 通过）；运行期规范化由服务端首次启动自动执行。
+
+---
+
 ## 2026-09-30
 
 ### FIX-11 SQLite 种子把物品可空列压成 0：装备耐久恒下发 0（修理不生效的表象）、点击宠物崩溃

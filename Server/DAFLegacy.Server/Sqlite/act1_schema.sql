@@ -381,8 +381,10 @@ CREATE TABLE IF NOT EXISTS character_exp_boost (
 -- 协议号登记见 docs/protocol/client-packet-enums-60cn.md；各系统实现前按
 -- AGENTS.md D1 以 IDA + 抓包定协议格式，未定论的值域不预设约束。
 
--- 私人商店（CMD 85-89、NOTI 78-80/82-85，均未实现）。店名与商品目录需持久化
--- （关店后重开沿用）；成交即时换主，不留账表。每角色至多一店。
+-- 私人商店（CMD 85-90；2026-10-01 骨架实现：摊位目录暂驻内存
+-- PrivateStoreRegistry，本两表接线待购买应答值域与上架通道真机定案（P-36）；
+-- 90 挂名完成与 88 建占位为两步。店名与商品目录需持久化（关店后重开沿用）；
+-- 成交即时换主，不留账表。每角色至多一店。
 CREATE TABLE IF NOT EXISTS private_stores (
     owner_character_id INTEGER PRIMARY KEY,
     store_name TEXT NOT NULL DEFAULT '',
@@ -399,6 +401,7 @@ CREATE TABLE IF NOT EXISTS private_store_items (
     item_uid INTEGER PRIMARY KEY,
     owner_character_id INTEGER NOT NULL,
     price_gold INTEGER NOT NULL CHECK (price_gold >= 0),
+    count INTEGER NOT NULL DEFAULT 1 CHECK (count >= 1), -- 可堆叠上架数量（非堆叠恒 1）
     listed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (owner_character_id) REFERENCES characters(character_id) ON DELETE CASCADE,
     FOREIGN KEY (item_uid) REFERENCES character_items(item_uid) ON DELETE CASCADE
@@ -406,7 +409,8 @@ CREATE TABLE IF NOT EXISTS private_store_items (
 CREATE INDEX IF NOT EXISTS idx_private_store_items_owner
     ON private_store_items(owner_character_id);
 
--- 好友（CMD 63/64、NOTI 52，均未实现）。单向关系；任一方删除角色时两个方向的
+-- 好友（CMD 63/64；2026-10-01 已实现：单向关系、添加即生效无确认流，
+-- 上下线通知按反向边扇出，本表反向索引即该查询）。任一方删除角色时两个方向的
 -- 关系行都随外键级联清理。
 CREATE TABLE IF NOT EXISTS character_friends (
     owner_character_id INTEGER NOT NULL,
@@ -420,11 +424,12 @@ CREATE TABLE IF NOT EXISTS character_friends (
 CREATE INDEX IF NOT EXISTS idx_character_friends_friend
     ON character_friends(friend_character_id);
 
--- 黑名单形态与好友一致（协议面未在枚举登记表单列，实现时按 D1 先定）。
+-- 黑名单（CMD 128/129/130；2026-10-01 已实现，J1 裁决角色级锚定——客户端
+-- 黑名单管理器键为名字，角色级兼容；密语拦截待 NOTI 65 语义定案）。
 CREATE TABLE IF NOT EXISTS character_blacklist (
     owner_character_id INTEGER NOT NULL,
     target_character_id INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at INTEGER NOT NULL,                    -- unix 秒（CMD 130 应答按 tm 日/月-1/年-1900 消费）
     PRIMARY KEY (owner_character_id, target_character_id),
     CHECK (owner_character_id <> target_character_id),
     FOREIGN KEY (owner_character_id) REFERENCES characters(character_id) ON DELETE CASCADE,
@@ -433,8 +438,9 @@ CREATE TABLE IF NOT EXISTS character_blacklist (
 CREATE INDEX IF NOT EXISTS idx_character_blacklist_target
     ON character_blacklist(target_character_id);
 
--- 公会（CMD 70/71/76/77/78/119/135/136/149-151 与 NOTI 58-64/70/71/121/122/129/139，
--- 均未实现）。只收录有协议面依据的核心实体；公会战与徽标格式未验证，不预设列。
+-- 公会（CMD 70/76 与 NOTI 70 已取证：信息包布局已解；建会族 71/166-168 零
+-- 发送点——建会流静态不可定位，真机定案后实现（P-36）。只收录有协议面依据的
+-- 核心实体；公会战与徽标格式未验证，不预设列。
 -- 公会名唯一性沿用 characters.name 的 NOCASE 口径。
 CREATE TABLE IF NOT EXISTS guilds (
     guild_id INTEGER PRIMARY KEY AUTOINCREMENT,

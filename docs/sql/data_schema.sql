@@ -7,8 +7,8 @@
 -- 适用基线：100（schema_version 100）
 --
 -- 用法（全新库）：
---   sqlite3 game.db < Server/DAFLegacy.Server/Sqlite/act1_schema.sql
---   sqlite3 game.db < docs/sql/data_schema.sql
+--   sqlite3 game.sqlite < Server/DAFLegacy.Server/Sqlite/act1_schema.sql
+--   sqlite3 game.sqlite < docs/sql/data_schema.sql
 --
 -- 运行期规范化（NormalizeCharacterExperience / SettleWarehouseUpgradeItems /
 -- 预置角色刷新）不在本文件内，由服务端启动流程执行。

@@ -9,6 +9,39 @@ namespace DAFLegacy.Server;
 public interface IGameStore
 {
     Task InitializeAsync(CancellationToken cancellationToken = default);
+
+    // ---- 社交关系（11 号 P2）：好友单向边与角色级黑名单（docs/design/12 §3.2）----
+    Task<SocialFriendEntry[]> GetFriendsAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default);
+    Task<Guid[]> GetFriendOwnerIdsAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default);
+    Task<(bool Ok, string? Error)> AddFriendAsync(
+        Guid ownerCharacterId,
+        string friendName,
+        CancellationToken cancellationToken = default);
+    Task<(bool Ok, string? Error)> RemoveFriendAsync(
+        Guid ownerCharacterId,
+        string friendName,
+        CancellationToken cancellationToken = default);
+    Task<SocialBlacklistRow[]> GetBlacklistAsync(
+        Guid ownerCharacterId,
+        CancellationToken cancellationToken = default);
+    Task<(bool Ok, string? Error)> AddBlacklistAsync(
+        Guid ownerCharacterId,
+        string targetName,
+        CancellationToken cancellationToken = default);
+    Task<(bool Ok, string? Error)> RemoveBlacklistAsync(
+        Guid ownerCharacterId,
+        string targetName,
+        CancellationToken cancellationToken = default);
+    Task<CharacterRecord?> FindCharacterByNameAsync(
+        string name,
+        CancellationToken cancellationToken = default);
+    Task<uint> GetCharacterAccountUidAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default);
     Task<PublicAccountRecord[]> GetAccountsAsync(CancellationToken cancellationToken = default);
     Task<AuthenticatedAccount?> AuthenticateAsync(
         string userName,

@@ -93,6 +93,7 @@
 | CMD 12 发送 | 0x7D5F86 | 反汇 | 建队/改设置(窗口 OK 处理 `sub_7D5D20`);预设名表 `dword_B75A64[0..5]`(6 条,串表 0x1AA..0x1AF);titleKind 判定 0x7D5E3A..0x7D5E85;校验串 0x461..0x464;容量字节取窗口 +0x6C(可越界,见 §8) |
 | CMD 13 发送 | 0x7D12AC / 0x8520AB | 反汇 | 城镇菜单 / 组队窗口 |
 | CMD 14 发送 | 0x8520F1 | 反汇 | 槽位反查 0x8520C8(扫 0..3) |
+| CMD 131 发送 | 0x852326 | 反汇 | 队长转让(队伍窗口命令跳表 case 13,`sub_852020`);载荷 1B = 目标座位号(成员表 `dword_B5DCC8` 比对 seat 0..3);2026-10-01 批量核验 P-35 |
 | CMD 10 发送 | 0x4FE9B0(type0)/ 0x852117(type2) | 反编/反汇 | 邀请/申请;PvP 邀请走 type2;错误文案 432..439 |
 | CMD 11 发送 | 0x4FEBC0(接受)/ 0x821E46(拒绝) | 反编/反汇 | 接受=7B 全零;拒绝 type/value 非零 |
 | 应答 case 10/11/12/13/14 | 0x4102F6 / 0x4104FF / 0x410799 / 0x4107D8 / 0x410834 | 反汇 | 失败分支读取形状与错误码→弹窗(详见组队文档) |
@@ -200,9 +201,10 @@
 | `Str1` 组名表 | 0xb53d78 | 反编+导出 | 109 项组名指针数组:前 9 项 cain,diregie,siroco,prey,casillas,hilder,ruke,seria,anton(与本项目 `EntranceMetadata.ServerGroups` 同序同集),后 100 项 china_1..china_100 占位 |
 | RTTI `.?AVCNEntranceChannel@@` / `.?AVCNEntranceModule@@` | 0xafdb8c / 0xafdbac | 引用 | 入口频道/入口模块类(与 60A4 样本 §2 清单同族) |
 | `Etc/channel_info.etc` | 0xa6bfe4(引用点 0x720823) | 反汇 | 引用点位于未定义代码区,消费函数待定位(登记为悬置项) |
-| `sub_78C9E0`(this) | 0x78C9E0 | 反编 | UDP NAT 发现阶段状态机 tick(逐帧经 `sub_433B00` 泵):门控=游戏套接字已连接(`dword_BF0A9C+8`)→全局使能字节(`*(dword_B5D6F0+6)+84`)→探测列表非空(`sub_8FF180` 计数 this+456 向量);state1..3 收探测回复,state4 终态 |
-| `sub_78C870`(this, n) | 0x78C870 | 反编 | 状态迁移+探测发送:入口节流(等待标志 this+432 与 10000ms 时限 this+364/420);探测步各带 500ms 等待;同状态重试计数 this+428 ≥10 → 兜底 `sub_78C630`,失败弹「Run Error」并退出;state4 每 10000ms 发 10B keepalive 并重设同长等待 |
-| `sub_78C4F0`(this, a2, natType) | 0x78C4F0 | 反编 | CMD 2 `SET_UDP_IP_PORT` 发送方(经 `sub_8B2650(sock,2)`+`sub_8B2450` 追加字段+`sub_8B24C0` 发送);全局使能字节为 0 时静默不发 |
+| `sub_78C9E0`(this) | 0x78C9E0 | 反编 | UDP NAT 发现阶段状态机 tick(逐帧经 `sub_433B00` 泵):门控=游戏套接字已连接(`dword_BF0A9C+8`)→全局使能字节(`*(dword_B5D6F0+6)+84`)→探测列表非空(`sub_8FF180` 计数 this+456 向量);state1..3 收探测回复,state4 终态。回包仅校验**首字节==2**,`recvfrom` 源地址(this+332)从不参与比对,观测端点取自载荷(+74 4B IP/+78 2B 端口,均主机序);分类:state1 载荷 IP==this+8(本机假定)→ type 1 / state2 端点与 state1 相同 → 进 state3,不同 → type 3 / state3 有回包 → type 2,无回包或坏包 → type 4 |
+| `sub_78C870`(this, n) | 0x78C870 | 反编 | 状态迁移+探测发送:入口节流(等待标志 this+432 与 10000ms 时限 this+364/420);探测步各带 500ms 等待;同状态重试计数 this+428 ≥10 → 兜底 `sub_78C630`,失败弹「Run Error」并退出;state4 每 10000ms 发 10B keepalive 并重设同长等待。探测载荷全部经**同一 UDP socket**(this+12)收发:state1 发 1B 值 1(this+72,初值由 `sub_78CCD0` 0x78CD0B 置 1)至端口 A(this+16)、state2 发值 1 至端口 B(this+32)、state3 改发值 5(0x78C98A)至端口 A、keepalive 首字节清 0 发 10B 至端口 B |
+| `sub_78CCD0`(this) | 0x78CCD0 | 反编 | NAT 探测对象复位/初始化:探测字节 this+72=1、状态(this+64)/NAT 类型(this+68)/端点缓存(this+348..360)/sockaddr 与探测列表、使用位图清零,ICMP 探测值 this+436=-1 占位 |
+| `sub_78C4F0`(this, a2, natType) | 0x78C4F0 | 反编 | CMD 2 `SET_UDP_IP_PORT` 发送方(经 `sub_8B2650(sock,2)`+`sub_8B2450` 追加字段+`sub_8B24C0` 发送);全局使能字节为 0 时静默不发。载荷序 = natType(1B)+本机 IP(this+8,4B)+公网 IP(4B)+公网端口(2B,主机序)+ICMP 探测值(this+436,4B),与服务端 `GameDatagramProtocol.TryParseNatReport` 逐字段对应;同时状态置 4(this+64)、类型存 this+68、端点缓存写入 this+0/+4 |
 | `sub_78CC50`(this) | 0x78CC50 | 反编 | 选角界面(sub_40F290 逐帧)轮询的「上报就绪」入口:缓存端点有效(this+68)直发 CMD 2,否则推动探测选目标 |
 | `sub_78C730` / `sub_78C630` / `sub_78C1B0` | 0x78C730 / 0x78C630 / 0x78C1B0 | 反编 | 探测目标选取(随机列表项+使用位图)/重试耗尽后换未用目标(恒返 1)/对探测主机发 ICMP ping(icmp.dll,1472B 载荷) |
 | `sub_8B2650(sock, id)` / `sub_8B2450` / `sub_8B24C0` | 0x8B2650 / 0x8B2450 / 0x8B24C0 | 反编 | 客户端命令发送三件套:开始(协议号)/追加字段/提交发送(CMD 2 定位即按 100 个调用方筛立即数 2) |

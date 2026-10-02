@@ -53,6 +53,8 @@ public sealed class SqliteGameStore(
         NextNormalAccountUid = snapshot.NextNormalAccountUid;
         NextTestAccountUid = snapshot.NextTestAccountUid;
         FatigueDayKey = snapshot.FatigueDayKey;
+        FriendEdges.AddRange(snapshot.Social?.Edges ?? []);
+        BlacklistEntries.AddRange(snapshot.Social?.Entries ?? []);
         Logger.LogInformation(
             "Loaded {AccountCount} account(s) from SQLite: {DatabasePath}",
             snapshot.Accounts.Count,
@@ -70,6 +72,13 @@ public sealed class SqliteGameStore(
             NextNormalAccountUid,
             NextTestAccountUid,
             FatigueDayKey));
+        // 社交两表紧随主状态写（独立小事务；失败保留待办批次，下次落盘重试）。
+        if (PeekPendingSocial() is { } social)
+        {
+            _store.WriteSocial(social);
+            ClearPendingSocial();
+        }
+
         return Task.CompletedTask;
     }
 }

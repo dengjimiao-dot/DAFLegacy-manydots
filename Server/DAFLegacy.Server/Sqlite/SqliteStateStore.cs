@@ -11,7 +11,8 @@ internal sealed record SqliteStateSnapshot(
     uint NextCharacterNo,
     uint NextNormalAccountUid,
     uint NextTestAccountUid,
-    int FatigueDayKey);
+    int FatigueDayKey,
+    SocialPersistState? Social = null);
 
 /// <summary>
 /// 状态落盘（docs/design/08-sqlite-storage.md D4）。内存树与「上次已落盘」的指纹
@@ -34,9 +35,71 @@ internal sealed class SqliteStateStore(IGameDatabase database, ILogger logger)
     /// <summary>整库读出内存树，并记录指纹基线（供后续增量写比对）。</summary>
     public SqliteStateSnapshot Load()
     {
-        var snapshot = database.Read(LoadWithin);
+        var snapshot = database.Read(LoadWithin) with { Social = ReadSocial() };
         RecordFingerprints(snapshot);
         return snapshot;
+    }
+
+    /// <summary>社交两表读出（11 号 P2）：好友单向边与角色级黑名单。</summary>
+    private SocialPersistState ReadSocial()
+    {
+        return database.Read(connection =>
+        {
+            var edges = new List<FriendEdgeRecord>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT owner_character_id, friend_character_id FROM character_friends;";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    edges.Add(new FriendEdgeRecord(
+                        (uint)reader.GetInt64(0),
+                        (uint)reader.GetInt64(1)));
+                }
+            }
+
+            var entries = new List<SocialBlacklistRecord>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT owner_character_id, target_character_id, created_at FROM character_blacklist;";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    entries.Add(new SocialBlacklistRecord(
+                        (uint)reader.GetInt64(0),
+                        (uint)reader.GetInt64(1),
+                        (uint)reader.GetInt64(2)));
+                }
+            }
+
+            return new SocialPersistState([.. edges], [.. entries]);
+        });
+    }
+
+    /// <summary>社交两表整体重写（小表；独立 IMMEDIATE 事务，紧随主状态写之后）。</summary>
+    public void WriteSocial(SocialPersistState social)
+    {
+        database.Write((connection, transaction) =>
+        {
+            Execute(connection, transaction, "DELETE FROM character_friends;");
+            Execute(connection, transaction, "DELETE FROM character_blacklist;");
+            foreach (var edge in social.Edges)
+            {
+                Execute(connection, transaction,
+                    "INSERT INTO character_friends (owner_character_id, friend_character_id) VALUES (@owner, @friend);",
+                    ("@owner", (long)edge.OwnerCharacterNo),
+                    ("@friend", (long)edge.FriendCharacterNo));
+            }
+
+            foreach (var entry in social.Entries)
+            {
+                Execute(connection, transaction,
+                    "INSERT INTO character_blacklist (owner_character_id, target_character_id, created_at) VALUES (@owner, @target, @createdAt);",
+                    ("@owner", (long)entry.OwnerCharacterNo),
+                    ("@target", (long)entry.TargetCharacterNo),
+                    ("@createdAt", (long)entry.CreatedAtUnix));
+            }
+        });
     }
 
     /// <summary>

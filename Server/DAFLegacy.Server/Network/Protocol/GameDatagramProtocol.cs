@@ -71,7 +71,9 @@ public static class GameDatagramProtocol
         out byte[] response)
     {
         response = [];
-        if (request.Length == 0 || request[0] is not (1 or 5))
+        // 探测请求恒 1 字节（客户端 sub_78C870 的 sendto 长度为 1，值 1/5；见
+        // packet-detail-party-60cn.md「NAT 发现阶段定论」），其余长度一律畸形不回包。
+        if (request.Length != 1 || request[0] is not (1 or 5))
         {
             return false;
         }

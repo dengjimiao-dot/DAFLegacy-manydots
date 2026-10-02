@@ -19,14 +19,15 @@
       "SenderPartyIndex": 0
     },
     "GameProbe": { "Enabled": false, "Host": "127.0.0.1", "Port": 7001 },
-    "DatabasePath": "Data/game.db",
+    "DatabasePath": "Data/game.sqlite",
     "ScriptPvfPath": "../Script.pvf",
     "SkillScriptPath": "",
     "Channel": {
       "Host": "127.0.0.1",
       "Port": 7001,
       "PortBase": 20000,
-      "MaximumUsers": 10
+      "MaximumUsers": 10,
+      "ServerGroup": 1
     },
     "MaximumPacketLength": 4194304,
     "RejectBadCrc32": false,

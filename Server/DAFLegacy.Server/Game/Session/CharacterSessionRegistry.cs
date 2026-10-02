@@ -15,52 +15,17 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
 {
     private readonly ConcurrentDictionary<CharacterSessionKey, CharacterSessionLease> _activeCharacters = new();
 
-    // Per-channel connected-session counts (M2): incremented when a channel
-    // listener accepts a connection, decremented when its read loop finally
-    // runs. Feeds the entrance metadata CurrentUsers per channel record.
-    private readonly ConcurrentDictionary<int, int> _channelConnections = new();
-
     // Per-connection outbound channels for cross-session pushes (party
     // notifications, town presence). Keyed by the owning RuntimeSession id;
     // channels detach when the connection's read loop finally block runs.
     private readonly ConcurrentDictionary<Guid, Action<GameServerPacket>> _packetChannels = new();
 
-    /// <summary>当前在册角色会话数（跨频道总数，诊断用；元数据上报改用按频道计数）。</summary>
+    // 会话现场构建的 mode-3 详情形包器（11 号 P0：组队成员快照由唯一掌握实时
+    // 技能/属性/穿戴的连接现场出包）。
+    private readonly ConcurrentDictionary<Guid, Func<GameServerPacket?>> _detailsProviders = new();
+
+    /// <summary>当前在册角色会话数（跨频道总数，诊断用）。</summary>
     public int SessionCount => _activeCharacters.Count;
-
-    /// <summary>频道 <paramref name="channelNumber"/> 的已连接会话数（元数据 CurrentUsers 源）。</summary>
-    public int GetChannelConnectionCount(int channelNumber) =>
-        _channelConnections.GetValueOrDefault(channelNumber);
-
-    public void AddChannelConnection(int channelNumber) =>
-        _channelConnections.AddOrUpdate(channelNumber, 1, (_, count) => count + 1);
-
-    public void RemoveChannelConnection(int channelNumber)
-    {
-        while (true)
-        {
-            if (!_channelConnections.TryGetValue(channelNumber, out var current))
-            {
-                return;
-            }
-
-            if (current <= 1)
-            {
-                if (((ICollection<KeyValuePair<int, int>>)_channelConnections).Remove(
-                        new(channelNumber, current)))
-                {
-                    return;
-                }
-
-                continue;
-            }
-
-            if (_channelConnections.TryUpdate(channelNumber, current - 1, current))
-            {
-                return;
-            }
-        }
-    }
 
     /// <summary>Registers this connection's serialized write delegate so other
     /// sessions can deliver packets to it.</summary>
@@ -72,7 +37,26 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
 
     public void DetachPacketChannel(Guid sessionId)
     {
+        _detailsProviders.TryRemove(sessionId, out _);
         _packetChannels.TryRemove(sessionId, out _);
+    }
+
+    /// <summary>登记会话的 mode-3 详情现场构建器（组队扇出用；随连接生命周期注销）。</summary>
+    public void SetDetailsProvider(Guid sessionId, Func<GameServerPacket?> provider) =>
+        _detailsProviders[sessionId] = provider;
+
+    /// <summary>构建会话当前的 mode-3 详情快照；会话离线或未选角时返回 null。</summary>
+    public bool TryBuildDetails(Guid sessionId, out GameServerPacket details)
+    {
+        if (_detailsProviders.TryGetValue(sessionId, out var provider)
+            && provider() is { } packet)
+        {
+            details = packet;
+            return true;
+        }
+
+        details = null!;
+        return false;
     }
 
     /// <summary>Queues a packet onto the named session's write channel.

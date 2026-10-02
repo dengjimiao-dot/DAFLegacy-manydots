@@ -62,16 +62,16 @@
 
 ## 已知缺口
 
-- **多人组队** 已落地雏形（组队创建、邀请、接受、退队、踢人、成员互见与队伍聊天的协议链路，格式与实现见 `docs/protocol/packet-detail-party-60cn.md`、`docs/protocol/packet-detail-chat-60cn.md`）；完整流程的真机复测仍在推进，多人进同一副本的协同编队尚未完成。**队伍名**：6 条预设文案由客户端本地渲染；自定义名经 NOTI 9 设置段 kind==0 的 dstr（u32 长度 + CP936 文本）原生下发，所有客户端直接显示、无需补丁；改名请求携带的容量字节可能越界（客户端回读自存队伍记录），服务端按"建队取默认 4、改设置保留原容量"修正。
-- **玩家交易** 尚未实现玩家之间的物品、金币交易及双方确认流程。
-- **私人商店** 尚未实现摆摊、商品展示及玩家购买流程。
-- **社交与公会** 尚未实现好友、黑名单及完整的公会系统；战场、公会战等玩法尚未实现和验证。
-- **决斗场** 已有决斗经验、等级及记录同步，尚未实现房间、准备、对战及结算流程。
+- **多人组队** 已落地雏形（组队创建、邀请、接受、退队、踢人、成员互见与队伍聊天的协议链路，格式与实现见 `docs/protocol/packet-detail-party-60cn.md`、`docs/protocol/packet-detail-chat-60cn.md`）；2026-10-01 补齐队长转让（CMD 131）与组队成员互发 mode 3 对端上下文（副本 P2P 前置）；完整流程的真机复测归 P-36 统一窗口，多人进同一副本的协同编队待该窗口走查。**队伍名**：6 条预设文案由客户端本地渲染；自定义名经 NOTI 9 设置段 kind==0 的 dstr（u32 长度 + CP936 文本）原生下发，所有客户端直接显示、无需补丁；改名请求携带的容量字节可能越界（客户端回读自存队伍记录），服务端按"建队取默认 4、改设置保留原容量"修正。
+- **玩家交易** 协议族已定界并落地下行构建器与 CMD 26 双形态状态机（确认/取消/双锁，NPC 出售路径保留）；交易发起流与值域待真机定案后补齐（见 `docs/design/11-social-systems-migration.md` §3.9 T6-T8）。
+- **私人商店** 骨架已实现（开摊/挂名/浏览/退出/收摊五 handler 与建摊广播；请求载荷全族取证）；购买应答与上架物品通道待真机值域后接线（§3.9 T9-T11）。
+- **社交与公会** 好友与黑名单已实现（单向添加、增删后列表实时刷新、上下线推送；密语拦截待 NOTI 65 语义定案）；公会建会流静态不可定位（71/166-168 零发送点），待真机定案后实现（NOTI 70 信息包布局已备）；战场、公会战等玩法尚未实现和验证。
+- **决斗场** 已有决斗经验、等级及记录同步；房间状态机骨架已实现（建房/进房/座位/准备/开战校验/击杀计数），handler 接线、复合下行布局与结算公式待后续（§3.9 T14-T16）。
 - **数据持久化** 已切换 SQLite（设计、取舍与结项状态见 `docs/design/08-sqlite-storage.md`；真机回归、便捷备份与 GM 改值入口待补，见 `PENDING.md` P-25/P-26/P-27），不支持多实例共享写入。
 
 上述为尚未实现的功能；已完成但待真机复测、未定论与存在争议的事项登记在 [PENDING.md](PENDING.md)。
 
-上述协议类缺口的迁移组位、命名与归属预留见 [docs/design/07-protocol-layer-refactor.md](docs/design/07-protocol-layer-refactor.md) 的 §4.8.4；存储缺口由 [docs/design/08-sqlite-storage.md](docs/design/08-sqlite-storage.md) 承载。
+上述协议类缺口的迁移组位、命名与归属预留见 [docs/design/07-protocol-layer-refactor.md](docs/design/07-protocol-layer-refactor.md) 的 §4.8.4；存储缺口由 [docs/design/08-sqlite-storage.md](docs/design/08-sqlite-storage.md) 承载；社交系统分阶段实施状态与剩余待办总表见 [docs/design/11-social-systems-migration.md](docs/design/11-social-systems-migration.md)（§3.9）与 [docs/design/12-sql-social-storage.md](docs/design/12-sql-social-storage.md)。
 
 ## 运行环境
 
@@ -118,9 +118,9 @@ dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release 
 | 设置 | 用途 |
 | --- | --- |
 | `ScriptPvfPath` | PVF 路径；相对路径以服务端程序目录为基准。更新 PVF 后重启服务端重新加载。 |
-| `DatabasePath` | SQLite 存档路径，默认 `Data/game.db`，相对路径以服务端程序目录为基准。库不存在时按基线 schema 建空库（不播种任何数据，账号与角色经 Admin API 或客户端流程创建），已存在时直接使用、不重建。 |
+| `DatabasePath` | SQLite 存档路径，默认 `Data/game.sqlite`（2026-10-03 起由 `game.db` 更名，旧档手动改名即可沿用），相对路径以服务端程序目录为基准。库不存在时按基线 schema 建空库（不播种任何数据，账号与角色经 Admin API 或客户端流程创建），已存在时直接使用、不重建。 |
 
-爆率、经验倍率、深渊掉落次数与配方率、掉落开关、黑钻与活动经验加成等**游戏内容参数不在本文件**——它们以 `server_settings` 表为唯一真源，随库持久化；启动时读一次并打印生效值，改库后重启生效。频道容量（`Channel.MaximumUsers`，默认 10）在本文件 `Channel` 节；频道当前人数为在线会话数动态值；频道目录解析自 PVF（`etc/channel_info.etc` + `etc/etc.chn.str`），启动成功时打印列表。
+爆率、经验倍率、深渊掉落次数与配方率、掉落开关、黑钻与活动经验加成等**游戏内容参数不在本文件**——它们以 `server_settings` 表为唯一真源，随库持久化；启动时读一次并打印生效值，改库后重启生效。频道容量（`Channel.MaximumUsers`，默认 10）在本文件 `Channel` 节；频道当前人数为在线会话数动态值；频道目录解析自 PVF（`etc/channel_info.etc` + `etc/etc.chn.str`），启动成功时打印列表；收录的 `[server]` 组号由 `Channel.ServerGroup` 配置（默认 1）。
 | `Admin` | HTTP 监听地址和端口，默认 `127.0.0.1:8081`。 |
 | `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DAFLegacy.Mcp.dll`。 |
 | `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，默认 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |

@@ -51,12 +51,15 @@ public static class ChannelCatalog
     /// </summary>
     public static IReadOnlyList<ChannelCatalogEntry>? TryParseChannelInfoEtc(
         string? text,
-        IReadOnlyDictionary<string, string>? displayNames)
+        IReadOnlyDictionary<string, string>? displayNames,
+        int serverGroup = 1)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             return null;
         }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(serverGroup, 1);
 
         var entries = new List<ChannelCatalogEntry>();
         var inServer = false;
@@ -92,7 +95,7 @@ public static class ChannelCatalog
             if (tokens.Length == 1)
             {
                 collecting = TryParseInvariantInt32(tokens[0], out var groupNumber)
-                             && groupNumber == 1;
+                             && groupNumber == serverGroup;
                 continue;
             }
 
@@ -108,7 +111,7 @@ public static class ChannelCatalog
             }
 
             entries.Add(new ChannelCatalogEntry(
-                GroupIndex: 0,
+                GroupIndex: serverGroup - 1,
                 ChannelNumber: channelNumber,
                 Type: type,
                 Tag: FindChannelTag(tokens),

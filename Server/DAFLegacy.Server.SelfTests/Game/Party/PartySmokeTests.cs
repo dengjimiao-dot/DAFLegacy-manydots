@@ -18,6 +18,7 @@ internal static class PartySmokeTests
         BuildCurrentCharacterDetails(check);
         BuildPeerNotifications(check);
         PartyManagerLifecycle(check);
+        RunTransferLeaderFlow(check);
         RunCoordinatorFlow(check);
     }
 
@@ -394,18 +395,55 @@ internal static class PartySmokeTests
             "a disconnecting leader preserves the party generation");
     }
 
+    private static void RunTransferLeaderFlow(Action<bool, string> check)
+    {
+        // CHANGE_HOST（CMD 131）：队长把队长位转给槽位成员；无应答，NOTI 26/9 反映。
+        var manager = new PartyManager();
+        var sessionA = Guid.NewGuid();
+        var sessionB = Guid.NewGuid();
+        var memberA = Identity(sessionA, 1, "A");
+        var memberB = Identity(sessionB, 2, "B");
+
+        manager.SetPartyInfo(memberA, 1, [], 4);
+        check(manager.RecordInvite(2, sessionB, 1, sessionA, out _), "the leader invites member B");
+        check(manager.AcceptInvite(memberB, memberA, out _).Ok, "member B joins the party");
+        check(manager.GetPartyByUser(1)!.LeaderSlot == 0, "the creator leads from slot 0");
+
+        var nonLeader = manager.TransferLeader(2, sessionB, 0);
+        check(!nonLeader.Ok && nonLeader.Reason == "not_leader",
+            "a non-leader transfer attempt is rejected");
+        var emptySlot = manager.TransferLeader(1, sessionA, 2);
+        check(!emptySlot.Ok && emptySlot.Reason == "empty_slot",
+            "a transfer into an unoccupied slot is rejected");
+
+        var transfer = manager.TransferLeader(1, sessionA, 1);
+        check(transfer.Ok
+            && transfer.LeaderChanged
+            && transfer.NewLeaderUserId == 2
+            && transfer.Party!.LeaderUserId == 2
+            && transfer.Party.LeaderSlot == 1,
+            "the leader transfers the host role to the member in slot 1");
+
+        var stale = manager.TransferLeader(1, sessionA, 0);
+        check(!stale.Ok && stale.Reason == "not_leader",
+            "the previous leader can no longer transfer after the handover");
+    }
+
     private static void RunCoordinatorFlow(Action<bool, string> check)
     {
         // Two connected sessions exchange presence and form a party over the
         // real delivery channels.
         var registry = new CharacterSessionRegistry(NullLogger<CharacterSessionRegistry>.Instance);
+        var town = new TownPresenceService(registry);
         var datagram = new GameplayDatagramService(
             new ServerOptions(),
-            new RuntimeState()
+            new RuntimeState(),
+            town
             );
         var coordinator = new PartyCoordinator(
             new ServerOptions(),
             registry,
+            town,
             datagram
             );
         var inbox = new Dictionary<Guid, List<GameServerPacket>>();
@@ -424,6 +462,10 @@ internal static class PartySmokeTests
         var sessionB = Guid.NewGuid();
         registry.AttachPacketChannel(sessionA, packet => Capture(sessionA, packet));
         registry.AttachPacketChannel(sessionB, packet => Capture(sessionB, packet));
+        registry.SetDetailsProvider(sessionA, () =>
+            CharactersPacketBuilders.CreateCurrentCharacterDetails(1, mode: 3));
+        registry.SetDetailsProvider(sessionB, () =>
+            CharactersPacketBuilders.CreateCurrentCharacterDetails(2, mode: 3));
 
         var identityA = Identity(sessionA, 1, "A");
         var identityB = Identity(sessionB, 2, "B");
@@ -434,6 +476,7 @@ internal static class PartySmokeTests
                 Service = "test",
                 RemoteEndpoint = "127.0.0.1"
             },
+            1,
             System.Net.IPAddress.Loopback);
         datagram.RegisterChannelSession(
             new RuntimeSession
@@ -442,6 +485,7 @@ internal static class PartySmokeTests
                 Service = "test",
                 RemoteEndpoint = "127.0.0.1"
             },
+            1,
             System.Net.IPAddress.Loopback);
         datagram.SetNatReport(sessionA, new GameNatReport(
             0,
@@ -490,6 +534,18 @@ internal static class PartySmokeTests
             new PeerResponseFrame(identityA.UserId, 0, 0));
         var endpointsA = Typed(inbox, sessionA, 11);
         var endpointsB = Typed(inbox, sessionB, 11);
+        // 城镇到达已各有一份 USERINFO(2)；组队互发后各累计两份，末份为队友的
+        // mode-3 详情（Payload[0]=mode，Payload[3..4]=对端 uid u16）。
+        var detailsA = Typed(inbox, sessionA, 2);
+        var detailsB = Typed(inbox, sessionB, 2);
+        check(detailsA.Count == 2
+            && detailsA[^1].Payload[0] == 3
+            && detailsA[^1].Payload[3] == 2,
+            "the inviter receives the joiner's USERINFO mode 3 snapshot");
+        check(detailsB.Count == 2
+            && detailsB[^1].Payload[0] == 3
+            && detailsB[^1].Payload[3] == 1,
+            "the joiner receives the inviter's USERINFO mode 3 snapshot");
         check(joined.Ok
             && Typed(inbox, sessionA, 8).Count == 1
             && Typed(inbox, sessionA, 8)[0].Payload.AsSpan()
@@ -525,9 +581,9 @@ internal static class PartySmokeTests
             "the formation publishes self-real/peer-relay endpoint tables before and after the roster");
         var seqA = inbox[sessionA].Select(packet => (int)packet.ProtocolId).ToList();
         var seqB = inbox[sessionB].Select(packet => (int)packet.ProtocolId).ToList();
-        check(MatchesRun(seqA, seqA.IndexOf(26) + 1, [11, 8, 9, 11, 26])
-            && MatchesRun(seqB, seqB.IndexOf(7) + 1, [11, 9, 11, 26]),
-            "the formation follows the reference phase order: endpoints, ack, roster, endpoints, host");
+        check(MatchesRun(seqA, seqA.IndexOf(26) + 1, [2, 11, 8, 9, 11, 26])
+            && MatchesRun(seqB, seqB.IndexOf(7) + 1, [2, 11, 9, 11, 26]),
+            "the formation follows the reference phase order: mode-3 details, endpoints, ack, roster, endpoints, host");
         check(Typed(inbox, sessionA, 26).Count == 2
             && Typed(inbox, sessionB, 26).Count == 1
             && Typed(inbox, sessionA, 26)[^1].Payload[0] == 0,

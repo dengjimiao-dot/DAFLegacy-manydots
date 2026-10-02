@@ -108,7 +108,7 @@ Python json 计时，C# `System.Text.Json` 同量级）：整库序列化（每�
 - 引入 `Microsoft.Data.Sqlite`（csproj 目前零 NuGet 依赖，这是第一个包）。
 - `IGameDatabase`/`GameDatabase`：短连接 + 每连接 `busy_timeout=5000` + 连接串
   `ForeignKeys=true`；`Write<T>` 默认 IMMEDIATE 事务；`Read<T>` 裸连接委托。
-- 库路径沿用 R5 锚点：`PathResolver.Resolve("Data/game.db", HomeDirectory)`，
+- 库路径沿用 R5 锚点：`PathResolver.Resolve("Data/game.sqlite", HomeDirectory)`（2026-10-03 由 `game.db` 更名；既有部署手动改名旧档即可沿用），
   可由 `server.json` 的 `DataPath` 覆盖（与 state.json 同锚点规则）。
 - 启动初始化一次：`PRAGMA journal_mode=WAL`（持久）。
 

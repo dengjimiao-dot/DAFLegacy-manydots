@@ -16,10 +16,10 @@ public sealed class ServerOptions
     public ListenerOptions GameProbe { get; set; } = new() { Port = 7001, Enabled = false };
 
     // 持久化库文件（R5 数据锚点）：相对路径以 HomeDirectory 为基准，默认落在
-    // Data/game.db，与基线 schema（Sqlite/act1_schema.sql）分属「运行期数据」与
+    // Data/game.sqlite，与基线 schema（Sqlite/act1_schema.sql）分属「运行期数据」与
     // 「代码资产」两个目录。库不存在时按基线建空库，已存在时直接使用、不重建
     // （docs/design/08-sqlite-storage.md D1/D2）。
-    public string DatabasePath { get; set; } = "Data/game.db";
+    public string DatabasePath { get; set; } = "Data/game.sqlite";
 
     public string ScriptPvfPath { get; set; } = "data/Script.pvf";
     public string SkillScriptPath { get; set; } = "";
@@ -39,6 +39,12 @@ public sealed class GameplayDatagramOptions
     public int SecondaryPort { get; set; } = 7003;
     public ushort MonsterObjectType { get; set; } = 0x0211;
     public byte SenderPartyIndex { get; set; } = 0;
+
+    /// <summary>
+    /// NAT 探测按源 IP 固定窗口限流（次/秒/IP，双端口监听共用同一限流器；
+    /// 合法客户端探测节奏约 2 次/秒）。&lt;= 0 表示不限流（docs/design/10 §4.3）。
+    /// </summary>
+    public int NatProbeRateLimit { get; set; } = 32;
 }
 
 /// <summary>
@@ -60,6 +66,13 @@ public sealed class ChannelOptions
 
     /// <summary>频道容量上报值（元数据 max 字段）。</summary>
     public int MaximumUsers { get; set; } = 10;
+
+    /// <summary>
+    /// PVF 频道目录（etc/channel_info.etc）的 [server] 组号（1 基；默认 1）。
+    /// 仅收录该组的频道行，元数据 GroupIndex = ServerGroup − 1（对齐
+    /// EntranceMetadata.ServerGroups 的 0 基下标）。此前组号写死 1。
+    /// </summary>
+    public int ServerGroup { get; set; } = 1;
 
     /// <summary>频道 <paramref name="channelNumber"/> 的监听端口（PortBase + 频道号）。</summary>
     public int PortFor(int channelNumber) => checked(PortBase + channelNumber);

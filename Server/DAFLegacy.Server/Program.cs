@@ -86,6 +86,11 @@ builder.Services.AddSingleton(serviceProvider =>
     return ServerSettings.Read(database);
 });
 builder.Services.AddSingleton<CharacterSessionRegistry>();
+// 城镇广播中枢（docs/design/10 批次 3）：在场/广播/查找/人口/端点状态的唯一归属，
+// PartyCoordinator 与 GameplayDatagramService 均为其消费方。
+builder.Services.AddSingleton<TownPresenceService>();
+builder.Services.AddSingleton<TradeSessionRegistry>();
+builder.Services.AddSingleton<SocialPresenceNotifier>();
 builder.Services.AddSingleton<PartyCoordinator>();
 builder.Services.AddSingleton<SkillCatalog>();
 builder.Services.AddSingleton<QuestCatalog>();
@@ -166,6 +171,9 @@ app.Lifetime.ApplicationStopping.Register(() =>
 // Party real-time datagrams relay through the gameplay UDP listener: the
 // endpoint table advertises this server for every peer, and this resolver
 // tells the listener where to forward each sender's datagrams.
+// 好友上下线推送与初始列表挂城镇翻转钩子（11 号 P2）。
+app.Services.GetRequiredService<SocialPresenceNotifier>().Register();
+
 var partyCoordinator = app.Services.GetRequiredService<PartyCoordinator>();
 app.Services.GetRequiredService<GameplayDatagramService>()
     .SetRelayResolver(partyCoordinator.GetPartyPeerSessionIds);

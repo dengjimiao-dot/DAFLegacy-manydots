@@ -12,6 +12,8 @@
 > 图例: ✅=DAFLegacy 服务端已实现(有应答/发送;指存在实现代码,真机复测状态以各分册与 [CHANGELOG](../../CHANGELOG.md) 为准) ❌=未实现(客户端会收到忽略/无回包)
 > **文档约定**:凡逆向实现的封包,对应 `packet-detail-*.md` 必须附"客户端调用链"表(格式与交付清单见 [ida-call-chain-convention.md](ida-call-chain-convention.md);范例见 [packet-detail-party-60cn.md](packet-detail-party-60cn.md) 附录),并把新增函数回填 [client-function-register-60cn.md](client-function-register-60cn.md) 登记表。
 > 汇总: NOTI 55/175 已实现; CMD 73/184 已处理(分母含 NO_NAME 占位:NOTI 21 项、CMD 21 项,均未实现)。
+> 全表复核(2026-10-01,IDA MCP 直读二进制名称表 vs `PacketTypes.cs` 逐项比对):**CMD 163 项(0-162)、NOTI 154 项(0-153)与项目定义一一对应,编号与名称全部一致**;唯一差异为 NOTI 108-117(CHAOS 族)——二进制名称本身为小写 `enum_` 前缀(客户端名称表原始异常,[114] 串尾另带空格),项目以 `<<>>` 包裹原样登记,语义无歧义。
+> 补充(2026-10-01):未实现组中,PVP(CMD 53-60/62 与 NOTI 41-49 族)、个人商店(CMD 85-89 与 NOTI 78-85 族)、好友/黑名单(CMD 63/64/128/129/130 与 NOTI 54/55/56/65)、组队转让(CMD 131)、交易下行(NOTI 15-18)已按 11 号迁移计划完成**协议面骨架级 IDA 核验**(存在性/发送点/case 区间,记录 PENDING P-34/P-35;布局细节与字段映射待各系统实施期回填分册)。已知无通路编号(死号,均有正式枚举名但客户端无活跃通路,服务端不应为其实现收发):**客户端不发送的 CMD**——61 `RES_PVP_RANK`/100 `PEER_CONNECT_RESULT`/108 `GATHERING_PARTY_STATUS`/126 `OTHER_USER_INFO`(发送三件套全量 xref 零命中,等待无意义);**分发器不处理的 NOTI**——25/52/62/63/108-119/129/133/135/146-147 及编号 >151 者(`sub_419420` 跳表落 default,发送无效)。
 
 ## 分组索引
 

@@ -22,7 +22,8 @@ public sealed class ClientWhenAnyHandler(
     GameCommandRegistry gameCommands,
     GameCommandDispatcher gameCommandDispatcher,
     ChannelSessionSenders sessionSenders,
-    PacketTraceLogger packetTrace)
+    PacketTraceLogger packetTrace,
+    TradeSessionRegistry trades)
 {
     public async Task HandleClientWhenAny(
         TcpClient client,
@@ -51,8 +52,10 @@ public sealed class ClientWhenAnyHandler(
             var runtimeSession = runtime.Add($"{(isChannelPort ? "channel" : "entrance")}:{localPort}", remote);
             if (isChannelPort && remoteEndpoint is not null)
             {
+                // 连接登记进城镇中枢（频道人口统计 + 端点三字段，docs/design/10 批次 3）。
                 gameplayDatagram.RegisterChannelSession(
                     runtimeSession,
+                    boundChannel!.Number,
                     remoteEndpoint.Address);
             }
             var protocolSession = new EntranceSessionState();
@@ -62,10 +65,11 @@ public sealed class ClientWhenAnyHandler(
             // method-wide alias that handlers reach through ctx.State as well.
             var sessionState = new ChannelSessionState();
             sessionState.SessionChannel = boundChannel;
-            if (boundChannel is { } bound)
-            {
-                characterSessions.AddChannelConnection(bound.Number);
-            }
+
+            // mode-3 详情现场构建器：组队扇出时由协调器拉取（11 号 P0）。
+            characterSessions.SetDetailsProvider(
+                runtimeSession.Id,
+                () => sessionSenders.BuildMode3Details(sessionState));
 
             var session = sessionState;
             // Per-run dungeon dependencies: the run recorder needs its
@@ -631,12 +635,16 @@ public sealed class ClientWhenAnyHandler(
                     }
                 }
 
+                // 交易会话对随断线拆除（11 号 P3；对方 NOTI 17 由下次交互感知——
+                // 断线通知通道留发起流一并落地）。
+                trades.EndTradeForSession(runtimeSession.Id);
                 partyCoordinator.OnSessionClosed(runtimeSession.Id);
                 characterSessions.Release(session.Character.Lease);
                 session.Character.Lease = null;
                 if (boundChannel is { } releasingChannel)
                 {
-                    characterSessions.RemoveChannelConnection(releasingChannel.Number);
+                    // 频道人口与端点状态由中枢在 UnregisterChannelSession 内回收（批次 3）。
+                    _ = releasingChannel;
                 }
 
                 characterSessions.DetachPacketChannel(runtimeSession.Id);

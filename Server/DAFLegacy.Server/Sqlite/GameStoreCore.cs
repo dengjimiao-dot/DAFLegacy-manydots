@@ -51,6 +51,32 @@ public sealed record CharacterMailAttachmentRecord(
     uint? EquipmentQualitySeed = null,
     Guid InstanceId = default);
 
+public sealed record FriendEdgeRecord(
+    uint OwnerCharacterNo,
+    uint FriendCharacterNo);
+
+public sealed record SocialBlacklistRecord(
+    uint OwnerCharacterNo,
+    uint TargetCharacterNo,
+    uint CreatedAtUnix);
+
+/// <summary>持久化批次（11 号 P2）：社交两表在每次落盘时随快照整体重写（小表）。</summary>
+public sealed record SocialPersistState(
+    FriendEdgeRecord[] Edges,
+    SocialBlacklistRecord[] Entries);
+
+public sealed record SocialFriendEntry(
+    Guid CharacterId,
+    string Name,
+    byte Level,
+    byte Job,
+    byte Grow,
+    uint AccountUid);
+
+public sealed record SocialBlacklistRow(
+    string TargetName,
+    uint CreatedAtUnix);
+
 public sealed record CharacterMailRecord(
     uint Id,
     string Sender,
@@ -393,6 +419,11 @@ public abstract class GameStoreCore(
     public const int PresetCharacterGrowType = 3;
     public const uint PresetCharacterExperience = 270_812_393;
     private const string PasswordHashPrefix = "dfls-local:";
+
+    // ---- 社交关系（11 号 P2）：内存态 + 独立小表落盘（12 号 §3.2 单语句写语义）----
+    protected readonly List<FriendEdgeRecord> FriendEdges = [];
+    protected readonly List<SocialBlacklistRecord> BlacklistEntries = [];
+    private SocialPersistState? _pendingSocial;
 
     private static readonly CharacterItemRecord[] PresetArmor =
     [
@@ -2319,6 +2350,308 @@ public abstract class GameStoreCore(
             _gate.Release();
         }
     }
+
+    // ------------------------------------------------------------------
+    // 社交关系（好友/黑名单，11 号 P2）。全部在 _gate 下操作内存列表并标记
+    // 待落盘批次；两表按 12 号 §3.2 为小表，落盘时整体重写。
+    // ------------------------------------------------------------------
+
+    public Task<SocialFriendEntry[]> GetFriendsAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        List<SocialFriendEntry> friends = [];
+        var ownerCharacterNo = ResolveCharacterLocked(characterId)?.Character.CharacterNo
+            ?? throw new ArgumentException("Character does not exist.", nameof(characterId));
+        lock (_gate)
+        {
+            foreach (var edge in FriendEdges)
+            {
+                if (edge.OwnerCharacterNo != ownerCharacterNo)
+                {
+                    continue;
+                }
+
+                if (ResolveCharacterLocked(edge.FriendCharacterNo) is not { } resolved)
+                {
+                    continue;
+                }
+
+                friends.Add(new SocialFriendEntry(
+                    resolved.Character.Id,
+                    resolved.Character.Name,
+                    (byte)resolved.Character.Level,
+                    (byte)resolved.Character.Job,
+                    (byte)resolved.Character.GrowType,
+                    resolved.Account.AccountUid));
+            }
+        }
+
+        return Task.FromResult(friends.ToArray());
+    }
+
+    public Task<Guid[]> GetFriendOwnerIdsAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        Guid[] owners;
+        var friendCharacter = ResolveCharacterLocked(characterId);
+        var friendCharacterNo = friendCharacter?.Character.CharacterNo;
+        lock (_gate)
+        {
+            owners = FriendEdges
+                .Where(edge => edge.FriendCharacterNo == friendCharacterNo)
+                .Select(edge => ResolveCharacterLocked(edge.OwnerCharacterNo)?.Character.Id ?? Guid.Empty)
+                .Where(id => id != Guid.Empty)
+                .ToArray();
+        }
+
+        return Task.FromResult(friendCharacter is null ? [] : owners);
+    }
+
+    public Task<(bool Ok, string? Error)> AddFriendAsync(
+        Guid ownerCharacterId,
+        string friendName,
+        CancellationToken cancellationToken = default)
+    {
+        return MutateSocialAsync(ownerCharacterId, friendName, add: true, cancellationToken);
+    }
+
+    public Task<(bool Ok, string? Error)> RemoveFriendAsync(
+        Guid ownerCharacterId,
+        string friendName,
+        CancellationToken cancellationToken = default)
+    {
+        return MutateSocialAsync(ownerCharacterId, friendName, add: false, cancellationToken);
+    }
+
+    public Task<SocialBlacklistRow[]> GetBlacklistAsync(
+        Guid ownerCharacterId,
+        CancellationToken cancellationToken = default)
+    {
+        List<SocialBlacklistRow> rows = [];
+        var ownerCharacterNo = ResolveCharacterLocked(ownerCharacterId)?.Character.CharacterNo
+            ?? 0;
+        lock (_gate)
+        {
+            foreach (var entry in BlacklistEntries)
+            {
+                if (entry.OwnerCharacterNo != ownerCharacterNo)
+                {
+                    continue;
+                }
+
+                var name = ResolveCharacterLocked(entry.TargetCharacterNo)?.Character.Name
+                    ?? $"#{entry.TargetCharacterNo}";
+                rows.Add(new SocialBlacklistRow(name, entry.CreatedAtUnix));
+            }
+        }
+
+        return Task.FromResult(rows.ToArray());
+    }
+
+    public Task<(bool Ok, string? Error)> AddBlacklistAsync(
+        Guid ownerCharacterId,
+        string targetName,
+        CancellationToken cancellationToken = default)
+    {
+        return MutateBlacklistAsync(ownerCharacterId, targetName, add: true, cancellationToken);
+    }
+
+    public Task<(bool Ok, string? Error)> RemoveBlacklistAsync(
+        Guid ownerCharacterId,
+        string targetName,
+        CancellationToken cancellationToken = default)
+    {
+        return MutateBlacklistAsync(ownerCharacterId, targetName, add: false, cancellationToken);
+    }
+
+    public Task<CharacterRecord?> FindCharacterByNameAsync(
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        CharacterRecord? match = null;
+        lock (_gate)
+        {
+            foreach (var account in _accounts)
+            {
+                foreach (var character in account.Characters)
+                {
+                    if (string.Equals(character.Name, name, StringComparison.Ordinal))
+                    {
+                        match = character;
+                        break;
+                    }
+                }
+
+                if (match is not null)
+                {
+                    break;
+                }
+            }
+        }
+
+        return Task.FromResult(match);
+    }
+
+    private async Task<(bool Ok, string? Error)> MutateSocialAsync(
+        Guid ownerCharacterId,
+        string friendName,
+        bool add,
+        CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var ownerCharacterNo = ResolveCharacterLocked(ownerCharacterId)?.Character.CharacterNo
+                ?? throw new ArgumentException("Character does not exist.", nameof(ownerCharacterId));
+            var target = FindCharacterRecordLocked(friendName);
+            if (target is null)
+            {
+                return (false, "Character does not exist.");
+            }
+
+            if (target.CharacterNo == ownerCharacterNo)
+            {
+                return (false, "Cannot befriend yourself.");
+            }
+
+            var existing = FriendEdges.FindIndex(edge =>
+                edge.OwnerCharacterNo == ownerCharacterNo && edge.FriendCharacterNo == target.CharacterNo);
+            if (add)
+            {
+                if (existing < 0)
+                {
+                    FriendEdges.Add(new FriendEdgeRecord(ownerCharacterNo, target.CharacterNo));
+                    MarkSocialChangedLocked();
+                }
+            }
+            else if (existing >= 0)
+            {
+                FriendEdges.RemoveAt(existing);
+                MarkSocialChangedLocked();
+            }
+
+            await SaveLockedAsync(cancellationToken);
+            return (true, null);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<(bool Ok, string? Error)> MutateBlacklistAsync(
+        Guid ownerCharacterId,
+        string targetName,
+        bool add,
+        CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var ownerCharacterNo = ResolveCharacterLocked(ownerCharacterId)?.Character.CharacterNo
+                ?? throw new ArgumentException("Character does not exist.", nameof(ownerCharacterId));
+            var target = FindCharacterRecordLocked(targetName);
+            if (target is null)
+            {
+                return (false, "Character does not exist.");
+            }
+
+            var existing = BlacklistEntries.FindIndex(entry =>
+                entry.OwnerCharacterNo == ownerCharacterNo && entry.TargetCharacterNo == target.CharacterNo);
+            if (add)
+            {
+                if (existing < 0)
+                {
+                    BlacklistEntries.Add(new SocialBlacklistRecord(
+                        ownerCharacterNo,
+                        target.CharacterNo,
+                        checked((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds())));
+                    MarkSocialChangedLocked();
+                }
+            }
+            else if (existing >= 0)
+            {
+                BlacklistEntries.RemoveAt(existing);
+                MarkSocialChangedLocked();
+            }
+
+            await SaveLockedAsync(cancellationToken);
+            return (true, null);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public Task<uint> GetCharacterAccountUidAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var resolved = ResolveCharacterLocked(characterId);
+            return Task.FromResult(resolved?.Account.AccountUid ?? 0);
+        }
+    }
+
+    private (AccountRecord Account, CharacterRecord Character)? ResolveCharacterLocked(uint characterNo)
+    {
+        foreach (var account in _accounts)
+        {
+            foreach (var character in account.Characters)
+            {
+                if (character.CharacterNo == characterNo)
+                {
+                    return (account, character);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private (AccountRecord Account, CharacterRecord Character)? ResolveCharacterLocked(Guid characterId)
+    {
+        foreach (var account in _accounts)
+        {
+            foreach (var character in account.Characters)
+            {
+                if (character.Id == characterId)
+                {
+                    return (account, character);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private CharacterRecord? FindCharacterRecordLocked(string name)
+    {
+        foreach (var account in _accounts)
+        {
+            foreach (var character in account.Characters)
+            {
+                if (string.Equals(character.Name, name, StringComparison.Ordinal))
+                {
+                    return character;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private void MarkSocialChangedLocked() =>
+        _pendingSocial = new SocialPersistState(FriendEdges.ToArray(), BlacklistEntries.ToArray());
+
+    /// <summary>落盘批次出队（写成功后由派生类调用清空；失败保留待重试）。</summary>
+    protected SocialPersistState? PeekPendingSocial() => _pendingSocial;
+
+    protected void ClearPendingSocial() => _pendingSocial = null;
 
     public async Task<CharacterMailSendResult> SendCharacterMailFromCharacterAsync(
         string userName,

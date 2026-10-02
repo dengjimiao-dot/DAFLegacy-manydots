@@ -72,6 +72,9 @@ public sealed class PartyHandlerCore(
                 (byte)CmdPacketType.RESPONSE_PEER => parsedPeerResponse
                     ? (partyCoordinator.RespondPeer(partyIdentity, peerResponse), (byte)1)
                     : (PartyOpResult.Fail("malformed_response_peer"), (byte)0),
+                (byte)CmdPacketType.CHANGE_HOST => request.Body.Length >= 3
+                    ? (partyCoordinator.TransferLeader(partyIdentity, request.Body[2]), (byte)0)
+                    : (PartyOpResult.Fail("malformed_change_host"), (byte)0),
                 _ => (PartyOpResult.Fail("unknown_party_command"), (byte)0),
             };
         }
@@ -84,6 +87,13 @@ public sealed class PartyHandlerCore(
                 partyIdentity.CharacterId);
             partyResult = PartyOpResult.Fail("party_command_exception");
             partyErrorCode = 0;
+        }
+
+        // CHANGE_HOST 无应答 case（60A1 fire-and-forget，P-35）：成功经 NOTI 26/9
+        // 广播感知，失败仅记日志；不回 Type-1 帧。
+        if (request.ProtocolId == (byte)CmdPacketType.CHANGE_HOST)
+        {
+            return;
         }
 
         var partyIsSettingsFamily =

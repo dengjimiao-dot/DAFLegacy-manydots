@@ -17,6 +17,7 @@ public sealed class GameplayDatagramService(
     private readonly ConcurrentDictionary<Guid, RuntimeSession> _sessionRuntimes = new();
     private readonly ConcurrentDictionary<string, IPEndPoint> _observedByAddress = new();
     private Func<Guid, IReadOnlyList<Guid>?>? _relayResolver;
+    private Func<Guid, byte?>? _senderSlotLookup;
     private UdpClient? _primary;
     private UdpClient? _secondary;
     // 数据面遥测（docs/design/10 §4.4）：Interlocked 计数 + 5 秒聚合汇报，
@@ -26,13 +27,16 @@ public sealed class GameplayDatagramService(
     private long _rxKeepalive;
     private long _rxGameplay;
     private long _rxRelayed;
+    private long _txRelayFailures;
     private long _rxNoPeerEndpoint;
     private long _rxUnattributed;
     private long _rxRateLimited;
     private long _rxMalformed;
     private long _rxClaimSkipped;
+    private long _rxSlotMismatch;
     private int _malformedWarned;
     private int _claimSkippedWarned;
+    private int _slotMismatchWarned;
 
     /// <summary>
     /// Registers the resolver that maps a datagram sender's session to the
@@ -42,10 +46,27 @@ public sealed class GameplayDatagramService(
     /// party endpoint table (NOTI 11) advertises this server's listener for
     /// every peer, so clients only ever talk to it.
     /// </summary>
-    public void SetRelayResolver(Func<Guid, IReadOnlyList<Guid>?> resolver)
+    public GameplayDatagramService SetRelayResolver(Func<Guid, IReadOnlyList<Guid>?> resolver)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         _relayResolver = resolver;
+        return this;
+    }
+
+    /// <summary>
+    /// Registers the lookup that maps an attributed datagram sender to its
+    /// party roster slot. Frames declaring a different slot are counted and
+    /// logged, still relayed: the receiver attributes frames by this slot
+    /// byte (party 分册「数据面归属」第 1 条), so a mismatch is impersonation
+    /// evidence, but the send-side anchor that every legitimate frame carries
+    /// the sender's own slot is not yet confirmed on real machines — the
+    /// counter decides a later tightening, per docs/design/10 §4.5.
+    /// </summary>
+    public GameplayDatagramService SetSenderSlotLookup(Func<Guid, byte?> senderSlotLookup)
+    {
+        ArgumentNullException.ThrowIfNull(senderSlotLookup);
+        _senderSlotLookup = senderSlotLookup;
+        return this;
     }
 
     public void RegisterChannelSession(RuntimeSession runtimeSession, int channelNumber, IPAddress tcpAddress)
@@ -254,9 +275,10 @@ public sealed class GameplayDatagramService(
                 if (active)
                 {
                     RuntimeLogger.Info(
-                        "UDP dataplane aggregate: probe={Probe} keepalive={Keepalive} gameplay={Gameplay} relayed={Relayed} noPeerEndpoint={NoPeerEndpoint} unattributed={Unattributed} rateLimited={RateLimited} malformed={Malformed} claimSkipped={ClaimSkipped}",
+                        "UDP dataplane aggregate: probe={Probe} keepalive={Keepalive} gameplay={Gameplay} relayed={Relayed} relayFailed={RelayFailed} noPeerEndpoint={NoPeerEndpoint} unattributed={Unattributed} rateLimited={RateLimited} malformed={Malformed} claimSkipped={ClaimSkipped} slotMismatch={SlotMismatch}",
                         current[0], current[1], current[2], current[3],
-                        current[4], current[5], current[6], current[7], current[8]);
+                        current[4], current[5], current[6], current[7],
+                        current[8], current[9], current[10]);
                 }
 
                 previous = current;
@@ -273,11 +295,13 @@ public sealed class GameplayDatagramService(
         Interlocked.Read(ref _rxKeepalive),
         Interlocked.Read(ref _rxGameplay),
         Interlocked.Read(ref _rxRelayed),
+        Interlocked.Read(ref _txRelayFailures),
         Interlocked.Read(ref _rxNoPeerEndpoint),
         Interlocked.Read(ref _rxUnattributed),
         Interlocked.Read(ref _rxRateLimited),
         Interlocked.Read(ref _rxMalformed),
         Interlocked.Read(ref _rxClaimSkipped),
+        Interlocked.Read(ref _rxSlotMismatch),
     ];
 
     private async Task ReceiveLoopAsync(
@@ -285,6 +309,8 @@ public sealed class GameplayDatagramService(
         string listenerName,
         CancellationToken cancellationToken)
     {
+        // 逐监听单线程消费：块解析结果复用同一清单，稳态零清单分配。
+        var blockFrames = new List<GameMtUdpFrame>();
         while (!cancellationToken.IsCancellationRequested)
         {
             var received = await listener.ReceiveAsync(cancellationToken);
@@ -336,20 +362,77 @@ public sealed class GameplayDatagramService(
                 remote,
                 datagram.Length,
                 Convert.ToHexString(datagram, 0, Math.Min(datagram.Length, 16)));
-            RelayDatagram(listener, remote, datagram, cancellationToken);
-            LogMtUdpBlocks(remote, datagram);
+            // 转发前置结构门（docs/design/10 §4.5）：块结构解析失败的收包不再转发。
+            // 客户端接收端对越界/无法归属的块本就整包丢弃（party 分册「数据面归属」
+            // 第 1 条），转发畸形包只有跨成员放大效果；合法客户端按同一块布局组帧，
+            // 该门不触及合法流量。CRC/密码学失败不设门——那是接收端的校验职责。
+            blockFrames.Clear();
+            if (!TryReadBlockSequence(datagram, blockFrames))
+            {
+                Interlocked.Increment(ref _rxMalformed);
+                if (Interlocked.Exchange(ref _malformedWarned, 1) == 0)
+                {
+                    RuntimeLogger.Warn(
+                        "Ignored malformed gameplay UDP datagram from {Remote}: length={Length}, not relayed (first occurrence; further occurrences are counted in the aggregate)",
+                        remote,
+                        datagram.Length);
+                }
+
+                continue;
+            }
+
+            LogBlockApplications(remote, blockFrames);
+            RelayDatagram(listener, remote, datagram, blockFrames, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// 转发门的结构遍历（docs/design/10 §4.5）：整包按 MT-UDP 块序列解析，任一
+    /// 块越界或消费停滞即整包不合格。类型 1/2 块随遍历物化进 <paramref name="frames"/>
+    /// （供槽位观测与逐块日志复用，不再二次解析）；类型 0 块不物化。空数据报
+    /// 视为合格（与现行转发行为一致）。
+    /// </summary>
+    internal static bool TryReadBlockSequence(
+        ReadOnlySpan<byte> datagram,
+        List<GameMtUdpFrame> frames)
+    {
+        var offset = 0;
+        while (offset < datagram.Length)
+        {
+            if (!GameDatagramProtocol.TryReadBlock(
+                    datagram[offset..],
+                    out var frame,
+                    out var consumed)
+                || consumed <= 0)
+            {
+                return false;
+            }
+
+            offset += consumed;
+            if (frame is not null)
+            {
+                frames.Add(frame);
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
     /// Forwards one client's gameplay datagram to its relay peers' observed
     /// UDP endpoints through the same listener, so replies hairpin through
-    /// the server exactly like the advertised endpoint table expects.
+    /// the server exactly like the advertised endpoint table expects. The
+    /// synchronous resolution (attribution, slot observation, peer endpoint
+    /// lookup) runs on the receive loop; each peer send is dispatched as its
+    /// own observed task (<see cref="SendRelayedDatagramAsync"/>), so a send
+    /// never blocks the next receive. Concurrent SendToAsync calls on one
+    /// listener are safe: the underlying Socket is thread-safe.
     /// </summary>
     private void RelayDatagram(
         UdpClient listener,
         IPEndPoint remote,
         byte[] datagram,
+        IReadOnlyList<GameMtUdpFrame> frames,
         CancellationToken cancellationToken)
     {
         if (_relayResolver is null
@@ -363,6 +446,8 @@ public sealed class GameplayDatagramService(
                 remote);
             return;
         }
+
+        CountSenderSlotMismatches(senderSessionId, frames);
 
         var peers = _relayResolver(senderSessionId);
         if (peers is null)
@@ -391,19 +476,95 @@ public sealed class GameplayDatagramService(
                 continue;
             }
 
-            _ = listener.SendAsync(datagram, endpoint, cancellationToken);
-            Interlocked.Increment(ref _rxRelayed);
-            if (_sessionRuntimes.TryGetValue(peerSessionId, out var peerRuntime))
+            _ = SendRelayedDatagramAsync(
+                listener,
+                datagram,
+                endpoint,
+                senderSessionId,
+                peerSessionId,
+                cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Sends one relayed datagram to a single peer and observes the outcome:
+    /// a socket failure counts as txRelayFailures and never as relayed, while
+    /// shutdown races (cancellation, disposed listener) end silently. The
+    /// receive loop deliberately does not await this task, so it must never
+    /// leak an unobserved exception.
+    /// </summary>
+    private async Task SendRelayedDatagramAsync(
+        UdpClient listener,
+        byte[] datagram,
+        IPEndPoint endpoint,
+        Guid senderSessionId,
+        Guid peerSessionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await listener.SendAsync(datagram, endpoint, cancellationToken);
+        }
+        catch (SocketException)
+        {
+            Interlocked.Increment(ref _txRelayFailures);
+            return;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _rxRelayed);
+        if (_sessionRuntimes.TryGetValue(peerSessionId, out var peerRuntime))
+        {
+            Interlocked.Increment(ref peerRuntime.SentPackets);
+        }
+
+        RuntimeLogger.Debug(
+            "Relayed a {Length}-byte gameplay datagram (head {Head}) from session {SenderSessionId} to {Endpoint}.",
+            datagram.Length,
+            Convert.ToHexString(datagram, 0, Math.Min(datagram.Length, 8)),
+            senderSessionId,
+            endpoint);
+    }
+
+    /// <summary>
+    /// 槽位伪造观测（docs/design/10 §4.5，先计数不拦截）：帧内偏移 7 的发送槽位
+    /// 与名册槽位不一致即计数并首见 Warn，数据报仍照常转发。客户端接收端按该
+    /// 字节选对端对象，mismatch 即冒名证据；发送侧「合法帧恒写自身槽位」尚无
+    /// 发送点锚定，拦截收紧以真机计数为零为前提，不在本批实施。
+    /// </summary>
+    private void CountSenderSlotMismatches(
+        Guid senderSessionId,
+        IReadOnlyList<GameMtUdpFrame> frames)
+    {
+        var expectedSlot = _senderSlotLookup?.Invoke(senderSessionId);
+        if (expectedSlot is not { } slot)
+        {
+            return;
+        }
+
+        foreach (var frame in frames)
+        {
+            if (frame.SenderPartyIndex == slot)
             {
-                Interlocked.Increment(ref peerRuntime.SentPackets);
+                continue;
             }
 
-            RuntimeLogger.Debug(
-                "Relayed a {Length}-byte gameplay datagram (head {Head}) from session {SenderSessionId} to {Endpoint}.",
-                datagram.Length,
-                Convert.ToHexString(datagram, 0, Math.Min(datagram.Length, 8)),
-                senderSessionId,
-                endpoint);
+            Interlocked.Increment(ref _rxSlotMismatch);
+            if (Interlocked.Exchange(ref _slotMismatchWarned, 1) == 0)
+            {
+                RuntimeLogger.Warn(
+                    "Gameplay datagram frame from session {SenderSessionId} declares sender slot {DeclaredSlot} but the roster holds slot {ExpectedSlot}; relayed as-is (observation only, first occurrence)",
+                    senderSessionId,
+                    frame.SenderPartyIndex,
+                    slot);
+            }
         }
     }
 
@@ -538,36 +699,14 @@ public sealed class GameplayDatagramService(
             options.HexDumpLimit);
     }
 
-    private void LogMtUdpBlocks(IPEndPoint remote, ReadOnlySpan<byte> datagram)
+    /// <summary>逐块应用层解析日志（Debug）：CRC/密码学失败只 Warn 不设门——
+    /// 接收端客户端对应用块自带校验，转发门只看块结构（docs/design/10 §4.5）。</summary>
+    private void LogBlockApplications(
+        IPEndPoint remote,
+        IReadOnlyList<GameMtUdpFrame> frames)
     {
-        var offset = 0;
-        while (offset < datagram.Length)
+        foreach (var frame in frames)
         {
-            if (!GameDatagramProtocol.TryReadBlock(
-                    datagram[offset..],
-                    out var frame,
-                    out var consumed)
-                || consumed <= 0)
-            {
-                Interlocked.Increment(ref _rxMalformed);
-                if (Interlocked.Exchange(ref _malformedWarned, 1) == 0)
-                {
-                    RuntimeLogger.Warn(
-                        "Ignored malformed gameplay UDP datagram from {Remote} at offset {Offset}; length={Length} (first occurrence; further occurrences are counted in the aggregate)",
-                        remote,
-                        offset,
-                        datagram.Length);
-                }
-
-                return;
-            }
-
-            offset += consumed;
-            if (frame is null)
-            {
-                continue;
-            }
-
             if (GameDatagramProtocol.TryParseApplication(
                     frame.Application,
                     out var application))

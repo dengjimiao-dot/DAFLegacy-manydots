@@ -79,6 +79,40 @@ public sealed class PartyManager
         }
     }
 
+    /// <summary>
+    /// Relay roster for the gameplay datagram service: the live party's
+    /// replace-on-write session id array read under the lock. The array is
+    /// rebuilt on every membership change and never mutated in place, so the
+    /// caller may hold the reference outside the lock; this keeps the
+    /// per-datagram relay path allocation-free (no party snapshot, no list).
+    /// Null when the user holds no party. Includes the sender; the relay
+    /// skips its own session id.
+    /// </summary>
+    public IReadOnlyList<Guid>? GetRelaySessionIdsByUser(ushort userId)
+    {
+        lock (_lock)
+        {
+            return LookupPartyByUserLocked(userId)?.MemberSessionIds;
+        }
+    }
+
+    /// <summary>
+    /// The caller's roster slot, requiring the session to still match the
+    /// member record. Feeds the relay's sender-slot mismatch observation
+    /// (party 分册「数据面归属」第 1 条：客户端按帧内偏移 7 的槽位归属对端)。
+    /// Null when the user holds no party or the session is stale.
+    /// </summary>
+    public byte? GetMemberSlotByUser(ushort userId, Guid expectedSessionId)
+    {
+        lock (_lock)
+        {
+            return TryGetMemberLocked(userId, out _, out var member)
+                && member.SessionId == expectedSessionId
+                ? member.SlotIndex
+                : null;
+        }
+    }
+
     public Party? GetPartySnapshot(int partyId)
     {
         lock (_lock)

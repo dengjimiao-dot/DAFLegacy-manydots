@@ -176,7 +176,8 @@ app.Services.GetRequiredService<SocialPresenceNotifier>().Register();
 
 var partyCoordinator = app.Services.GetRequiredService<PartyCoordinator>();
 app.Services.GetRequiredService<GameplayDatagramService>()
-    .SetRelayResolver(partyCoordinator.GetPartyPeerSessionIds);
+    .SetRelayResolver(partyCoordinator.GetPartyPeerSessionIds)
+    .SetSenderSlotLookup(partyCoordinator.GetSenderPartySlot);
 
 var randomStatus = GameRandomSource.Shared.GetStatus();
 app.Logger.LogInformation(

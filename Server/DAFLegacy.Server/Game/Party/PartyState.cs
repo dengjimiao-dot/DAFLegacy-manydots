@@ -106,6 +106,10 @@ public sealed class Party
 {
     private readonly List<PartyMember> _members = new(PartyConstants.MaxMembers);
 
+    /// <summary>Replace-on-write 的成员会话标识快照，仅在成员增删与快照克隆时
+    /// 重建；中继解析路径按只读引用消费，逐数据报零分配。</summary>
+    private Guid[] _memberSessionIds = [];
+
     public Party(int partyId)
     {
         PartyId = partyId;
@@ -128,6 +132,10 @@ public sealed class Party
     public byte UserMax { get; set; } = PartyConstants.MaxMembers;
 
     public IReadOnlyList<PartyMember> Members => _members;
+
+    /// <summary>成员会话标识数组，replace-on-write（内容不就地变更），可在锁外
+    /// 安全持有；顺序为加入顺序，与槽位无关。</summary>
+    public IReadOnlyList<Guid> MemberSessionIds => _memberSessionIds;
 
     public int Count => _members.Count;
 
@@ -218,6 +226,7 @@ public sealed class Party
 
         member.SlotIndex = (byte)slot;
         _members.Add(member);
+        RebuildMemberSessionIds();
         return true;
     }
 
@@ -228,11 +237,23 @@ public sealed class Party
             if (_members[index].UserId == userId)
             {
                 _members.RemoveAt(index);
+                RebuildMemberSessionIds();
                 return true;
             }
         }
 
         return false;
+    }
+
+    private void RebuildMemberSessionIds()
+    {
+        var sessionIds = new Guid[_members.Count];
+        for (var index = 0; index < _members.Count; index++)
+        {
+            sessionIds[index] = _members[index].SessionId;
+        }
+
+        _memberSessionIds = sessionIds;
     }
 
     /// <summary>Detached copy so packet builders cannot race a join or leave.</summary>
@@ -250,6 +271,7 @@ public sealed class Party
             snapshot._members.Add(member.Clone());
         }
 
+        snapshot.RebuildMemberSessionIds();
         return snapshot;
     }
 }

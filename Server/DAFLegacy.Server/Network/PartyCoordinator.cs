@@ -386,22 +386,37 @@ public sealed class PartyCoordinator(
     }
 
     /// <summary>
-    /// Relay targets for the gameplay datagram service: the other members of
-    /// the sender's party. Null when the sender is not in a party.
+    /// Relay targets for the gameplay datagram service: the live roster of
+    /// the sender's party as a replace-on-write session id array (no
+    /// per-datagram snapshot or list allocation; the array includes the
+    /// sender, whom the relay skips). Null when the sender is not in a
+    /// multi-member party.
     /// </summary>
     public IReadOnlyList<Guid>? GetPartyPeerSessionIds(Guid sessionId)
     {
         if (FindPresenceBySession(sessionId) is not { } entry
-            || _parties.GetPartySnapshotByUser(entry.UserId) is not { } party
-            || party.Count < 2)
+            || _parties.GetRelaySessionIdsByUser(entry.UserId) is not { } roster
+            || roster.Count < 2)
         {
             return null;
         }
 
-        return party.Members
-            .Where(member => member.SessionId != sessionId)
-            .Select(member => member.SessionId)
-            .ToList();
+        return roster;
+    }
+
+    /// <summary>
+    /// The sender's roster slot for the datagram relay's slot-mismatch
+    /// observation. Null when the session holds no party slot (not in a
+    /// party or a stale session record).
+    /// </summary>
+    public byte? GetSenderPartySlot(Guid sessionId)
+    {
+        if (FindPresenceBySession(sessionId) is not { } entry)
+        {
+            return null;
+        }
+
+        return _parties.GetMemberSlotByUser(entry.UserId, sessionId);
     }
 
     /// <summary>

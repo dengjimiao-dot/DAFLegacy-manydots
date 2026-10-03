@@ -18,6 +18,7 @@ internal static class PartySmokeTests
         BuildCurrentCharacterDetails(check);
         BuildPeerNotifications(check);
         PartyManagerLifecycle(check);
+        RunRelayRosterFlow(check);
         RunTransferLeaderFlow(check);
         RunCoordinatorFlow(check);
     }
@@ -393,6 +394,57 @@ internal static class PartySmokeTests
             && disconnected.NewLeaderUserId == 2
             && disconnected.Party!.PartyId == generationId,
             "a disconnecting leader preserves the party generation");
+    }
+
+    private static void RunRelayRosterFlow(Action<bool, string> check)
+    {
+        // 中继名册（免分配形态）与发送者槽位观测的数据源：
+        // GetRelaySessionIdsByUser 返回 replace-on-write 的整队会话数组（含发送者，
+        // 中继侧跳过自身）；GetMemberSlotByUser 要求会话仍与成员记录一致。
+        var manager = new PartyManager();
+        var sessionA = Guid.NewGuid();
+        var sessionB = Guid.NewGuid();
+        var sessionC = Guid.NewGuid();
+        var memberA = Identity(sessionA, 1, "A");
+        var memberB = Identity(sessionB, 2, "B");
+        var memberC = Identity(sessionC, 3, "C");
+
+        check(manager.GetRelaySessionIdsByUser(1) is null
+                && manager.GetMemberSlotByUser(1, sessionA) is null,
+            "a user without a party yields no relay roster and no slot");
+
+        manager.SetPartyInfo(memberA, 1, [], 4);
+        var solo = manager.GetRelaySessionIdsByUser(1);
+        check(solo is not null && solo.Count == 1 && solo[0] == sessionA,
+            "a solo party still exposes its single-member relay roster");
+
+        check(manager.RecordInvite(2, sessionB, 1, sessionA, out _)
+                && manager.AcceptInvite(memberB, memberA, out _).Ok,
+            "the roster scenario forms a two-member party");
+        var roster = manager.GetRelaySessionIdsByUser(1)!;
+        check(roster.Count == 2 && roster.Contains(sessionA) && roster.Contains(sessionB),
+            "the relay roster holds every member session including the sender");
+        check(manager.GetMemberSlotByUser(2, sessionB) == 1,
+            "the second member's roster slot is observable for the relay");
+        check(manager.GetMemberSlotByUser(2, Guid.NewGuid()) is null,
+            "a stale session yields no slot");
+
+        // replace-on-write：加入第三人后旧数组引用保持原内容，不就地变更。
+        check(manager.RecordInvite(3, sessionC, 1, sessionA, out _)
+                && manager.AcceptInvite(memberC, memberA, out _).Ok,
+            "the roster scenario grows to three members");
+        check(roster.Count == 2,
+            "a previously returned relay roster keeps its old contents after membership changes");
+        check(manager.GetRelaySessionIdsByUser(1)!.Count == 3,
+            "the live relay roster reflects the new membership");
+
+        var kicked = manager.Kick(manager.GetPartyByUser(1)!.GetMember(3)!.SlotIndex, 1, sessionA);
+        check(kicked.Ok && manager.GetRelaySessionIdsByUser(1)!.Count == 2,
+            "a kick shrinks the live relay roster");
+
+        manager.Leave(1, sessionA);
+        check(manager.GetRelaySessionIdsByUser(1) is null,
+            "leaving the party clears the relay roster");
     }
 
     private static void RunTransferLeaderFlow(Action<bool, string> check)

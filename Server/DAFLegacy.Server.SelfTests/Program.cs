@@ -79,6 +79,11 @@ RegisterSelfTest("endpoint-claim", () =>
     GameplayEndpointClaimSmokeTests.Run(Check);
     return Task.CompletedTask;
 });
+RegisterSelfTest("gameplay-block-gate", () =>
+{
+    GameplayBlockGateSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
 RegisterSelfTest("town-presence-hub", () =>
 {
     TownPresenceHubSmokeTests.Run(Check);

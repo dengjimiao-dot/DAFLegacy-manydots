@@ -25,7 +25,7 @@
     "Channel": {
       "Host": "127.0.0.1",
       "Port": 7001,
-      "PortBase": 20000,
+      "PortBase": 10000,
       "MaximumUsers": 10,
       "ServerGroup": 1
     },

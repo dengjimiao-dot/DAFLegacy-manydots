@@ -61,8 +61,8 @@ public sealed class ChannelOptions
     public string Host { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 7001;
 
-    /// <summary>按频道监听的端口基值；频道 N 的端口 = PortBase + N。</summary>
-    public int PortBase { get; set; } = 20000;
+    /// <summary>按频道监听的端口基值；频道 N 的端口 = PortBase + N（默认 10000）。</summary>
+    public int PortBase { get; set; } = 10000;
 
     /// <summary>频道容量上报值（元数据 max 字段）。</summary>
     public int MaximumUsers { get; set; } = 10;

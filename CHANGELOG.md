@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-10-05
+
+### CHANGE 配置变更
+
+- `Channel.PortBase` 默认值 20000 → 10000：`ServerOptions.ChannelOptions.PortBase` 默认值与仓库 `server.json` 模板同步，频道 N 监听 `PortBase + N`（默认即 10001 起）；README 配置表、`docs/servers4a21/feature-backfill-plan-vs-s4a21.md` M2 节、`PENDING.md` P-31 判据与防火墙端口段备注同步改为随 `PortBase` 描述。SelfTests 的逐频道端口断言显式传 `channelPortBase: 20000`，不受默认值影响。**已部署副本 `dist/server-osx-arm64/server.json` 显式写有 20000，需手动改为 10000（或换用新模板）并重启服务端后才生效**；部署副本按约定由用户自行维护。
+
 ## 2026-10-03
 
 ### ADD-22 UDP 中继薄弱点加固：转发前置结构门、槽位伪造观测、中继发送可观测、名册零分配（设计 `docs/design/10-udp-nat-dataplane.md` §4.5）

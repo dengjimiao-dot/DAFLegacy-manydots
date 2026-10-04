@@ -5,7 +5,7 @@
 | 文档 | 定位 |
 | --- | --- |
 | [comparison-vs-servers4a21.md](comparison-vs-servers4a21.md) | 两版共有协议逐项对比(结论层:一致 / 版本性差异 / 实现分歧) |
-| [feature-backfill-plan-vs-s4a21.md](feature-backfill-plan-vs-s4a21.md) | 未实现功能回填方案(行动层,继承对比结论,文档先行) |
+| [feature-backfill-plan-vs-s4a21.md](feature-backfill-plan-vs-s4a21.md) | 未实现功能回填方案(行动层,继承对比结论,文档先行);§0 附 2026-10-05 对照 ACT12 参考服源码的落实情况总表 |
 | [servers4a21-00-overview.md](servers4a21-00-overview.md) | 参考服协议处理总览:帧结构 + 223 项 CMD 总表 + 分册导航 |
 | [servers4a21-01…10](servers4a21-01-login-character.md) | 按系统拆分的参考分册(登录选角 / 背包 / 物品附魔时装 / 副本流程 / 副本特殊 / 城镇技能任务 / 社交组队交易 / 团战 PvP / 商店事件邮件 / 宠物佣兵副职) |
 | [tools/](tools/) | 分册生成脚本与源数据(`build_dispatch_*.py`;源码位置经 `S4A21_ROOT` 环境变量传入,不写死本机路径) |

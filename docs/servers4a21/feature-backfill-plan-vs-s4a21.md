@@ -4,15 +4,45 @@
 > - **现状依据**:对当前代码逐项核实(下称 DFL,根目录 `Server/DAFLegacy.Server`,关键文件 `Protocol/GameProtocolEngine.cs`=GPE、`Network/EntranceService.cs`=ES、`Persistence/JsonGameStore.cs`、`Hosting/CharacterSessionRegistry.cs`),证据均给出 file:line。
 > - **参考依据**:`ServerS4A21` 的 `Server/DfoServer`(下称 A21,Handlers/Parsers/Builders/Game 分层)。
 > - **协议对照**:继承本目录 [comparison-vs-servers4a21.md](comparison-vs-servers4a21.md) 的结论(两版协议号漂移、载荷布局换代),60A1 侧格式以 [client-packet-enums-60cn.md](../protocol/client-packet-enums-60cn.md) 为准。
+> - **落实复核(2026-10-05)**:对照 ACT12 参考服源码(A12 系,即 10/11 号设计文档引用的参考形态;与 A21 分册参照并存)重新盘点本仓落实状态,结论收敛进 §0 落实情况总表;此后本文 §1 的证据 file:line 均为成文时点(07 协议层重构前)形态,GPE 单体已拆分为 Handlers/Parsers/Builders 分层,行号不再随代码演进更新,仅作当时判断依据。
 
 ## 0. 总结论
 
 1. **借鉴原则:搬逻辑,不搬格式。** A21 的状态机、校验顺序、错误码语义、计价公式、定时器/门锁模式、发送谓词并发纪律可直接移植;所有线上字节布局(14B/15B 帧、itemId i32、101B 物品条目、NOTI 12 多 serverGroup 字节、A21 新增 opcode 如 0x013B 多附件)必须按 60A1 客户端重写或放弃。
-2. **确认未实现/桩实现共 6 组**(§1):黑名单(含 CMD 130 错配)、双人交易、邮件四项增强、聊天频道路由、GET_USERINFO mode 鉴权、公会全套;另有大量 60A1 枚举存在但无抓包样本的域(PVP/CHAOS/公会/私人商店等)。
-3. **一个架构前置项**:DFL 目前没有跨会话的"区域在线名单"(AREA_USERS 只装本机玩家,ES:9855),聊天广播/双人交易/黑名单拦截都依赖它,需先补(§3.0)。
-4. **分期**:P0 低风险高价值(130 错配修复、黑名单、邮件增强、体力计价、聊天路由),P1 大功能(双人交易、错误码细分),P2 评估后缓做(公会、查看他人、私人商店等)。
+2. **成文时确认未实现/桩实现共 6 组**(§1);至 2026-10-05 复核,其中黑名单(含 CMD 130 错配)、聊天频道路由、组队补完(转让/mode 3)、多频道(M1/M2)、交易状态机、私人商店骨架、PVP 房间骨架已按 `CHANGELOG.md` ADD-14/18-22 与 11 号文档 P0-P6 落地,剩余开放项收敛为:邮件三增强、体力按档计价、建/删角色错误码细分、交易发起流、私人商店购买/上架、PVP 接线/结算、公会(待建会流真机定案)。
+3. **架构前置项「区域在线名单」已由中枢方案取代落地**:10 号 G4 `TownPresenceService` 独立中枢(在场注册/三级广播/查找/翻转钩子/端点状态)承载,原"给租约加 town/area 字段"方案作废。
+4. **分期执行结果**:P0 大部分落地(130 修复/黑名单/聊天路由;邮件增强与体力计价未做),P1 交易落地一半(状态机+下行;发起流待真机),多频道 M1/M2 全量落地;P2 清单中好友/私人商店已按取证后实现,详见 §5 修订。
+
+### 落实情况总表(2026-10-05,对照 ACT12 参考服源码盘点)
+
+参考面按 ACT12 参考服源码的功能域归组(handlers 61 项 / net 5 项 / session 40 项 / data 66 项的域级归纳);DFL 状态锚定 `CHANGELOG.md`、`docs/design/` 各编号文档与 PENDING 条目。
+
+| ACT12 参考面 | DFL 落实状态 | 锚点 |
+|---|---|---|
+| 账号/登录/选角/建删号 | 已实现;建/删角色错误码仍统一码 2(细分未做) | 07 管线;§4.2 开放 |
+| 背包/物品移动/仓库取件/整理/堆叠使用/封印 | 已实现 | `Network/Handlers/Inventory/` |
+| 强化/附魔/耐久修理/分解/合成/时装合成 | 已实现 | `Network/Handlers/Craft/`、`Game/ItemUpgrade/` |
+| 点券商城/礼包/抽奖/票券 | 已实现 | `Network/Handlers/Shop/`(Cera 族/Lottery) |
+| 任务/技能/属性加点 | 已实现 | `Network/Handlers/Quest/`、`Skill/` |
+| 副本流程(进入/加载/结算/翻牌/疲劳虚弱/通关经验) | 已实现;翻牌为手动选择,A21 式 4s 自动翻+门锁维持 §5 暂不结论 | `Network/Handlers/Dungeon/`、`Game/Dungeon/` |
+| 城镇 presence(位置/区域/同屏/频道隔离) | 已实现(`TownPresenceService` 中枢) | `docs/design/10` G4 |
+| 多频道目录/按频道监听 | 已实现(M1 目录+M2 逐频道监听,`PortBase` 默认 10000) | §4.3;ADD-14 |
+| NAT 探测 + 单口中继数据面 | 已实现(限流/长度校验/端点按会话认领/转发结构门/槽位观测) | `docs/design/10` §4;ADD-18/22 |
+| 组队(创建/邀请/退/踢/转让/名册/端点表/队伍聊天) | 已实现(真机复测归 P-36);拾取分配制未实现,现行服务端裁决的个人拾取 | `Game/Party/`、`PartyCoordinator`;ADD-20 |
+| 聊天(区域/私聊/队伍/喇叭) | 已实现(按客户端 case 130 路由;密语黑名单拦截待 NOTI 65 语义定案) | `SendMessageHandler`;§3.5 落地 |
+| 好友/黑名单 | 已实现(SQLite 存储/增删/上下线推送/列表刷新) | ADD-19;11 号 P2 |
+| 邮件(收发/提取/删除) | 已实现;三增强(手续费/NOTI 98 补推/分页)未做 | §3.3 开放;NOTI 98 builder 已有零调用 |
+| 双人面对面交易 | 部分:CMD 26 状态机+NOTI 15-18 下行已落地;发起流(真机定案)与 CMD 19 交易格分支待做 | ADD-21;11 号 P3(T6-T8) |
+| 个人商店 | 骨架:五 handler+建摊广播已落地;购买应答/上架通道待真机值域 | ADD-21;11 号 P4(T9-T11) |
+| PVP/决斗场 | 部分:经验记录同步+房间状态机骨架已落地;handler 接线/复合下行布局/结算公式待做 | 11 号 P6(T14-T16) |
+| 公会 | 未实现(P5 取证完成:NOTI 70 布局已解;建会流静态不可定位,待真机定案后开工) | 11 号 P5 |
+| 体力按档计价 | 未做(仍按等级一口价 `GetCost(level)`) | §3.4 开放 |
+| P2P 直连拓扑(peer_network/peer_relay) | 不做(客户端按帧内槽位归属对端,服务端中继为定论,不迁移) | party 分册「TURN 迁移结论」 |
+| 拍卖行/祭坛/绝望之塔/攻城战/地狱派对/师徒/NPC 好感/贩卖机/复活/GM 命令 | 未实现,未排期(60A1 侧无对应取证,非本期范围) | — |
 
 ## 1. 现状盘点(逐项核实于当前代码)
+
+> 本节为成文时点的判断依据,证据 file:line 是 07 协议层重构前形态(ES/GPE 单体),现行分层以 `Network/Handlers/`、`Network/Parsers/`、`Network/Builders/` 为准;各组落实状态以 §0 落实情况总表为权威,本节不再逐行更新。
 
 ### 1.1 A 组:确认未实现,且 60A1 客户端枚举存在(回填候选)
 
@@ -83,26 +113,30 @@
 
 | 维度 | A21 | DFL | 对回填的影响 |
 |---|---|---|---|
-| 存储 | SQLite 事务+在线租约 | JsonGameStore 整包写库+文件锁 | 黑名单/交易记录建模成 JSON 记录类型;事务性靠"先内存后单次写盘"保证 |
-| 跨会话寻址 | SessionDirectory+频道表 | CharacterSessionRegistry 按角色租约(有,但**无 town/area 投影**);AREA_USERS 只装本机玩家(ES:9849-9858) | 需补区域在线名单(§3.0) |
-| 组队 | PartyManager 完整 | 雏形已落地(`Game/Party` + `Network/PartyCoordinator`),真机复测进行中 | CMD 10-14/NOTI 6-10 布局已按 60A1 逆向,格式见 [packet-detail-party-60cn.md](../protocol/packet-detail-party-60cn.md);交易若复用 CMD 10/11 需走 body[2]==1 分流 |
-| 并发 | RunIfCurrentAsync 代际 | 每连接顺序循环+Registry 租约回调 | 跨会话推送复用 Registry 的回调机制(mailReceived 等已有先例,CharacterSessionRegistry.cs:23-30) |
+| 存储 | SQLite 事务+在线租约 | **已切换 SQLite**(2026-10,`docs/design/08`;此前 JsonGameStore 整包写盘) | 两侧同构,新系统的存储切片(好友/黑名单已循 12 号文档落地)直接按 60A1 基线建表 |
+| 跨会话寻址 | SessionDirectory+频道表 | **TownPresenceService 中枢**(在场注册/三级广播/查找/端点反查,10 号 G4;原 CharacterSessionRegistry 租约保留会话级通道) | 区域名单已由中枢落地,无需再补 |
+| 组队 | PartyManager 完整 | **已补完**(创建/邀请/退/踢/转让 CMD 131/名册/端点表/中继数据面,ADD-18~20;真机复测归 P-36) | CMD 10-14/131/NOTI 6-11/26 布局按 60A1 逆向完成,见 [packet-detail-party-60cn.md](../protocol/packet-detail-party-60cn.md);交易发起流若复用 CMD 10/11 仍需 body[2]==1 分流取证 |
+| 并发 | RunIfCurrentAsync 代际 | 每连接顺序循环+Registry 租约回调;跨会话推送有 Registry 回调与中枢翻转钩子先例 | 跨会话推送沿用既有机制 |
 
 ## 3. P0 实现方案
 
-### 3.0 前置基建:区域在线会话名单
+### 3.0 前置基建:区域在线会话名单 ✅ 已落地(形态升级)
+
+> 2026-10-05 复核:未按本节"租约加 town/area 字段"方案实施,而是由 10 号 G4 的 `TownPresenceService` 独立中枢整体承载(在场注册/三级广播/查找服务/状态翻转钩子/网络端点状态),本节方案作废,验收项(双人同区互见)已在中枢三批次与 FIX-08 频道隔离中覆盖,真机判据归 P-36。
 
 - **问题**:聊天广播(区域)、双人交易(寻找/校验对方)、黑名单聊天拦截都需要"同 town/area 在线玩家→会话"的实时投影。当前 townId/areaId 是每连接的局部变量(ES:9876-9877),AREA_USERS 回包只含自己。
 - **方案**:给 `CharacterSessionRegistry` 的租约增加 `TownId/AreaId` 可更新字段(进城 SET_USER_AREA 时更新,断连时移除);新增查询 `GetSessionsInArea(town, area)`。跨会话发送沿用现有回调注入模式(参照 mailReceived 的做法)。
 - **验收**:两个客户端进同一 town/area,各自 AREA_USERS/NOTI 23 能看到对方(此项同时是 60A1 客户端多人同屏的既有缺口,顺手补齐需单独验证客户端表现,可先只建名单不改编排)。
 
-### 3.1 CMD 130 错配修复(半小时级,先行)
+### 3.1 CMD 130 错配修复(半小时级,先行) ✅ 已落地(ADD-19)
 
 1. 删除 GPE:370 的 `ExchangeServerCharacterInfoCommand = 130` 常量与 GPE:457-458/496-500 的桩分支;EXCHANGE 家族整体属 D 组不实现(若要保留占位,移到 139 并标注"未经验证")。
 2. 同步更新 SelfTests 引用(SelfTests/Program.cs:489、504 断言了该桩)。
 3. 130 号让给 §3.2 黑名单 REQUEST。
 
-### 3.2 黑名单系统(CMD 128/129/130)
+### 3.2 黑名单系统(CMD 128/129/130) ✅ 已落地(ADD-19,超出本节方案)
+
+> 2026-10-05 复核:五 handler(128/129/130 + 好友 63/64)经 P-35 逐 case 取证后实现——ACK/列表布局非推断而是 IDA 定论(CMD 130 应答={u8 count;count×{dstr,u8,u8,u8}}),存储为 SQLite 独立小表(12 号文档,非本节设想的 JsonGameStore 记录),另含列表实时刷新与城镇上下线推送;密语拦截联动未实现(60A1 无证据,留 T3/T4)。
 
 - **60A1 协议面**:客户端枚举齐全;130 有抓包样本但仅帧头(请求应为空体);128/129 无样本,请求载荷按同族协议推断为"u32 长度 + GBK 名字"(与 A21 及 DFL 其余 dstr 一致),**实现前需用抓包工具对客户端社交界面取样确认**;ACK/列表布局未知,需逆向。
 - **借鉴**:§2.1 前两行(单事务 Add、错误码语义、发送谓词、容量 64)。
@@ -114,7 +148,7 @@
 - **风险**:60A1 ACK/列表布局是唯一的逆向不确定点;其余纯增量。
 - **验收**:SelfTests 覆盖 Add(重复/不存在/满)/Delete/Request 全分支;双人在线时 A 屏蔽 B 后区域聊天互相不可见。
 
-### 3.3 邮件增强(手续费、NOTI 98 补推、分页)
+### 3.3 邮件增强(手续费、NOTI 98 补推、分页) ⬜ 未实施(仍开放)
 
 | 子项 | 借鉴 | DFL 落点 | 备注 |
 |---|---|---|---|
@@ -125,14 +159,14 @@
 
 - **验收**:SelfTests:手续费金额三例(纯文本、带附件、巨额封顶);删除后 NOTI 98 帧内容断言;>20 封时分包序列与 notLoadedCount 断言。
 
-### 3.4 RECOVER_STAMINA 按档计价
+### 3.4 RECOVER_STAMINA 按档计价 ⬜ 未实施(仍开放,2026-10-05 复核仍为 `GetCost(level)` 一口价)
 
 - **借鉴**:`cost = base(level) × (100 - official)/90`(StaminaHandler.cs:153-163),official=剩余疲劳百分比;事务内"先折扣/免单判定→余额检查(22)→扣费→重置"顺序。
 - **适配**:DFL 有真实疲劳/虚弱系统(60A1 必需,不可像 A21 那样省掉)。取 DFL 的虚弱字节(0=正常)映射 A21 的缺口比例:`cost = GetCost(level) × weakness / 90`,下限 `GetCost(level)`、上限 ×10/9,系数进常量。**口径开放问题**:DFL weakness 的确切数值域以 `weaknessRecovery` 回调与 NOTI 4(1B)现行代码为准,落地时先读该处代码校准(ES 现行 RECOVER 分支 ~9934)。
 - **风险**:零协议风险——请求/应答布局不变,只改价格;玩家可感知的是"越虚弱越贵",与官方体感一致。
 - **验收**:SelfTests 三档虚弱值的价格断言;金币不足仍回 22。
 
-### 3.5 CMD 17 聊天频道路由扩展
+### 3.5 CMD 17 聊天频道路由扩展 ✅ 已落地(含于社交迁移批次)
 
 - **借鉴**:集中路由函数(ResolveRecipients,ChatHandler.cs:126-188)、未知 mode 只发给自己(183-187)、黑名单挂发送谓词。
 - **60A1 协议面**:请求 `mode u8 + target u16 + u32 + len + 字符串`(与 A21 同族,私聊目标字段 60A1 为保留位);NOTI 12 布局 `[type, uid u16, len, bytes]`,无 serverGroup。60A1 客户端实际会发的 mode 集合需抓包确认(预期至少 1/7 私聊、2 队伍、3 区域)。
@@ -144,7 +178,7 @@
 
 ## 4. P1 实现方案
 
-### 4.1 双人面对面交易(本计划最大增量)
+### 4.1 双人面对面交易(本计划最大增量) ◐ 部分落地(11 号 P3 第一步,ADD-21)
 
 - **前置**:§3.0 区域名单;物品快照读写(现有背包模型)。
 - **借鉴(逻辑层全拿)**:五态协商机(ItemTradeSession.cs:119-151:0→5→1→3,双方都 5 才进确认、都 3 才提交)、邀请 1 分钟超时(L20)、资格谓词(Eligible:47-55)、`MOVE_ITEMSPACE` 劫持进交易栏(TryMove:117-156,金币=slot0 虚拟条目、物品 slot3..11 的映射思路)、断线/换角/进副本强制 `Close(false)` 回滚(CancelBeforeTransition:195-210)、提交成功后逐边发结束包+补发 NOTI 13 主背包全量(Close:225-257)、`body[2]==1` 分流(ItemTradeRequest.cs:8)。
@@ -154,13 +188,13 @@
 - **风险**:逆向量最大;60A1 客户端交易窗对 NOTI 时序敏感(参照 A21 注释:body[0]≠1 时客户端把 body[1] 当错误码崩溃一类硬约束,60A1 侧同类约束要逐个摸)。建议先交付"邀请→放物品→锁定→确认→提交"主链路,取消/超时分支次之。
 - **验收**:SelfTests 全状态机矩阵(含单方锁定、双方确认、余额不足、断线回滚、黑名单拒绝);双人实测交换金币+物品各一。
 
-### 4.2 建/删角色错误码细分(小)
+### 4.2 建/删角色错误码细分(小) ⬜ 未实施(仍开放,2026-10-05 复核仍统一回码 2)
 
 - **借鉴**:CREATE 的 0x04(参数/槽位)、0x12(名字长度)、24(重名,与预检共用)、名字校验码;DELETE 的 0x15(名槽不符)、0x28(状态禁止)(CharacterSelectHandler.cs:954-1059、1061-1147)。
 - **注意**:60A1 客户端错误码表与 A21 是否同值需实测(建角失败弹窗逐码验证);DELETE_CHARACter 的"请求带名+4B ACK+禁补名册"是 A21 客户端约束,**60A1 下保持 DFL 现有 2B ACK+补名册不变**(对比文档 §3.7 结论),只细分错误码数值。
 - **验收**:重名/非法名/槽满三 case 客户端弹正确提示。
 
-### 4.3 多频道生成与频道目录(P1)
+### 4.3 多频道生成与频道目录(P1) ✅ 已落地(M1+M2 全量,ADD-14;PortBase 默认 10000)
 
 - **目标**:DFL 现为单频道(server.json `Channel` 节 → `EntranceMetadata.BuildSingleLocalChannel` 固定 9 组×1 频道,`Network/Sessions/ChannelSessionSenders.cs:71` LoadContent);参考 A21 频道生成链路(PVF 频道脚本 → 目录 → 按频道监听 → 列表下发)回填为目录驱动的多频道。对应对比文档差距项 10 的前半(频道目录/生成);频道准入/顶号编排放 M2。
 - **A21 参考链路**(出处均为 A21 `Server/DfoServer`):
@@ -172,22 +206,22 @@
 - **号位错位警示**:A21 频道层 11/12=频道表请求、5/6=脚本版本、0xB/0xC=CONNECT 密钥;60A1 入口 11/12=密钥交换、5/6=缓存判定、9/10=脚本下载、1/3=元数据。语义族对应、号位不同,严禁按号直译(沿用 §2.2 结论)。
 - **设计**(两期):
   - M1 目录+元数据(零监听改动,已实现):频道目录唯一真源=PVF 内 `etc/channel_info.etc`(与协议 9 下发脚本同文件),显示名经 `etc/etc.chn.str` 名称引用解析(`ChannelCatalog.TryParseChannelStringTable`,未解析行丢弃);server.json 不提供频道目录配置,`Channel` 节收缩为协议面身份 Host/Port/ServerNumber + 容量 `MaximumUsers`(默认 10)。`Network/Protocol/ChannelCatalog.cs` 解析 `[server]` 组 1 频道行(只取组 1,与参考项目一致),`GameWorld/EntranceChannelDirectory.cs` 启动期一次解析并打印频道列表,`EntranceMetadata.BuildChannels` 组 0 承载目录频道(记录名组合为「显示名 + 空格 + 频道号」后 CP936 写入——客户端从记录名提取全部数字推频道号,显示名不带数字即推出 0 而整组脱靶,见风险④与 `CHANGELOG.md` FIX-06)、其余 8 组回落单频道默认记录(回退名常量 `Local Channel 1`,沿用真机验证字节);各频道 host:port 统一指向现游戏监听,会话频道=目录首条目(NOTI 1 `displayName/channelNumber`、NOTI 130 频道字段与经验加成键同源,既有先例 [packet-detail-connection-60cn.md](../protocol/packet-detail-connection-60cn.md));`CurrentUsers` 改为在线会话数动态值(`CharacterSessionRegistry.SessionCount`),元数据随每次握手现建;PVF 无有效 etc 行时回退现行单频道元数据,字节不变。
-  - M2 按频道监听（已实现，同进程形态）：组合根为目录里每条频道开独立 TCP 监听，端口 = `Channel.PortBase + 频道号`（`PortBase` 新增于 server.json `Channel` 节，默认 20000；60A1 端口由元数据下发，客户端无固定约定）；`Channel.Port`（默认 7001）恒保留为**遗留频道端口**，绑定目录首条目身份，承载其余八组回退记录的端点与旧配置直连兼容。入口元数据随之按记录写各自端点（组 0 目录频道 = PortBase+号，其余八组回退记录 = 遗留端口）。accept 时把监听器绑定的频道传入连接泵，`ChannelSessionState.SessionChannel` 落位；NOTI 1 `channelNumber/displayName`、喇叭 NOTI 130 的 flag 字节、频道经验加成（`DungeonExperienceCatalog` 按 etc「额外经验比例」列逐频道懒加载）全部改读会话绑定频道；在线人数逐频道计数（`CharacterSessionRegistry` 连接级 +1/-1），元数据 CurrentUsers 按频道记录取值，拥挤度逐频道生效；城镇名册携带频道号，同区域快照按频道过滤（FIX-08，不同频道居民互不可见，区域聊天随之按频道隔离）。喇叭广播仍发全体会话：flag=发送者频道号，客户端按「flag==本机频道→聊天行+气泡，否则仅横幅」的原生分流渲染，跨频道收件人自动走横幅分支。PVF 无目录时回退单频道：仅 `Channel.Port` 一个监听，行为与 M1 字节不变。频道准入/顶号编排（对比文档差距项 10 后半）仍留后续。
+  - M2 按频道监听（已实现，同进程形态）：组合根为目录里每条频道开独立 TCP 监听，端口 = `Channel.PortBase + 频道号`（`PortBase` 新增于 server.json `Channel` 节，默认 10000；60A1 端口由元数据下发，客户端无固定约定）；`Channel.Port`（默认 7001）恒保留为**遗留频道端口**，绑定目录首条目身份，承载其余八组回退记录的端点与旧配置直连兼容。入口元数据随之按记录写各自端点（组 0 目录频道 = PortBase+号，其余八组回退记录 = 遗留端口）。accept 时把监听器绑定的频道传入连接泵，`ChannelSessionState.SessionChannel` 落位；NOTI 1 `channelNumber/displayName`、喇叭 NOTI 130 的 flag 字节、频道经验加成（`DungeonExperienceCatalog` 按 etc「额外经验比例」列逐频道懒加载）全部改读会话绑定频道；在线人数逐频道计数（`CharacterSessionRegistry` 连接级 +1/-1），元数据 CurrentUsers 按频道记录取值，拥挤度逐频道生效；城镇名册携带频道号，同区域快照按频道过滤（FIX-08，不同频道居民互不可见，区域聊天随之按频道隔离）。喇叭广播仍发全体会话：flag=发送者频道号，客户端按「flag==本机频道→聊天行+气泡，否则仅横幅」的原生分流渲染，跨频道收件人自动走横幅分支。PVF 无目录时回退单频道：仅 `Channel.Port` 一个监听，行为与 M1 字节不变。频道准入/顶号编排（对比文档差距项 10 后半）仍留后续。
 - **改动面**:`Network/Protocol/EntranceMetadata.cs`(BuildChannels 按频道端点)、`Network/Sessions/ChannelSessionSenders.cs`(LoadContent 目录化)、`Infrastructure/ServerOptions.cs`(Channel 节 + PortBase)、组合根监听编排(`Network/EntranceService.cs` 逐频道监听 + `Network/Timers/ClientWhenAnyHandler.cs` 绑定频道)、会话频道状态(`Network/Sessions/ChannelSessionState.cs`)、SelfTests 元数据字节断言。
 - **风险**:①组名表 109 项中 DFL 只验证前 9 名,目录引入新组名必须先真机验证命中;②A21 容量标定(150/250/100)为 A21 抓包结论,60A1 无对应标定,容量值不照搬、按配置;③M2 后同端口多频道不再存在,会话归属由监听端口唯一决定,NOTI 1 `channelNumber` 与 NOTI 130 频道字段同源于会话绑定频道([packet-detail-chat-60cn.md](../protocol/packet-detail-chat-60cn.md));④显示名取全部数字拼接为频道号,组名/显示名含数字即错号,显示名完全不带数字同样脱错(推出 0 号必然脱靶,FIX-06);现于目录解析丢弃含数字显示名的行,构造期组合记录名并二次拒绝(客户端 atol 语义,两级校验已落地);⑤每频道一个监听端口(现网目录 38 个),主机若绑定非回环地址需在防火墙放行整段端口。
 - **验收**:SelfTests 多组多频道元数据字节断言(布局/约束拒绝/单频道回归不变);真机:`_ChannelTest` dump 与元数据逐字节对照、选频 UI 显示 N 频道并按拥挤阈值表现、进游戏后 NOTI 130 频道号与所选一致。
 
-## 5. P2 / 暂不清单(评估结论)
+## 5. P2 / 暂不清单(评估结论,2026-10-05 复核修订)
 
 | 功能 | 结论 | 理由 |
 |---|---|---|
-| GET_USERINFO mode 鉴权 + NOTI 2 subtype 3/6 | **不做** | subtype 3/6 是 A21 新增,60A1 客户端协议域没有;mode 语义同为 A21 扩展(对比文档 §3.4)。鉴权/防竞态思路留档,未来做"查看他人"时按 60A1 格式重新设计 |
-| 公会全套 + NOTI 62 公会聊天 | **暂不** | 无任何数据底座;依赖好友/成员表;独立立项 |
-| 翻牌 4s 自动翻、加载栅栏 | **暂不** | DFL 现单人副本流程可用;组队系统落地后再借 A21 定时器模式(CardRewardCoordinator/DungeonLoadingCoordinator) |
-| 好友 63/64、私人商店 85-89 | **暂不** | D 组;依赖区域名单与交易先落地。组队雏形已落地、复测进行中(见 [packet-detail-party-60cn.md](../protocol/packet-detail-party-60cn.md)),副本协同编队(cohort/定时器)仍待副本组队化时再借 A21 模式 |
-| RECOVER_STAMINA 成功路径改 A21 式(无 ack) | **不做** | 60A1 客户端需要 CMD ack+NOTI 4,版本性差异不可倒置 |
-| A21 自动建号、slot 越界回落 0 | **不采纳** | 安全/正确性劣化,对比文档已定性 |
-| DFL 独有保留项:NOTI 0 挑战、疲劳系统、COMPOUND 重放缓存、CMD0 ack | **保留** | 60A1 必需或 DFL 特有优势(对比文档 §7.5/7.6) |
+| GET_USERINFO mode 鉴权 + NOTI 2 subtype 3/6 | **部分改判** | 原"subtype 3/6 是 A21 新增"结论经 P-35 取证修正:60A1 的 NOTI 2 **mode 3 存在**(与 mode 1 共享读序,0x41A764→0x41A780)并已实现(ADD-20,组队对端连接对象唯一创建源);mode 鉴权与 subtype 6 维持不做(60A1 无证据) |
+| 公会全套 + NOTI 62 公会聊天 | **维持暂不,前置收敛** | P5 取证完成:NOTI 70 信息包布局已解,发送点仅 CMD 70/150/76;建会族(71/166-168)零发送点静态不可定位,待 P-36 真机定案后开工 |
+| 翻牌 4s 自动翻、加载栅栏 | **维持暂不** | 2026-10-05 复核:现行翻牌为手动选择(`SelectCardHandler`),单人/组队副本流程可用;定时器+代际门锁模式待组队副本协同化时再借 |
+| 好友 63/64、私人商店 85-89 | **已改判落地** | 好友+黑名单 P2 全量实现(ADD-19);私人商店 P4 骨架落地(五 handler+建摊广播,ADD-21),购买/上架待真机值域(T9-T11) |
+| RECOVER_STAMINA 成功路径改 A21 式(无 ack) | **维持不做** | 60A1 客户端需要 CMD ack+NOTI 4,版本性差异不可倒置 |
+| A21 自动建号、slot 越界回落 0 | **维持不采纳** | 安全/正确性劣化,对比文档已定性 |
+| DFL 独有保留项:NOTI 0 挑战、疲劳系统、COMPOUND 重放缓存、CMD0 ack | **维持保留** | 60A1 必需或 DFL 特有优势(对比文档 §7.5/7.6) |
 
 ## 6. 改动落点汇总(文件级)
 
@@ -210,12 +244,14 @@
 3. **手续费/体力的客户端口径**:两处都有"服务端算法对,客户端显示语义未证实"的风险,均做成配置/常量可调,实测校准。
 4. **并发回归**:区域名单与交易引入跨会话写,必须沿用"租约校验后再动对方状态"的纪律,防顶号/断线竞态(A21 RunIfCurrentAsync 思路的 DFL 化)。
 
-## 8. 里程碑建议
+## 8. 里程碑建议(2026-10-05 复核补执行状态)
 
-| 阶段 | 内容 | 出口标准 |
-|---|---|---|
-| M0 | §3.1 + §3.0 + 抓包采样(黑名单/聊天/交易) | 130 归位;名单可查询;三组样本入库 docs/protocol |
-| M1 | §3.2 + §3.5(黑名单+聊天) | 双人互聊/屏蔽实测通过 |
-| M2 | §3.3 + §3.4(邮件+计价) | SelfTests 全绿;真机弹窗/扣费核对 |
-| M3 | §4.2 + 交易状态机(无格式层) | 状态机矩阵 SelfTests 全绿 |
-| M4 | 交易格式层接线 + 真机联调 | 双人完整交易实测 |
+| 阶段 | 内容 | 出口标准 | 状态 |
+|---|---|---|---|
+| M0 | §3.1 + §3.0 + 抓包采样(黑名单/聊天/交易) | 130 归位;名单可查询;三组样本入库 docs/protocol | ✅ 130 归位(ADD-19);名单由 TownPresenceService 承载(10 号 G4);取证经 IDA(P-34/P-35)入库协议分册,超出原"抓包采样"预期 |
+| M1 | §3.2 + §3.5(黑名单+聊天) | 双人互聊/屏蔽实测通过 | ◐ 代码落地+自测绿(ADD-19);屏蔽实测(密语拦截)待 NOTI 65 语义定案,其余真机项归 P-36 |
+| M2 | §3.3 + §3.4(邮件+计价) | SelfTests 全绿;真机弹窗/扣费核对 | ⬜ 未实施 |
+| M3 | §4.2 + 交易状态机(无格式层) | 状态机矩阵 SelfTests 全绿 | ◐ 状态机绿(`trade-protocol` 套件,ADD-21);§4.2 错误码未做 |
+| M4 | 交易格式层接线 + 真机联调 | 双人完整交易实测 | ◐ NOTI 15-18 下行与 CMD 26 双形态已接线;发起流(真机定案)与 CMD 19 交易格分支待做,联调归 P-36 |
+
+后续增量(PVP 接线/公会/私人商店购买等)以 11 号文档 §3.9 待办总表与 PENDING P-36 为准,本文不再另立里程碑。

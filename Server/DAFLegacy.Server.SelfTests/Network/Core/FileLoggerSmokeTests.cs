@@ -99,7 +99,7 @@ internal static class FileLoggerSmokeTests
             capturePath = sink.LogPath;
             sink.Publish(
                 Guid.NewGuid(),
-                "channel:7001",
+                "channel:10001",
                 "RX",
                 GameProtocolConstants.CommandPacketType,
                 (byte)CmdPacketType.LOGIN,
@@ -127,7 +127,7 @@ internal static class FileLoggerSmokeTests
         var addedSink = new RecordingTapSink();
         runtime.TapSink = propertySink;
         runtime.AddTapSink(addedSink);
-        var session = runtime.Add("channel:7001", "127.0.0.1:40000");
+        var session = runtime.Add("channel:10001", "127.0.0.1:40000");
         runtime.TraceDatagram(session, "RX", [1, 2, 3], dumpLimit: 8);
         check(propertySink.Count == 1 && addedSink.Count == 1,
             "tap funnel fans out to the single-slot port and registered sinks");

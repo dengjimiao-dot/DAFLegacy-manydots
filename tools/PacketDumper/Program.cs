@@ -11,7 +11,7 @@ var result = new Dictionary<string, object>();
 void Noti(int id, GameServerPacket packet) => result[$"noti:{id}"] = Convert.ToHexString(packet.Encode());
 
 Noti(0, GameProtocolEngine.CreateCheckConnection(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 }));
-Noti(1, GameProtocolEngine.CreateChannelInfo("Channel 1"u8, 1, 1, 1, 1, 0x1234, ["127.0.0.1"u8.ToArray()], 2311, 2311));
+Noti(1, GameProtocolEngine.CreateChannelInfo("Channel 1"u8, 1, 1, 1, 1, 0x1234, ["127.0.0.1"u8.ToArray()], 12311, 12312));
 Noti(2, GameProtocolEngine.CreateUserInfo([new GameCharacterSummary(0, "DFL"u8.ToArray(), 0, 1, 10, null, 1)]));
 Noti(3, GameProtocolEngine.CreateUserState(1, 1));
 Noti(4, GameProtocolEngine.CreateStamina(100));

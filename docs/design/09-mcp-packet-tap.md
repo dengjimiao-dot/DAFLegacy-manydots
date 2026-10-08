@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | P1 | **标准 MCP 协议** | 官方 C# SDK（`ModelContextProtocol`），Streamable HTTP 标准传输；工具带 JSON Schema 与描述，智能体自动发现 |
 | P2 | **默认关闭** | 唯一配置开关 `DAFLegacy.Mcp.Enabled`，默认 `false`；关闭时不开端口、不建线程、零内存驻留 |
-| P3 | **独立启动配置** | `server.json` 新增独立配置节 `DAFLegacy.Mcp`：`Enabled`（**默认 false**）、`Host`（默认 `127.0.0.1`）、`Port`（默认 `12222`），与 `DAFLegacy.Admin` 的 Host/Port 同构；全部工具组共用该端点 |
+| P3 | **独立启动配置** | `server.json` 新增独立配置节 `DAFLegacy.Mcp`：`Enabled`（**默认 false**）、`Host`（默认 `127.0.0.1`）、`Port`（模板值 `12222`，无代码默认值，必须显式配置），与 `DAFLegacy.Admin` 的 Host/Port 同构；全部工具组共用该端点 |
 | P4 | **模块独立、单一项目、可插拔** | MCP 全部代码（入口、hub、宿主、全部工具组）收在唯一项目 `DAFLegacy.Mcp`；运行期按开关 + DLL 存在性加载（§3.1），拔除 = 删 DLL / 关开关，业务代码无感 |
 | P5 | **不过多侵入业务代码** | 业务文件（`Network/*.cs`）只做删除（去掉 `EnablePacketTracing` 门卫）；抓包分发收敛在 `RuntimeState` 单一漏斗；侵入清单见 §5.2 |
 | P6 | **只读观测** | 全部工具只读；写操作类工具须先补鉴权再立项（§14） |
@@ -196,7 +196,6 @@ public sealed class RuntimeState
 | `Network/EntranceService.cs` `LogPacket(GameServerPacket)`（~L14462） | 同上 | 同上 |
 | `Network/CharacterDatagramService.cs`（~L77、L231、L276） | `if (tracing) { Trace... }` ×3 | 去掉 if，直接调用（-3 行） |
 | `Network/GameplayDatagramService.cs`（~L151、L244、L257、L265、L359） | `if (tracing) { TraceDatagram }` ×5 | 去掉 if，直接调用（-5 行） |
-| `Network/ProbeService.cs` | 自行拼 hex 写日志，不走 Trace | **不动**（旁路采集器，默认禁用，非真实客户端链路） |
 
 ### 5.3 组合根与工程结构
 
@@ -373,7 +372,7 @@ McpModuleLoader.TryAttach(builder, options);
 | --- | --- | --- |
 | `Enabled` | **`false`** | MCP 启动开关，默认关闭；false 时加载器短路，不开端口、零驻留；true 且 `DAFLegacy.Mcp.dll` 在位时模块激活 |
 | `Host` | `127.0.0.1` | 监听地址（IP）。默认回环；改非回环等同主动暴露协议流，须自行叠加防火墙/认证（§9） |
-| `Port` | `12222` | 监听端口。默认值已核对无冲突：本仓库 8080/8081/2311/7001–7003；参考项目区段 10011–10200、12311–12312、17200、30000+（§16.2）。被占时模块记错误日志并保持关闭 |
+| `Port` | `12222` | 监听端口（模板取值，必须显式配置）。取值已核对无冲突：本仓库 8081/7001/10001+/12311–12312/30000+（后两段为数据面与中继预留，见 `docs/design/02` R6）；参考项目区段 10011–10200、12311–12312、17200、30000+（§16.2）。被占时模块记错误日志并保持关闭 |
 
 工具组不单独配置（§15.4）；容量参数（ring 4096、单包截断 4096/8192 字节、订阅通道 1024）为代码常量。`README.md` 选项表实现时补三行。
 

@@ -48,10 +48,9 @@ DAFLegacy/                                        ← 仓库根
 │   │   ├── Random/                             [新 M2] 随机源（纯托管）       1 个 .cs + 新增
 │   │   │   └── GameRandomSource.cs              迁自项目根；改为纯托管单一实现（Random.Shared），
 │   │   │                                        接口保留 IDropRandomSource（06）
-│   │   ├── Network/                            网络服务                        4 个 .cs
+│   │   ├── Network/                            网络服务                        3 个 .cs
 │   │   │   ├── EntranceService.cs               登录与角色主循环（14,264 行，不重写）
-│   │   │   ├── CharacterDatagramService.cs  GameplayDatagramService.cs
-│   │   │   └── ProbeService.cs
+│   │   │   └── CharacterDatagramService.cs  GameplayDatagramService.cs
 │   │   ├── Persistence/                        状态持久化                      3 个 .cs
 │   │   │   ├── JsonGameStore.cs                 5,630 行
 │   │   │   └── RuntimeState.cs  SerializedWriteStream.cs
@@ -487,7 +486,7 @@ M0 实施时按此执行，**归类不再逐个讨论**：
 1. 后缀是 `*Catalog` 或 `*Definition` → **`GameWorld/`**（共 25 个）
 2. 否则按业务域关键词判入 `Game/<域>/`（共 39 个，映射见上表）
 3. `Program.cs` → 项目根；`ServerOptions` / `AdminApiModels` / `CharacterSessionRegistry` → `Hosting/`
-4. `EntranceService` 与三个 `*DatagramService` / `ProbeService` → `Network/`
+4. `EntranceService` 与两个 `*DatagramService` → `Network/`
 5. `JsonGameStore` / `RuntimeState` / `SerializedWriteStream` → `Persistence/`
 6. `ScriptFileSystem` → `PvfScript/`；`GameRandomSource` → `Random/`
 7. 两个 `IHostedService` 周期服务（`FatigueResetService`、`WeaknessRecoveryService`）→ `Services/`。判据是**它们是否为某个玩法域的规则**：实测两者都只依赖 `CharacterSessionRegistry` + `JsonGameStore`，`FatigueResetService` **零玩法域依赖**（原来的 `Game/Stamina/` 因此取消），`WeaknessRecoveryService` 额外依赖 `DungeonWeaknessPolicy`，但它的性质是定时任务而非玩法规则
@@ -748,7 +747,7 @@ WinForms 启动器。**功能不跨平台，本设计只做构建解耦。**
 
 **只改位置，不改内容。** 两个文件的**全部配置键与默认值保持原样**，消费端也不需要改：
 
-- `server.json` 的 `DAFLegacy` 节：`Admin`、`Entrance`、`CharacterDatagram`、`GameplayDatagram`、`GameProbe`、`Channel`、`Drop`、`Experience`、`DataPath`、`ScriptPvfPath`、`SkillScriptPath`、`MaximumPacketLength`、`RejectBadCrc32`、`EnablePacketTracing`、`HexDumpLimit` —— 由 `ServerOptions` 消费，不动。
+- `server.json` 的 `DAFLegacy` 节：`Admin`、`Entrance`、`CharacterDatagram`、`GameplayDatagram`、`Channel`、`Drop`、`Experience`、`DataPath`、`ScriptPvfPath`、`SkillScriptPath`、`MaximumPacketLength`、`RejectBadCrc32`、`EnablePacketTracing`、`HexDumpLimit` —— 由 `ServerOptions` 消费，不动。
 - `launcher.json`：`ClientPath`、`EntranceHost`、`EntrancePort`、`Accounts`、`AccountIndex`、`StartServer`、`D3D9Adapter`、`D3D9TimeoutSeconds`、`D3D9RetryIntervalSeconds` —— 由 `LauncherOptions` 消费，不动。
 
 唯一的值变化是 `ScriptPvfPath` 会在 M4 由反斜杠改为正斜杠（[R3](02-portability-contracts.md#r3--路径契约)），那是独立的一项改动，与本次移动无关。

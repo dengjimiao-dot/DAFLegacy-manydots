@@ -8,6 +8,38 @@
 
 ## 2026-10-08
 
+### CHANGE 端口定义按参考工程对齐：入口 7001、频道 10000+号、数据面 12311/12312，取消遗留频道端口
+
+- **改动**（端口分配表见 `docs/design/02` R6.1，为该表的唯一定名来源；一个数字只承担一个面的语义）：
+  - **入口 2311 → 7001**（`Entrance.Port`，与参考工程登录/选角端口同义同号）。启动器同步：`launcher.json` 的 `EntrancePort` 改 `7001`，`LauncherOptions.EntrancePort` 去掉默认值（缺失即在校验期报错，与 Server 侧"端口无默认值"一致）。
+  - **角色屏 UDP 2311 → 7001**（`CharacterDatagram.Port`）。与入口同号是客户端约定——客户端用启动器注入的同一端点做角色屏的 UDP 交换，现由启动期校验强制：两值不等即拒绝启动（`CharacterDatagram.Port ... must equal Entrance.Port ...`）。
+  - **玩法/NAT UDP 7002/7003 → 12311/12312**（`GameplayDatagram.PrimaryPort`/`SecondaryPort`，对齐参考工程 `InitialUdpPort1/2`；双端口不可合并——客户端按两端口观测到的端点比对判定 NAT 类型）。
+  - **取消 `Channel.Port`**（原 7001 遗留频道端口）：空组回退记录与无目录单频道会话改用 `PortBase + 会话频道号`——有目录时即组 0 首频道的监听（与旧遗留端口绑定的身份相同，客户端可见端点仅由 7001 变为该监听端口），无目录时由 `EntranceService` 回退分支单独绑定；`Channel` 节只剩 `Host`/`PortBase`/`MaximumUsers`/`ServerGroup`。`EntranceService` 中针对 `Channel.Port` 的等值跳过分支一并删除（入口与频道端口同名的配置已不可能通过校验）。
+  - **兜底应答表 `FallbackCommandReplies` 的 CHECK_CONNECTION 不再硬编码 `127.0.0.1` 与 `2311/2311`**，改为与 `CheckConnectionHandler` 同源读取 `GameplayDatagram.Host` 与主/次端口（该表无线上路径，仅防御性回退；此前它与真实 handler 对同一包各写一份端口）。
+  - 同步：`stop.bat` 端口探测模式（TCP `8081`/`7001`/`100xx`、UDP `7001`/`12311`/`12312`）、`tools/diagnostics/netstat_sampler.sh` 采样模式（原 `200xx` 已随 PortBase 改值失效）、`tools/PacketDumper` 的 NOTI 1 样例端口、MCP 抓包事件与过滤器的注释示例；文档 `README.md`、`docs/design/02`（新增 R6.1 端口分配表、段位约定与"绑定地址≠通告地址"约定）、`docs/design/13` §3.1/§11.5、`docs/design/09` 端口取值核对表、`docs/servers4a21/feature-backfill-plan-vs-s4a21.md` §4.3。
+- **验证**：构建 0 警告 0 错误；全量 SelfTests 32 套件全绿——`server-options-validation` 改按模板端口表断言并新增"角色屏与入口同号"拒绝路径，`protocol-golden`/`party`/`program-inline`/`entrance-channel-catalog` 的夹具与字节断言按新端口更新（组队端点表记录字节由 `5A 1B`(7002) 改为 `17 30`(12311)）。**真机未复测**：判据见 `PENDING.md` P-38（监听表、启动器链路、回退组进游戏、NOTI 1 探测端口四项）。
+- **遗留项**：部署副本 `server.json` 与 `launcher.json` 必须改用新端口并补齐端口键（副本按约定由用户自行维护）；历史抓包记录中的 `channel:7001`/`2311` 标签保持不变（记录当时事实，不改写证据）；登录应答"主机 + 端口1/2"字段的语义差异（参考工程按端口解释，本项目 IDA 按中继解释）登记为 `PENDING.md` P-39 待复核。
+
+### CHANGE 端口配置改为强制显式：移除全部端口代码默认值，新增启动期强校验
+
+- **改动**：`ServerOptions` 的全部端口属性不再带初始值（`Admin.Port`、`Mcp.Port`、`Entrance.Port`、`CharacterDatagram.Port`、`GameplayDatagram.PrimaryPort`/`SecondaryPort`、`Channel.PortBase`，0 即未配置）；新增 `Infrastructure/ServerOptionsValidator.cs`，组合根在读到配置后、注册任何监听前调用：① 必需端口缺失或越界（1..65535）逐条报错（`Enabled=false` 的节不需要端口，`Admin` 无开关恒为必需）；② 主机必须是 IP 字面量（R6 禁主机名，此前主机名会以 `IPAddress.Parse` 抛异常崩在启动路径上）；③ 同一主机同一传输上的重复占用报错——TCP 跨节检查（Admin/MCP/入口及附加端口），UDP 检查角色屏与玩法主次端口，TCP 与 UDP 同号（入口与角色屏的 7001 即此形态）不算冲突；④ `Channel.PortBase` 必须给频道 1 留出端口。任一错误即逐条打印并以退出码 2 拒绝启动，不再有隐式端口或静默丢弃监听。`server.json` 模板本就显式给出全部端口，未改动；`Entrance.AdditionalPorts` 保留为可选项。同步更新 `README.md` 配置表与端口段、`docs/design/02` R6 契约与判定、`docs/design/13` §3.1 与 §11.5、`docs/design/09` 的 MCP 端口表述、`docs/servers4a21/feature-backfill-plan-vs-s4a21.md` 中 PortBase 与 `Channel.Port` 的取值表述（「默认」改为「模板」）。
+- **验证**：构建 0 警告 0 错误；全量 SelfTests 32 套件全绿，新增 `server-options-validation` 套件覆盖九条路径（模板形态通过、整份缺省配置逐项报错、启用 MCP 必须给端口、关闭的节不需要端口、入口端口与频道端口重合拒绝、附加端口重复拒绝、玩法主次端口相同拒绝、主机名拒绝、PortBase 无余量拒绝）；`protocol-golden` 与 `party` 两处夹具原依赖被移除的默认端口，改为显式给出模板取值。**真机未复测**：拒绝启动路径与遗留端口恢复的判据见 `PENDING.md` P-38。
+- **遗留项**：部署副本的 `server.json` 必须含全部端口键，否则新校验拒绝启动（部署副本按约定由用户自行维护）；`EntranceService` 内部 `boundPorts` 的次序缺陷未改，见 FIX-12 遗留项。
+
+### FIX-12 遗留频道端口 7001 无人监听：入口附加端口与频道端口同名互相抵消
+
+- **现象**：`server.json` 的 `Entrance.AdditionalPorts` 含 `7001`（与 `Channel.Port` 同名）时，启动日志打印「Entrance port 7001 equals the channel port; it is served by the channel listener.」，但该端口实际没有任何监听（`netstat` 无 7001 LISTENING）。影响面：入口元数据把 127.0.0.1:7001 下发给其余八个服务器组的回退记录，PVF 无频道目录时九组记录全部下发该端点——客户端选到这些组连不上。
+- **根因结论**（静态复核 `Network/EntranceService.cs:485-525`）：入口端口循环在等值判断之前先 `boundPorts.Add(port)`，命中 `port == Channel.Port` 后仅 `continue`（不建入口监听），该端口却已留在 `boundPorts`；随后 `if (boundPorts.Add(options.Channel.Port))` 返回 false，遗留频道监听一并被跳过。两处占位互相抵消。
+- **改动**：`server.json` 模板移除 `Entrance.AdditionalPorts` 整项——`7001` 与频道端口同名，是上述抵消的直接成因；`8080` 为旧代码默认入口端口的兼容项，`Entrance.Port` 取 8080 时被去重、取其他值时无客户端拨入（启动器注入 2311），两种情形下都无实际作用。移除后入口只监听 `Entrance.Port`，`Channel.Port` 恢复为遗留频道监听（绑定目录首条目身份；该键随后由下一条 CHANGE 条目取消，回退端点改为 `PortBase + 会话频道号`）。`stop.bat` 的端口探测模式同步去掉 `:8080` 并补上默认频道段 `:100xx`。该配置组合此后由启动期强校验直接拒绝（入口端口与频道端口重合即报错，见上一条 CHANGE 条目）；`EntranceService` 的 `boundPorts` 次序缺陷本身保留。
+- **验证**：静态复核如上；构建 0 警告 0 错误；全量 SelfTests 32 套件全绿（`entrance-channel-catalog` 的遗留端点断言只覆盖元数据字节，不覆盖监听绑定，故本次修复不改变其断言）。**真机复测未做**，判据见 `PENDING.md` P-38。
+- **遗留项**：`boundPorts` 次序建议改为「相等判断通过后再占位」或直接报错，现由配置校验兜住，登记于 P-38。
+
+### CHANGE 移除 GameProbe 探测监听（`ProbeService` 与 `server.json` 的 `GameProbe` 节）
+
+- **改动**：删除旁路探测组件及其全部接线——`Network/ProbeService.cs`（默认禁用的被动采集器，自行拼 hex 写日志，不参与真实客户端链路）、`ServerOptions.GameProbe` 选项、`Program.cs` 的 `AddHostedService<ProbeService>()` 注册与 `/api/status` 的 `gameProbe` 字段、`server.json` 模板的 `GameProbe` 节。关联文档同步收敛：`ADMIN_API.md` 字段表、`docs/design/00` 的「网络绑定」实测结论、`docs/design/01` 目标结构树与配置键清单、`docs/design/02` R6 与后台服务/子系统开关审计表（后台服务 6→5 个 `IHostedService`、子系统开关 5→4）、`docs/design/07` 对比表、`docs/design/09` 追踪改造表。`7001` 此后不再兼有探测端口身份，只与登录/选角入口相关（端口表见 `docs/design/02` R6.1）。
+- **验证**：解决方案构建 0 警告 0 错误；全量 SelfTests 31 套件全绿（无套件引用该组件）。
+- **遗留项**：无。**已部署的 `server.json` 无需改动**：配置绑定为 `GetSection("DAFLegacy").Get<ServerOptions>()`，未匹配的 `GameProbe` 键被忽略，不报错、不生效（部署副本按约定由用户自行维护）。
+
 ### ADD-24 数据面拓扑改走"直连通告"（路线 A）+ 登录应答按客户端读取序补全
 
 - **现象**：组队成立后实时链路不通（客户端给出网络/连接类提示）；配合 ADD-23 的现场定位进一步确认失败点在数据面拓扑而非组队协议面。

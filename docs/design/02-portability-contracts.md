@@ -157,13 +157,30 @@ Server/DAFLegacy.Server/WorldMapCatalog.cs
 
 ## R6 · 网络绑定
 
-**契约**：所有监听地址必须来自 `IPAddress.Parse`，禁止 DNS 名称解析；端口与地址全部来自配置。
+**契约**：所有监听地址必须来自 `IPAddress.Parse`，禁止 DNS 名称解析；端口与地址全部来自配置，**端口无代码默认值**——`server.json` 必须显式给出全部监听端口，缺失、越界或同一主机同一传输上的重复占用由 `ServerOptionsValidator` 在启动期拒绝（退出码 2）。
 
-**当前**：**已满足。** `Program.cs`（Kestrel 后台）、`EntranceService`（TCP，含 `AdditionalPorts`）、`GameplayDatagramService`（UDP 主/次端口）、`CharacterDatagramService`（UDP）、`ProbeService`（TCP 探测）全部使用 `IPAddress.Parse(options.*.Host)`，全仓库无 `Dns.*` 调用。
+**当前**：**已满足。** `Program.cs`（Kestrel 后台）、`EntranceService`（TCP，含 `AdditionalPorts`）、`GameplayDatagramService`（UDP 主/次端口）、`CharacterDatagramService`（UDP）全部使用 `IPAddress.Parse(options.*.Host)`，全仓库无 `Dns.*` 调用；`ServerOptions` 的全部端口属性无初始值（0 即未配置）。
 
-**目标**：保持不变，作为回归契约记录，避免后续引入主机名。
+**目标**：保持不变，作为回归契约记录，避免后续引入主机名或隐式端口。
 
-**判定**：代码检索无 `Dns.` / `Dns.GetHost*` 调用。
+**判定**：代码检索无 `Dns.` / `Dns.GetHost*` 调用；`server-options-validation` 套件覆盖缺失、重复占用、主机名与"角色屏与入口同号"四类拒绝路径。
+
+### R6.1 端口分配表（唯一定名来源）
+
+新增或调整监听端口先登记本表再落地（与 07 §4.8.3 的目录映射表同一条纪律）；表外的数字一律视为已废弃。
+
+| 端口 | 传输 | 配置键 | 作用 | 面向 |
+| --- | --- | --- | --- | --- |
+| `7001` | TCP | `Entrance.Port` | 登录/选角入口：入口握手（密钥/缓存/频道脚本/服务器组列表）、登录、建删角色、选频道 | 客户端（启动器注入端点） |
+| `7001` | UDP | `CharacterDatagram.Port` | 角色屏数据报交换。**必须与 `Entrance.Port` 同号**：客户端用启动器注入的同一端点做该交换，两键是一个端点在两种传输上的两份配置 | 客户端 |
+| `PortBase` + 频道号（模板 `10000` + 号 → 10001 起） | TCP | `Channel.PortBase` | 逐频道监听，玩法会话所在；空组回退记录与无目录单频道会话共用 `PortBase + 会话频道号`（有目录时即组 0 首频道的监听） | 客户端（入口元数据下发） |
+| `12311` / `12312` | UDP | `GameplayDatagram.PrimaryPort` / `SecondaryPort` | NAT 探测主/次端口（客户端按两端口观测到的端点比对判定 NAT 类型，不可合并为一个）、keepalive 观测、玩法数据报中继 | 客户端（NOTI 1 下发） |
+| `30000`–`30255` / `30256`–`30511` | UDP | 未实现（预留） | 组队 / PVP UDP 中继端口段，与参考工程同段位；实现时两段禁止重叠 | 客户端（中继实现后下发） |
+| `8081` | TCP | `Admin.Port` | 管理 HTTP：后台界面、`/api/*`、客户端充值/钻石网页 | 本机回环 |
+| `12222` | TCP | `Mcp.Port` | DAF-MCP 抓包网关（`Mcp.Enabled` 时） | 本机回环 |
+| `8080`、`2311`、`7002`、`7003` | — | — | **已废弃**：旧模板的入口附加端口与旧数据面端口；只出现在历史抓包记录与 CHANGELOG 里，不再使用 | — |
+
+段位约定：`7001` 独占 7000 段的登录/入口语义；`PortBase`（模板 10000）起为频道段；`12xxx` 为数据面 UDP；`30xxx` 为 UDP 中继预留；`8081`/`12222` 为本机工具面。绑定地址与通告地址不共用一个值：`Channel.Host` 与 `GameplayDatagram.Host` 既绑定又写进元数据/NOTI 1，跨机部署时必须填客户端可达的具体地址（不可用 `0.0.0.0`）；纯监听面（`Entrance.Host`、`CharacterDatagram.Host`）可用通配地址。参考工程把两者拆成 `ServerIp` 与 `AdvertisedGameIp` 两键，本项目当前共用一键，若将来需要通配绑定需先拆键。
 
 ---
 
@@ -274,10 +291,10 @@ Unhandled exception. System.IO.FileNotFoundException:
 | **服务端 CLI** | `--add-cash-all <正数>`（给全部账号加点券）、`--reset-maximum-transfer-roster` | 2 | M4 在组合根加 `--home` 时要动同一段 `args` 解析，可能顺手丢掉既有参数 |
 | **Launcher CLI** | `--no-dialog`、`--self-test`、`--install-ijl15`、`--check-d3d9`、`--account-index <N>`、`--account <名>` | 6 | M0 解耦 ijl15 时，容易以为"和 ijl15 相关"的无界面模式可以一并删——`--install-ijl15` 是**无 GUI 安装 ijl15 的唯一入口** |
 | **Admin API** | 25 个 API 端点（含 8 个 `/api/admin/*`）+ 6 个静态页面路由 | 31 | 分层不涉及路由，但组合根改动必须保证注册集合不变 |
-| **后台服务** | 6 个 `IHostedService`：`EntranceService`、`CharacterDatagramService`、`GameplayDatagramService`、`ProbeService`、`FatigueResetService`、`WeaknessRecoveryService` | 6 | 已在本设计中逐项覆盖（[01 · 4.2](01-target-architecture.md#42-模块职责要点)） |
+| **后台服务** | 5 个 `IHostedService`：`EntranceService`、`CharacterDatagramService`、`GameplayDatagramService`、`FatigueResetService`、`WeaknessRecoveryService`（原 `ProbeService` 已移除，见 `CHANGELOG.md` CHANGE 条目） | 5 | 已在本设计中逐项覆盖（[01 · 4.2](01-target-architecture.md#42-模块职责要点)） |
 | **原生测试** | CTest 用例 `ijl15_compatibility` | 1 | 已覆盖（[03 · 5.1](03-build-release-ci.md#51-buildyml-目标结构) 补上 `RUN_TESTS`）；原 `rdseed_native` 随 `DAFLegacy.RandomNative` 移至 Client 层（不进流水线） |
 | **数据源模式** | `Script.pvf` 直读 + `SkillScriptPath` 目录回退 | 2 | 已覆盖（`PvfScript/` 的目录回退） |
-| **子系统开关** | `server.json` 中 `Entrance` / `CharacterDatagram` / `GameplayDatagram` / `GameProbe` / `Drop` 的 `Enabled` | 5 | 键名与语义不变（[01 · 8.4](01-target-architecture.md#84-两个运行时配置文件归位)） |
+| **子系统开关** | `server.json` 中 `Entrance` / `CharacterDatagram` / `GameplayDatagram` / `Drop` 的 `Enabled` | 4 | 键名与语义不变（[01 · 8.4](01-target-architecture.md#84-两个运行时配置文件归位)）；原 `GameProbe` 开关随该组件移除 |
 
 ### 一处项目现状的文档缺口（非本设计引入）
 
@@ -301,7 +318,7 @@ POST  /api/admin/characters/{id}/mail         PUT   /api/admin/characters/{id}/d
 | 服务端 CLI | `--add-cash-all` 与 `--reset-maximum-transfer-roster` 仍生效（用一个临时数据目录验证） |
 | Launcher CLI | 6 个参数仍被识别（`--self-test`、`--check-d3d9` 应能无 GUI 运行并给出结果） |
 | Admin API | 服务端启动后 `/health` 与 `/api/status` 正常；后台界面能加载并成功调用至少一个 `/api/admin/*` 端点 |
-| 后台服务 | 启动日志中出现 6 个服务的注册（或按各自日志确认已运行） |
+| 后台服务 | 启动日志中出现 5 个服务的注册（或按各自日志确认已运行） |
 | 原生测试 | CTest 用例 `ijl15_compatibility` 在 Windows CI 中实际执行 |
 | 数据源模式 | 两种模式各启动一次服务端，`/api/status` 显示的脚本来源不同 |
 

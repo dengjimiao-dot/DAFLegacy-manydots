@@ -121,11 +121,11 @@ dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release 
 | `DatabasePath` | SQLite 存档路径，默认 `Data/game.sqlite`（2026-10-03 起由 `game.db` 更名，旧档手动改名即可沿用），相对路径以服务端程序目录为基准。库不存在时按基线 schema 建空库（不播种任何数据，账号与角色经 Admin API 或客户端流程创建），已存在时直接使用、不重建。 |
 
 爆率、经验倍率、深渊掉落次数与配方率、掉落开关、黑钻与活动经验加成等**游戏内容参数不在本文件**——它们以 `server_settings` 表为唯一真源，随库持久化；启动时读一次并打印生效值，改库后重启生效。频道容量（`Channel.MaximumUsers`，默认 10）在本文件 `Channel` 节；频道当前人数为在线会话数动态值；频道目录解析自 PVF（`etc/channel_info.etc` + `etc/etc.chn.str`），启动成功时打印列表；收录的 `[server]` 组号由 `Channel.ServerGroup` 配置（默认 1）。
-| `Admin` | HTTP 监听地址和端口，默认 `127.0.0.1:8081`。 |
+| `Admin` | HTTP 监听地址和端口，模板 `127.0.0.1:8081`。 |
 | `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DAFLegacy.Mcp.dll`。 |
-| `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，默认 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |
-| `Entrance` / `Channel` | 登录入口和频道连接配置。频道目录每条频道监听 `Channel.PortBase + 频道号`（默认 10000 起），`Channel.Port`（默认 7001）为遗留单频道端口。 |
-| `CharacterDatagram` / `GameplayDatagram` | 客户端 UDP 监听配置。 |
+| `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，模板 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |
+| `Entrance` / `Channel` | 登录入口和频道连接配置。入口端口 `Entrance.Port`（模板 `7001`）；`Entrance.AdditionalPorts` 可选，按需追加附加入口端口。频道目录每条频道监听 `Channel.PortBase + 频道号`（模板 10000 起）；空组回退记录与无目录单频道共用 `PortBase + 会话频道号` 的端点。 |
+| `CharacterDatagram` / `GameplayDatagram` | 客户端 UDP 监听配置：角色屏端口必须与 `Entrance.Port` 同号（模板 `7001`），玩法数据面主/次端口模板 `12311`/`12312`。 |
 | `Drop.Enabled` | 服务端掉落总开关。 |
 | `Drop.RatePercent` | 普通掉落倍率百分比，`100` 使用 PVF 原始概率。 |
 | `Drop.EconomicRate` | 金币倍率，默认 `1.0`。 |
@@ -137,9 +137,9 @@ dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release 
 | `Logging.Directory` / `Logging.FileName` | 日志落盘位置，默认 `logs/server.log`，相对路径以服务端程序目录为基准。 |
 | `Logging.MaximumFileBytes` | 单文件字节上限，超过即轮转为同名 `.1` 文件；`0` 表示不轮转。 |
 
-默认 TCP 端口为 `2311`、`7001`、`8080`，管理 HTTP 为 `8081`；默认 UDP 端口为 `2311`、`7002`、`7003`。更改网络配置时，应同步检查启动器与频道地址。
+所有监听端口必须显式配置，代码不设默认值：缺失、越界（1–65535）或同一主机同一传输上的重复占用会让服务端拒绝启动（退出码 2）并在日志逐条列出；角色屏 UDP 必须与入口 TCP 同号。模板取值——TCP：`7001`（登录/选角入口）、`10001` 起的逐频道段、`8081`（管理 HTTP）、`12222`（MCP，随 `Mcp.Enabled`）；UDP：`7001`（角色屏，随入口）、`12311`/`12312`（玩法数据面）。端口分配表见 `docs/design/02-portability-contracts.md` R6。更改网络配置时，应同步检查启动器与频道地址。
 
-组队实时链路另有三项网络环境要求（不满足时客户端会给出防火墙/网络类提示，逐项自查见 `docs/design/13-party-dataplane-and-cohort.md` §11.5）：①服务端主机放行入站 UDP 主/次端口（默认 `7002`/`7003`）与 TCP 入口/频道端口段；②服务端主机**回应入站 ICMP echo（含 1472 字节载荷）**——客户端 NAT 发现会对探测主机发 1472 字节 ICMP ping（Windows 默认不放行 ICMP echo，需启用 Echo Request 放行规则）；③跨机部署时 `Channel.Host` 与 `GameplayDatagram.Host` 必须同改为客户端可达地址。服务端日志判据：UDP 聚合行 `probe=`/`keepalive=` 计数增长，且 CMD 2 注册行的 `mtu=` 落在 `576..65507`（出现 `4294967295` 或 `0` 即该 ICMP ping 未得到回应）。
+组队实时链路另有三项网络环境要求（不满足时客户端会给出防火墙/网络类提示，逐项自查见 `docs/design/13-party-dataplane-and-cohort.md` §11.5）：①服务端主机放行入站 UDP 主/次端口（模板 `12311`/`12312`）与 TCP 入口/频道端口段；②服务端主机**回应入站 ICMP echo（含 1472 字节载荷）**——客户端 NAT 发现会对探测主机发 1472 字节 ICMP ping（Windows 默认不放行 ICMP echo，需启用 Echo Request 放行规则）；③跨机部署时 `Channel.Host` 与 `GameplayDatagram.Host` 必须同改为客户端可达地址。服务端日志判据：UDP 聚合行 `probe=`/`keepalive=` 计数增长，且 CMD 2 注册行的 `mtu=` 落在 `576..65507`（出现 `4294967295` 或 `0` 即该 ICMP ping 未得到回应）。
 
 智能体（ZCode / Claude Code 等）接入 MCP 抓包：`server.json` 里把 `Mcp.Enabled` 改为 `true` 并重启服务端，然后在 MCP 客户端配置中加入：
 

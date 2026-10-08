@@ -476,24 +476,16 @@ public sealed class EntranceService(
         }
 
         var address = IPAddress.Parse(options.Entrance.Host);
-        // M2 per-channel listeners: every catalog channel owns PortBase+number
-        // and the legacy Channel.Port keeps the first-entry identity (fallback
-        // single channel when no catalog). Entrance ports exclude Channel.Port
-        // — that port belongs to the channel listener family.
+        // M2 per-channel listeners: every catalog channel owns PortBase + number,
+        // and the fallback endpoint (empty-group records, single-channel mode)
+        // is PortBase + session channel number — the first catalog entry with a
+        // catalog, the local channel without one (docs/design/02 R6).
         var listeners = new List<(TcpListener Listener, EntranceSessionChannel? Channel)>();
         var boundPorts = new HashSet<int>();
         foreach (var port in options.Entrance.AdditionalPorts.Prepend(options.Entrance.Port))
         {
             if (port is not (> 0 and <= 65535) || !boundPorts.Add(port))
             {
-                continue;
-            }
-
-            if (port == options.Channel.Port)
-            {
-                RuntimeLogger.Info(
-                    "Entrance port {Port} equals the channel port; it is served by the channel listener.",
-                    port);
                 continue;
             }
 
@@ -517,11 +509,24 @@ public sealed class EntranceService(
                 new EntranceSessionChannel(entry.ChannelNumber, entry.DisplayName)));
         }
 
-        if (boundPorts.Add(options.Channel.Port))
+        // 无目录回退：目录里没有频道号可加，为单频道会话绑 PortBase + 会话频道号
+        // 的监听（九组回退记录与 NOTI 1 都指向它）。有目录时组 1..8 的回退记录
+        // 与组 0 首频道共用同一端点，无需额外监听。
+        if (channelDirectory.Catalog is not { Count: > 0 })
         {
-            listeners.Add((
-                new TcpListener(IPAddress.Parse(options.Channel.Host), options.Channel.Port),
-                channelDirectory.Session));
+            var fallbackPort = options.Channel.PortFor(channelDirectory.Session.Number);
+            if (fallbackPort is not (> 0 and <= 65535) || !boundPorts.Add(fallbackPort))
+            {
+                RuntimeLogger.Warn(
+                    "Fallback channel listener port {Port} is invalid or already bound; skipped.",
+                    fallbackPort);
+            }
+            else
+            {
+                listeners.Add((
+                    new TcpListener(IPAddress.Parse(options.Channel.Host), fallbackPort),
+                    channelDirectory.Session));
+            }
         }
 
         foreach (var (listener, _) in listeners)

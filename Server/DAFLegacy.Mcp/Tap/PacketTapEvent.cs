@@ -9,7 +9,7 @@ namespace DAFLegacy.Mcp;
 /// <param name="Seq">跨全部服务的全局单调事件序号，packet_watch 的续读游标。</param>
 /// <param name="Timestamp">事件时间（服务器本地时区）。</param>
 /// <param name="SessionId">产生事件的网络会话。</param>
-/// <param name="Service">会话所属监听服务，如 entrance:2311 / channel:7001 / character-datagram:2311。</param>
+/// <param name="Service">会话所属监听服务，如 entrance:7001 / channel:10001 / character-datagram:7001。</param>
 /// <param name="Direction">RX / TX / RX-UDP / TX-UDP / RX-UDP-NAT / RX-UDP-NAT-KEEPALIVE 等。</param>
 /// <param name="Type">0=NOTI 或 entrance 协议帧、1=CMD、2=UDP 数据报。</param>
 /// <param name="ProtocolId">包号（报文名对应的数字编号）；UDP 无报文名时为 255。</param>

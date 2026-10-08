@@ -6,25 +6,22 @@
     "Entrance": {
       "Enabled": true,
       "Host": "127.0.0.1",
-      "Port": 2311,
-      "AdditionalPorts": [7001, 8080]
+      "Port": 7001
     },
-    "CharacterDatagram": { "Enabled": true, "Host": "127.0.0.1", "Port": 2311 },
+    "CharacterDatagram": { "Enabled": true, "Host": "127.0.0.1", "Port": 7001 },
     "GameplayDatagram": {
       "Enabled": true,
       "Host": "127.0.0.1",
-      "PrimaryPort": 7002,
-      "SecondaryPort": 7003,
+      "PrimaryPort": 12311,
+      "SecondaryPort": 12312,
       "MonsterObjectType": 529,
       "SenderPartyIndex": 0
     },
-    "GameProbe": { "Enabled": false, "Host": "127.0.0.1", "Port": 7001 },
     "DatabasePath": "Data/game.sqlite",
     "ScriptPvfPath": "../Script.pvf",
     "SkillScriptPath": "",
     "Channel": {
       "Host": "127.0.0.1",
-      "Port": 7001,
       "PortBase": 10000,
       "MaximumUsers": 10,
       "ServerGroup": 1

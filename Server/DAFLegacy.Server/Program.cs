@@ -39,6 +39,24 @@ var moduleLogger = LoggerFactory.Create(logging => logging.AddSimpleConsole(cons
     console.TimestampFormat = "HH:mm:ss ";
 })).CreateLogger("DAFLegacy.Server.Startup");
 
+// 监听端点强校验（docs/design/02 R6）：全部端口无代码默认值，必须显式配置；
+// 缺失、越界、非 IP 字面量主机名或同一主机同一传输上的重复占用一律拒绝启动，
+// 避免以隐式端口监听或静默丢弃一条监听。
+var endpointErrors = ServerOptionsValidator.ValidateListenerEndpoints(options);
+if (endpointErrors.Count > 0)
+{
+    foreach (var endpointError in endpointErrors)
+    {
+        moduleLogger.LogError("{EndpointConfigurationError}", endpointError);
+    }
+
+    moduleLogger.LogError(
+        "Refusing to start: {ErrorCount} listener endpoint configuration error(s) in server.json.",
+        endpointErrors.Count);
+    Environment.ExitCode = 2;
+    return;
+}
+
 // Script.pvf 是协议与玩法数据的唯一来源（R9）：缺失则任何游戏功能都无从提供。
 // 仅记录错误，不阻断启动；ScriptFileSystem 会回退到目录源或空索引。
 var configuredScriptPvfPath = options.ScriptPvfPath;
@@ -128,7 +146,6 @@ builder.Services.AddHostedService<FatigueResetService>();
 builder.Services.AddHostedService<WeaknessRecoveryService>();
 builder.Services.AddHostedService(serviceProvider =>
     serviceProvider.GetRequiredService<GameplayDatagramService>());
-builder.Services.AddHostedService<ProbeService>();
 
 // 统一文件日志（docs/design/07 §11 日志统一）：默认关闭，开启后才挂有界队列
 // 文件日志器（全部 ILogger 事件与控制台共享同一批记录，日志器随主机 Dispose
@@ -351,7 +368,6 @@ app.MapGet("/api/status", (RuntimeState runtime, ScriptFileSystem scripts, ItemC
             $"{options.GameplayDatagram.Host}:{options.GameplayDatagram.SecondaryPort}/udp"
         }
         : [],
-    GameProbe = options.GameProbe.Enabled ? $"{options.GameProbe.Host}:{options.GameProbe.Port}" : "disabled",
     Random = GameRandomSource.Shared.GetStatus(),
     ChannelScriptConfigured = scripts.FileExists("etc/channel_info.etc"),
     CachedItems = items.Count

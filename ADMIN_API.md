@@ -109,7 +109,6 @@ Invoke-RestMethod `
 | `entrance` | 入口 TCP 监听地址 |
 | `characterDatagram` | 角色 UDP 监听地址或 `disabled` |
 | `gameplayDatagram` | 游戏 UDP 主、副监听地址 |
-| `gameProbe` | Probe 状态 |
 | `random` | RDSEED、系统 CSPRNG 和回退源状态及计数 |
 | `channelScriptConfigured` | PVF 是否存在 `etc/channel_info.etc` |
 | `cachedItems` | 启动时缓存的物品定义数量 |

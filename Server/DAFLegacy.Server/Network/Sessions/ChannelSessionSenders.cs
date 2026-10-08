@@ -98,9 +98,11 @@ public sealed partial class ChannelSessionSenders(
         // 唯一真源）：拥挤度（在线/容量 > 95%）逐频道生效，未绑定连接的遗留端点
         // 记录取其绑定频道的计数。
         var channel = options.Channel;
+        // 回退端点 = PortBase + 会话频道号：空组记录与单频道会话共用组 0 首频道的
+        // 监听（无目录时该监听由 EntranceService 的回退分支绑定）。
         var defaults = new EntranceChannel(
             channel.Host,
-            channel.Port,
+            channel.PortFor(channelDirectory.Session.Number),
             channel.MaximumUsers,
             townPresence.GetChannelPopulation(channelDirectory.Session.Number));
         var metadata = channelDirectory.Catalog is { Count: > 0 } catalog

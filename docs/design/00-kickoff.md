@@ -107,7 +107,7 @@ Unhandled exception. System.IO.FileNotFoundException:
 | --- | --- |
 | **代码页 936/949 在非 Windows 上是否可用？** | **可用。** `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)` 后，CP936(gb2312)、CP949(ks_c_5601-1987)、CP51949(euc-kr) 在 macOS 上全部可解析，往返转换正常。PVF 路径表用 CP949 解码这一点在 Linux 上不会失效 |
 | **`Encoding.Default` 跨平台是否一致？** | **一致，均为 UTF-8。** .NET Core 及以后 `Encoding.Default` 恒为 UTF-8，不再依赖平台 ANSI 代码页。`ScriptFileSystem.ReadAllText` 的默认编码行为在各平台相同 |
-| **网络绑定是否依赖主机名解析？** | **不依赖。** `Program.cs`、`EntranceService`、`GameplayDatagramService`、`CharacterDatagramService`、`ProbeService` 全部使用 `IPAddress.Parse(...)`，无 `Dns.*` 调用 |
+| **网络绑定是否依赖主机名解析？** | **不依赖。** `Program.cs`、`EntranceService`、`GameplayDatagramService`、`CharacterDatagramService` 全部使用 `IPAddress.Parse(...)`，无 `Dns.*` 调用 |
 
 ### 3.4 已确认存在的 Windows 专属配置
 

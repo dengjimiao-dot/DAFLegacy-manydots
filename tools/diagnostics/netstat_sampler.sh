@@ -5,7 +5,7 @@ out="netstat_samples.txt"
 end=$((SECONDS+300))
 while [ $SECONDS -lt $end ]; do
   ts=$(date +%H:%M:%S.%3N)
-  netstat -ano -p tcp | grep "127.0.0.1" | grep -E ":(200[0-9][0-9]|7001|2311|7002|7003) *127" | while read -r line; do
+  netstat -ano -p tcp | grep "127.0.0.1" | grep -E ":(7001|100[0-9][0-9]|8081|12222|1231[12]) *127" | while read -r line; do
     echo "$ts $line"
   done >> "$out"
   sleep 0.3

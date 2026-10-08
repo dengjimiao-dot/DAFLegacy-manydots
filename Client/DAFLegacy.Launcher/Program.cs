@@ -379,7 +379,7 @@ internal sealed class LauncherOptions
 {
     public string ClientPath { get; set; } = Program.DefaultClientPath;
     public string EntranceHost { get; set; } = "127.0.0.1";
-    public int EntrancePort { get; set; } = 2311;
+    public int EntrancePort { get; set; }
     public string Account { get; set; } = "test";
     public string Password { get; set; } = "test";
     public List<LauncherAccountProfile> Accounts { get; set; } = [];

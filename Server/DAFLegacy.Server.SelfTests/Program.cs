@@ -149,11 +149,20 @@ RegisterSelfTest("sqlite-infrastructure", () =>
     SqliteInfrastructureSmokeTests.Run(Check);
     return Task.CompletedTask;
 });
+RegisterSelfTest("server-options-validation", () =>
+{
+    ServerOptionsValidatorSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
 
 // 既有 Program.cs 内联检查整体作为一个套件运行:其状态(目录表、名册
 // 注册表等)按原有线性顺序共享,拆分为独立套件随后续阶段逐步抽取。
 async Task RunProgramInlineSuite()
 {
+    // 兜底应答表按配置通告端点（端口无默认值）：给出模板取值供本套件复用。
+    var fallbackOptions = new ServerOptions();
+    fallbackOptions.GameplayDatagram.PrimaryPort = 12311;
+    fallbackOptions.GameplayDatagram.SecondaryPort = 12312;
     var characterSessions = new CharacterSessionRegistry(
         NullLogger<CharacterSessionRegistry>.Instance);
     var sharedCharacterId = Guid.NewGuid();
@@ -584,17 +593,17 @@ async Task RunProgramInlineSuite()
         "compressed encrypted script round-trip");
 
     var metadata = EntranceMetadata.BuildSingleLocalChannel(
-        new EntranceChannel("127.0.0.1", 7001, 100, 1));
+        new EntranceChannel("127.0.0.1", 10001, 100, 1));
     Check(metadata.Length == 652, "nine-group channel metadata length");
     Check(BinaryPrimitives.ReadInt32LittleEndian(metadata) == 9, "channel metadata group count");
     Check(Encoding.ASCII.GetString(metadata, 4, 4) == "cain", "first channel group name");
     Check(Encoding.ASCII.GetString(metadata, 580, 5) == "anton", "DAFLegacy anton channel group");
     Check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(24, 4)) == 1, "first group channel count");
     Check(Encoding.ASCII.GetString(metadata, 56, 9) == "127.0.0.1", "channel endpoint is loopback");
-    Check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(72, 4)) == 7001, "channel endpoint port");
+    Check(BinaryPrimitives.ReadInt32LittleEndian(metadata.AsSpan(72, 4)) == 10001, "channel endpoint port");
 
     var exitRequest = new PacketFrame(1, (byte)CmdPacketType.EXIT, 0, [0x34, 0x12]);
-    var exitReply = FallbackCommandReplies.TryCreateReply(exitRequest);
+    var exitReply = FallbackCommandReplies.TryCreateReply(exitRequest, fallbackOptions);
     Check(exitReply is not null, "channel exit command receives a reply");
     Check(exitReply?.Type == 1 && exitReply.ProtocolId == 3, "channel reply preserves command type and id");
     Check(exitReply?.TotalLength == 7, "server command reply uses its six-byte header");
@@ -617,7 +626,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.RETURN_SELECT_CHARACTER,
         0,
         [0x35, 0x12]);
-    var returnSelectReply = FallbackCommandReplies.TryCreateReply(returnSelectRequest);
+    var returnSelectReply = FallbackCommandReplies.TryCreateReply(returnSelectRequest, fallbackOptions);
     Check(returnSelectReply is not null
         && returnSelectReply.Type == GameProtocolConstants.CommandPacketType
         && returnSelectReply.ProtocolId == (byte)CmdPacketType.RETURN_SELECT_CHARACTER
@@ -629,7 +638,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.USE_SKILL,
         0,
         [0x36, 0x12, 0x2A, 0x01, 0x00]);
-    var useSkillReply = FallbackCommandReplies.TryCreateReply(useSkillRequest);
+    var useSkillReply = FallbackCommandReplies.TryCreateReply(useSkillRequest, fallbackOptions);
     Check((byte)CmdPacketType.USE_SKILL == 41
         && useSkillReply is not null
         && useSkillReply.Type == GameProtocolConstants.CommandPacketType
@@ -641,7 +650,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.CALL_MEMER_LIST,
         0,
         [0x37, 0x00]);
-    var privateStorePollReply = FallbackCommandReplies.TryCreateReply(privateStorePollRequest);
+    var privateStorePollReply = FallbackCommandReplies.TryCreateReply(privateStorePollRequest, fallbackOptions);
     Check(privateStorePollReply is not null
         && privateStorePollReply.ProtocolId == 82
         && privateStorePollReply.Payload.SequenceEqual(
@@ -656,7 +665,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.REQUEST_BLACKLIST,
         0,
         [0x38, 0x00]);
-    var exchangeCharacterInfoReply = FallbackCommandReplies.TryCreateReply(exchangeCharacterInfoRequest);
+    var exchangeCharacterInfoReply = FallbackCommandReplies.TryCreateReply(exchangeCharacterInfoRequest, fallbackOptions);
     Check(exchangeCharacterInfoReply is not null
         && exchangeCharacterInfoReply.ProtocolId == 130
         && exchangeCharacterInfoReply.Payload.SequenceEqual(new byte[] { 1, 0 }),
@@ -812,7 +821,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.CREATE_CHARACTER,
         0,
         [0x02, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, (byte)'1', (byte)'3']);
-    var createCharacterReply = FallbackCommandReplies.TryCreateReply(createCharacterRequest);
+    var createCharacterReply = FallbackCommandReplies.TryCreateReply(createCharacterRequest, fallbackOptions);
     Check(createCharacterReply is not null, "create-character command receives a reply");
     Check(
         createCharacterReply?.Type == GameProtocolConstants.CommandPacketType
@@ -828,7 +837,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.DELETE_CHARACTER,
         0,
         [0x04, 0x00, 0x03]);
-    var deleteCharacterReply = FallbackCommandReplies.TryCreateReply(deleteCharacterRequest);
+    var deleteCharacterReply = FallbackCommandReplies.TryCreateReply(deleteCharacterRequest, fallbackOptions);
     Check(deleteCharacterReply is not null
         && deleteCharacterReply.Type == GameProtocolConstants.CommandPacketType
         && deleteCharacterReply.ProtocolId == (byte)CmdPacketType.DELETE_CHARACTER
@@ -840,7 +849,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.SELECT_CHARACTER,
         0,
         [0x03, 0x00, 0x00]);
-    var selectCharacterReply = FallbackCommandReplies.TryCreateReply(selectCharacterRequest);
+    var selectCharacterReply = FallbackCommandReplies.TryCreateReply(selectCharacterRequest, fallbackOptions);
     Check(selectCharacterReply is not null, "select-character command receives a reply");
     Check(
         selectCharacterReply?.Type == GameProtocolConstants.CommandPacketType
@@ -7279,7 +7288,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.CHECK_CONNECTION,
         0,
         [0, 0, .. challenge]);
-    var channelInfo = FallbackCommandReplies.TryCreateReply(checkCommand, challenge);
+    var channelInfo = FallbackCommandReplies.TryCreateReply(checkCommand, challenge, fallbackOptions);
     Check(channelInfo?.Type == GameProtocolConstants.NotificationPacketType,
         "check-connection command produces a notification");
     Check(channelInfo?.ProtocolId == (byte)NotiPacketType.CHANNELINFO,
@@ -7302,9 +7311,9 @@ async Task RunProgramInlineSuite()
             && BinaryPrimitives.ReadUInt32LittleEndian(channelInfoPayload.Slice(37, 4)) == 9
             && channelInfoPayload.Slice(41, 9).SequenceEqual("127.0.0.1"u8),
             "CHANNELINFO carries one length-prefixed loopback host");
-        Check(BinaryPrimitives.ReadUInt32LittleEndian(channelInfoPayload.Slice(50, 4)) == 2311
-            && BinaryPrimitives.ReadUInt32LittleEndian(channelInfoPayload.Slice(54, 4)) == 2311,
-            "CHANNELINFO advertises both DAFLegacy datagram ports");
+        Check(BinaryPrimitives.ReadUInt32LittleEndian(channelInfoPayload.Slice(50, 4)) == 12311
+            && BinaryPrimitives.ReadUInt32LittleEndian(channelInfoPayload.Slice(54, 4)) == 12312,
+            "CHANNELINFO advertises the configured gameplay datagram ports");
     }
 
     var clientSeed = 0x4321u;
@@ -7404,7 +7413,7 @@ async Task RunProgramInlineSuite()
         && decodedProtocol8.Body.SequenceEqual(new byte[] { 3, 0, 0xFF, 0xFF, 2 }),
         "captured DAFLegacy short command re-anchors its independent seed");
 
-    var loginReply = FallbackCommandReplies.TryCreateReply(decodedLogin);
+    var loginReply = FallbackCommandReplies.TryCreateReply(decodedLogin, fallbackOptions);
     Check(loginReply?.ProtocolId == (byte)CmdPacketType.LOGIN, "login command receives a reply");
     // 2026-10-08 IDA 复核:CMD 1 应答 case(0x40F2E0)读 result + 4 标志 + u32 账号 +
     // dstr 中继主机 + u32 端口1 + u32 端口2 + u8×2,缺字段会让客户端越包尾取残留值
@@ -7420,7 +7429,7 @@ async Task RunProgramInlineSuite()
         (byte)CmdPacketType.GET_USERINFO,
         0,
         [0x34, 0x12, 0xFF, 0xFF, 0x02]);
-    var emptyUserInfo = FallbackCommandReplies.TryCreateReply(userInfoRequest);
+    var emptyUserInfo = FallbackCommandReplies.TryCreateReply(userInfoRequest, fallbackOptions);
     Check(emptyUserInfo?.Type == GameProtocolConstants.NotificationPacketType,
         "GET_USERINFO produces a notification");
     Check(emptyUserInfo?.ProtocolId == (byte)NotiPacketType.USERINFO,

@@ -26,7 +26,7 @@
 | 任务/技能/属性加点 | 已实现 | `Network/Handlers/Quest/`、`Skill/` |
 | 副本流程(进入/加载/结算/翻牌/疲劳虚弱/通关经验) | 已实现;翻牌为手动选择,A21 式 4s 自动翻+门锁维持 §5 暂不结论 | `Network/Handlers/Dungeon/`、`Game/Dungeon/` |
 | 城镇 presence(位置/区域/同屏/频道隔离) | 已实现(`TownPresenceService` 中枢) | `docs/design/10` G4 |
-| 多频道目录/按频道监听 | 已实现(M1 目录+M2 逐频道监听,`PortBase` 默认 10000) | §4.3;ADD-14 |
+| 多频道目录/按频道监听 | 已实现(M1 目录+M2 逐频道监听,`PortBase` 模板 10000) | §4.3;ADD-14 |
 | NAT 探测 + 单口中继数据面 | 已实现(限流/长度校验/端点按会话认领/转发结构门/槽位观测) | `docs/design/10` §4;ADD-18/22 |
 | 组队(创建/邀请/退/踢/转让/名册/端点表/队伍聊天) | 已实现(真机复测归 P-36);拾取分配制未实现,现行服务端裁决的个人拾取 | `Game/Party/`、`PartyCoordinator`;ADD-20 |
 | 聊天(区域/私聊/队伍/喇叭) | 已实现(按客户端 case 130 路由;密语黑名单拦截待 NOTI 65 语义定案) | `SendMessageHandler`;§3.5 落地 |
@@ -194,7 +194,7 @@
 - **注意**:60A1 客户端错误码表与 A21 是否同值需实测(建角失败弹窗逐码验证);DELETE_CHARACter 的"请求带名+4B ACK+禁补名册"是 A21 客户端约束,**60A1 下保持 DFL 现有 2B ACK+补名册不变**(对比文档 §3.7 结论),只细分错误码数值。
 - **验收**:重名/非法名/槽满三 case 客户端弹正确提示。
 
-### 4.3 多频道生成与频道目录(P1) ✅ 已落地(M1+M2 全量,ADD-14;PortBase 默认 10000)
+### 4.3 多频道生成与频道目录(P1) ✅ 已落地(M1+M2 全量,ADD-14;PortBase 模板 10000)
 
 - **目标**:DFL 现为单频道(server.json `Channel` 节 → `EntranceMetadata.BuildSingleLocalChannel` 固定 9 组×1 频道,`Network/Sessions/ChannelSessionSenders.cs:71` LoadContent);参考 A21 频道生成链路(PVF 频道脚本 → 目录 → 按频道监听 → 列表下发)回填为目录驱动的多频道。对应对比文档差距项 10 的前半(频道目录/生成);频道准入/顶号编排放 M2。
 - **A21 参考链路**(出处均为 A21 `Server/DfoServer`):
@@ -206,7 +206,7 @@
 - **号位错位警示**:A21 频道层 11/12=频道表请求、5/6=脚本版本、0xB/0xC=CONNECT 密钥;60A1 入口 11/12=密钥交换、5/6=缓存判定、9/10=脚本下载、1/3=元数据。语义族对应、号位不同,严禁按号直译(沿用 §2.2 结论)。
 - **设计**(两期):
   - M1 目录+元数据(零监听改动,已实现):频道目录唯一真源=PVF 内 `etc/channel_info.etc`(与协议 9 下发脚本同文件),显示名经 `etc/etc.chn.str` 名称引用解析(`ChannelCatalog.TryParseChannelStringTable`,未解析行丢弃);server.json 不提供频道目录配置,`Channel` 节收缩为协议面身份 Host/Port/ServerNumber + 容量 `MaximumUsers`(默认 10)。`Network/Protocol/ChannelCatalog.cs` 解析 `[server]` 组 1 频道行(只取组 1,与参考项目一致),`GameWorld/EntranceChannelDirectory.cs` 启动期一次解析并打印频道列表,`EntranceMetadata.BuildChannels` 组 0 承载目录频道(记录名组合为「显示名 + 空格 + 频道号」后 CP936 写入——客户端从记录名提取全部数字推频道号,显示名不带数字即推出 0 而整组脱靶,见风险④与 `CHANGELOG.md` FIX-06)、其余 8 组回落单频道默认记录(回退名常量 `Local Channel 1`,沿用真机验证字节);各频道 host:port 统一指向现游戏监听,会话频道=目录首条目(NOTI 1 `displayName/channelNumber`、NOTI 130 频道字段与经验加成键同源,既有先例 [packet-detail-connection-60cn.md](../protocol/packet-detail-connection-60cn.md));`CurrentUsers` 改为在线会话数动态值(`CharacterSessionRegistry.SessionCount`),元数据随每次握手现建;PVF 无有效 etc 行时回退现行单频道元数据,字节不变。
-  - M2 按频道监听（已实现，同进程形态）：组合根为目录里每条频道开独立 TCP 监听，端口 = `Channel.PortBase + 频道号`（`PortBase` 新增于 server.json `Channel` 节，默认 10000；60A1 端口由元数据下发，客户端无固定约定）；`Channel.Port`（默认 7001）恒保留为**遗留频道端口**，绑定目录首条目身份，承载其余八组回退记录的端点与旧配置直连兼容。入口元数据随之按记录写各自端点（组 0 目录频道 = PortBase+号，其余八组回退记录 = 遗留端口）。accept 时把监听器绑定的频道传入连接泵，`ChannelSessionState.SessionChannel` 落位；NOTI 1 `channelNumber/displayName`、喇叭 NOTI 130 的 flag 字节、频道经验加成（`DungeonExperienceCatalog` 按 etc「额外经验比例」列逐频道懒加载）全部改读会话绑定频道；在线人数逐频道计数（`CharacterSessionRegistry` 连接级 +1/-1），元数据 CurrentUsers 按频道记录取值，拥挤度逐频道生效；城镇名册携带频道号，同区域快照按频道过滤（FIX-08，不同频道居民互不可见，区域聊天随之按频道隔离）。喇叭广播仍发全体会话：flag=发送者频道号，客户端按「flag==本机频道→聊天行+气泡，否则仅横幅」的原生分流渲染，跨频道收件人自动走横幅分支。PVF 无目录时回退单频道：仅 `Channel.Port` 一个监听，行为与 M1 字节不变。频道准入/顶号编排（对比文档差距项 10 后半）仍留后续。
+  - M2 按频道监听（已实现，同进程形态）：组合根为目录里每条频道开独立 TCP 监听，端口 = `Channel.PortBase + 频道号`（`PortBase` 新增于 server.json `Channel` 节，模板 10000；60A1 端口由元数据下发，客户端无固定约定）；空组回退记录与无目录单频道会话共用 `PortBase + 会话频道号` 的端点（2026-10-08 端口表对齐后取消独立的遗留频道端口键，见 `CHANGELOG.md` 与 `docs/design/02` R6）。入口元数据随之按记录写各自端点（组 0 目录频道 = PortBase+号，其余八组回退记录 = 回退端点）。accept 时把监听器绑定的频道传入连接泵，`ChannelSessionState.SessionChannel` 落位；NOTI 1 `channelNumber/displayName`、喇叭 NOTI 130 的 flag 字节、频道经验加成（`DungeonExperienceCatalog` 按 etc「额外经验比例」列逐频道懒加载）全部改读会话绑定频道；在线人数逐频道计数（`CharacterSessionRegistry` 连接级 +1/-1），元数据 CurrentUsers 按频道记录取值，拥挤度逐频道生效；城镇名册携带频道号，同区域快照按频道过滤（FIX-08，不同频道居民互不可见，区域聊天随之按频道隔离）。喇叭广播仍发全体会话：flag=发送者频道号，客户端按「flag==本机频道→聊天行+气泡，否则仅横幅」的原生分流渲染，跨频道收件人自动走横幅分支。PVF 无目录时回退单频道：仅绑 `PortBase + 会话频道号` 一个监听，行为与 M1 字节不变。频道准入/顶号编排（对比文档差距项 10 后半）仍留后续。
 - **改动面**:`Network/Protocol/EntranceMetadata.cs`(BuildChannels 按频道端点)、`Network/Sessions/ChannelSessionSenders.cs`(LoadContent 目录化)、`Infrastructure/ServerOptions.cs`(Channel 节 + PortBase)、组合根监听编排(`Network/EntranceService.cs` 逐频道监听 + `Network/Timers/ClientWhenAnyHandler.cs` 绑定频道)、会话频道状态(`Network/Sessions/ChannelSessionState.cs`)、SelfTests 元数据字节断言。
 - **风险**:①组名表 109 项中 DFL 只验证前 9 名,目录引入新组名必须先真机验证命中;②A21 容量标定(150/250/100)为 A21 抓包结论,60A1 无对应标定,容量值不照搬、按配置;③M2 后同端口多频道不再存在,会话归属由监听端口唯一决定,NOTI 1 `channelNumber` 与 NOTI 130 频道字段同源于会话绑定频道([packet-detail-chat-60cn.md](../protocol/packet-detail-chat-60cn.md));④显示名取全部数字拼接为频道号,组名/显示名含数字即错号,显示名完全不带数字同样脱错(推出 0 号必然脱靶,FIX-06);现于目录解析丢弃含数字显示名的行,构造期组合记录名并二次拒绝(客户端 atol 语义,两级校验已落地);⑤每频道一个监听端口(现网目录 38 个),主机若绑定非回环地址需在防火墙放行整段端口。
 - **验收**:SelfTests 多组多频道元数据字节断言(布局/约束拒绝/单频道回归不变);真机:`_ChannelTest` dump 与元数据逐字节对照、选频 UI 显示 N 频道并按拥挤阈值表现、进游戏后 NOTI 130 频道号与所选一致。

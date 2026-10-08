@@ -454,7 +454,7 @@ public enum CommandPhase { Any, Authenticated, CharacterSelected, InDungeon }
 | 装配 | Program.cs `AddHostedService` + ctor 注入 | 手写组合根 ServerRuntimeBuilder(1,000 行)+ 8 个纯参数容器,无 DI 容器 |
 | 测试 | 20 文件 13,686 行;Program.cs 单文件 9,647 行 | 75 文件 45,609 行;SelfTestRegistry + `--selftest-xxx` 单跑 / `--selftest-all` 汇总表 |
 | 可观测 | LogPacket:报文名反查 + 明文解码 + 原始字节(运行态);PacketDumper 黄金字节库 | FileLogger 全局静态(有界队列 + 后台写);PacketFileLogger 可选逐包 hex(默认关) |
-| UDP | GameplayDatagram 双端口玩法同步 + ProbeService 被动收集 | PartyUdpRelay TURN 式中继(默认关,env 门控);HP% 实际走 TCP(0x00A6) |
+| UDP | GameplayDatagram 双端口玩法同步 | PartyUdpRelay TURN 式中继(默认关,env 门控);HP% 实际走 TCP(0x00A6) |
 
 ### 10.2 架构优劣分析(协议处理视角)
 

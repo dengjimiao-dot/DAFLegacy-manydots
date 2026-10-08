@@ -1,7 +1,7 @@
 {
   "ClientPath": "..\\DNF.exe",
   "EntranceHost": "127.0.0.1",
-  "EntrancePort": 2311,
+  "EntrancePort": 7001,
   "Account": "test",
   "Password": "test",
   "Accounts": [

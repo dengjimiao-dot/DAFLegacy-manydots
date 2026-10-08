@@ -2,11 +2,12 @@
 setlocal
 
 rem Stop DAFLegacy.Server.exe and verify its ports are released.
-rem Default ports from server.json: admin 8081, entrance 2311/7001/8080 (TCP),
-rem character datagram 2311 (UDP), gameplay datagram 7002/7003 (UDP).
+rem Template ports from server.json: admin 8081 (TCP), entrance 7001 (TCP),
+rem channels Channel.PortBase+number 10001+ (TCP), character datagram 7001 (UDP),
+rem gameplay datagram 12311/12312 (UDP).
 
 set "SERVER_EXE=DAFLegacy.Server.exe"
-set "PORT_PATTERNS=:8081[^0-9].*LISTENING :8080[^0-9].*LISTENING :7001[^0-9].*LISTENING :2311[^0-9].*LISTENING :2311[^0-9].*\*:\* :7002[^0-9].*\*:\* :7003[^0-9].*\*:\*"
+set "PORT_PATTERNS=:8081[^0-9].*LISTENING :7001[^0-9].*LISTENING :100[0-9][0-9][^0-9].*LISTENING :7001[^0-9].*\*:\* :1231[12][^0-9].*\*:\*"
 
 tasklist /FI "IMAGENAME eq %SERVER_EXE%" 2>nul | find /I "%SERVER_EXE%" >nul
 if errorlevel 1 (

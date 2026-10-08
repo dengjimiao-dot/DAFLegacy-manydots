@@ -11,7 +11,7 @@ public sealed class PacketTapFilter
     /// <summary>包类型："noti"（含 entrance 协议帧）、"cmd"、"udp"。</summary>
     public string[]? Kinds { get; set; }
 
-    /// <summary>服务名包含匹配（大小写不敏感），如 "channel" 命中 "channel:7001"。</summary>
+    /// <summary>服务名包含匹配（大小写不敏感），如 "channel" 命中 "channel:10001"。</summary>
     public string[]? Services { get; set; }
 
     /// <summary>方向前缀匹配，如 "RX" 命中 "RX-UDP" 系列。</summary>

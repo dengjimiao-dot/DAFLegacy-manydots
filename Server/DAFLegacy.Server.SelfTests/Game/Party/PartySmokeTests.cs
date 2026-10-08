@@ -498,13 +498,17 @@ internal static class PartySmokeTests
         // real delivery channels.
         var registry = new CharacterSessionRegistry(NullLogger<CharacterSessionRegistry>.Instance);
         var town = new TownPresenceService(registry);
+        // 端口无代码默认值：夹具显式给出模板取值（组队端点表通告该端口）。
+        var options = new ServerOptions();
+        options.GameplayDatagram.PrimaryPort = 12311;
+        options.GameplayDatagram.SecondaryPort = 12312;
         var datagram = new GameplayDatagramService(
-            new ServerOptions(),
+            options,
             new RuntimeState(),
             town
             );
         var coordinator = new PartyCoordinator(
-            new ServerOptions(),
+            options,
             registry,
             town,
             datagram
@@ -623,7 +627,7 @@ internal static class PartySmokeTests
         // SET_PARTY_INFO; the formation refresh carries both records.
         // Per-recipient endpoint table: the recipient's own record keeps its
         // real endpoint while peer records advertise the server's gameplay
-        // listener (127.0.0.1:7002, port LE 5A 1B) because party datagrams
+        // listener (127.0.0.1:12311, port LE 17 30) because party datagrams
         // relay through it. Record stride is 21 bytes. The reference order is
         // endpoints pre-roster, accept ack, roster, endpoints post-roster
         // (rebinding onto the final member objects), host designation.
@@ -634,16 +638,16 @@ internal static class PartySmokeTests
             && endpointsA[1].Payload[11] == 0x11
             && endpointsA[1].Payload[12] == 0x27
             && endpointsA[1].Payload[22] == 0x02
-            && endpointsA[1].Payload[32] == 0x5A
-            && endpointsA[1].Payload[33] == 0x1B
+            && endpointsA[1].Payload[32] == 0x17
+            && endpointsA[1].Payload[33] == 0x30
             // 记录步长 21:NAT 字节在 +16(记录 0 → 载荷 [17],记录 1 → [38])。
             // 上报值 2/3 必须被压成 0,客户端才会走直连 UDP 分支。
             && endpointsA[1].Payload[17] == GameDatagramProtocol.AdvertisedDirectNatType
             && endpointsA[1].Payload[38] == GameDatagramProtocol.AdvertisedDirectNatType
             && endpointsA[2].Payload.AsSpan()
                 .SequenceEqual(endpointsA[1].Payload)
-            && endpointsB[0].Payload[11] == 0x5A
-            && endpointsB[0].Payload[12] == 0x1B
+            && endpointsB[0].Payload[11] == 0x17
+            && endpointsB[0].Payload[12] == 0x30
             && endpointsB[0].Payload[32] == 0x12
             && endpointsB[1].Payload.AsSpan()
                 .SequenceEqual(endpointsB[0].Payload),
@@ -746,13 +750,17 @@ internal static class PartySmokeTests
     {
         var registry = new CharacterSessionRegistry(NullLogger<CharacterSessionRegistry>.Instance);
         var town = new TownPresenceService(registry);
+        // 端口无代码默认值：夹具显式给出模板取值（组队端点表通告该端口）。
+        var options = new ServerOptions();
+        options.GameplayDatagram.PrimaryPort = 12311;
+        options.GameplayDatagram.SecondaryPort = 12312;
         var datagram = new GameplayDatagramService(
-            new ServerOptions(),
+            options,
             new RuntimeState(),
             town
             );
         var coordinator = new PartyCoordinator(
-            new ServerOptions(),
+            options,
             registry,
             town,
             datagram

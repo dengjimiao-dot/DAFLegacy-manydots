@@ -101,11 +101,11 @@
 
 | 面 | 现行 | 依据 |
 | --- | --- | --- |
-| 入口 TCP | `Entrance`(代码默认 8080;部署配置取 2311,附加 7001/8080) | `Infrastructure/ServerOptions.cs:13`、部署配置 |
-| 频道 TCP | 每频道一条监听,端口 = `Channel.PortBase + 频道号`(默认 10000 起) | `Infrastructure/ServerOptions.cs:58-79` |
+| 入口 TCP | `Entrance`(端口必须显式配置,无代码默认值;模板取 7001) | `Infrastructure/ServerOptions.cs:13`、部署配置 |
+| 频道 TCP | 每频道一条监听,端口 = `Channel.PortBase + 频道号`(模板 10000 起);空组回退记录与无目录单频道会话共用 `PortBase + 会话频道号`(即组 0 首频道的监听,无目录时由回退分支单独绑定) | `Infrastructure/ServerOptions.cs:58-79` |
 | 频道信息的端点下发 | NOTI 1 携带 **`GameplayDatagram.Host` 串** + 主/次端口 | `Network/Handlers/Connection/CheckConnectionHandler.cs:36-46` |
-| 玩法/NAT UDP | 双端口(默认 7002 / 7003):NAT 探测回显、keepalive 观测、**玩法数据报中继** | `Network/GameplayDatagramService.cs:195-253` |
-| 角色选择 UDP | 独立 `CharacterDatagram`(默认 2311),服务 1.0.1.9 角色屏交换,与组队无关 | `Network/CharacterDatagramService.cs` |
+| 玩法/NAT UDP | 双端口(模板 12311 / 12312):NAT 探测回显、keepalive 观测、**玩法数据报中继** | `Network/GameplayDatagramService.cs:195-253` |
+| 角色选择 UDP | 独立 `CharacterDatagram`(模板 7001,与入口 TCP 同号),服务 1.0.1.9 角色屏交换,与组队无关 | `Network/CharacterDatagramService.cs` |
 | TCP 中继 | 无 | — |
 
 ### 3.2 NAT 探测(已按 10 号文档加固的形态)
@@ -293,7 +293,7 @@
 
 | 面 | 要求 | 自查判据 |
 | --- | --- | --- |
-| 服务端主机端口 | 放行入站 UDP 主/次端口(默认 7002/7003);放行入站 TCP(入口 2311/7001/8080 + 频道段 `PortBase+1..N`,默认 10001 起) | 服务端 UDP 聚合行 `probe=`/`keepalive=` 计数增长 |
+| 服务端主机端口 | 放行入站 UDP 主/次端口(模板 12311/12312);放行入站 TCP(入口 7001 + 频道段 `PortBase+1..N`,模板 10001 起) | 服务端 UDP 聚合行 `probe=`/`keepalive=` 计数增长 |
 | 服务端主机 ICMP | **回应入站 ICMP echo(含 1472 字节载荷)**。Windows 默认不放行,需启用 File and Printer Sharing (Echo Request – ICMPv4-In) 或自建 ICMPv4-In 放行规则;macOS/Linux 默认回应,但需排除防火墙隐蔽模式与第三方防火墙 | CMD 2 注册行 `mtu=` 是否落在 576..65507;出现 4294967295(-1)或 0 即该 ping 未得到回应 |
 | 客户端主机 | 允许游戏进程入站 UDP(系统防火墙弹窗必须点允许;被拒后服务端中继来的数据报会被丢弃);不阻断出站 UDP/ICMP | 副本内同步阶段聚合行 `relayed` 增长 |
 | 通告地址(G-7) | 通告地址必须是客户端可达的地址:同机用回环;跨机改服务端 LAN IP 并**同时改 `Channel.Host` 与 `GameplayDatagram.Host`**,再按上表放行 | 客户端 NOTI 1 收到的探测主机与实际可达地址一致 |

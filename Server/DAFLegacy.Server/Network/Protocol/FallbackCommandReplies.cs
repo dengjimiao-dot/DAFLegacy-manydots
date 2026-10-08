@@ -1,3 +1,4 @@
+using System.Text;
 using DAFLegacy.Server;
 
 namespace DAFLegacy.Protocol;
@@ -6,14 +7,18 @@ namespace DAFLegacy.Protocol;
 /// 兜底应答表：为未注册 handler 的命令给出固定回包，由频道泵层在注册表未命中时调用
 /// （07 §11.5）；<c>LoginHandler</c> 也委托此处产出 LOGIN 的成功字节，避免同一字节
 /// 序列两处实现。71 个协议已全部走注册表，本表当前无线上路径，保留为防御性回退。
-/// 回包字节冻结，改动即破坏客户端兼容。
+/// 各条回包形态冻结；CHECK_CONNECTION 的通告端点取配置（与
+/// <c>CheckConnectionHandler</c> 同源，避免同一包两处各写一份端口）。
 /// </summary>
 public static class FallbackCommandReplies
 {
-    public static GameServerPacket? TryCreateReply(PacketFrame request) =>
-        TryCreateReply(request, []);
+    public static GameServerPacket? TryCreateReply(PacketFrame request, ServerOptions options) =>
+        TryCreateReply(request, [], options);
 
-    public static GameServerPacket? TryCreateReply(PacketFrame request, ReadOnlySpan<byte> challenge)
+    public static GameServerPacket? TryCreateReply(
+        PacketFrame request,
+        ReadOnlySpan<byte> challenge,
+        ServerOptions options)
     {
         if (request.Type != GameProtocolConstants.CommandPacketType
             || request.Body.Length < sizeof(ushort))
@@ -30,9 +35,9 @@ public static class FallbackCommandReplies
                 serverId: 1,
                 channelNumber: 1,
                 seed: 0,
-                ["127.0.0.1"u8.ToArray()],
-                port1: 2311,
-                port2: 2311),
+                [Encoding.ASCII.GetBytes(options.GameplayDatagram.Host)],
+                port1: checked((uint)options.GameplayDatagram.PrimaryPort),
+                port2: checked((uint)options.GameplayDatagram.SecondaryPort)),
             // Login success: the four leading flags keep the verified zeroes
             // (zeroes select the normal character-list path in this client
             // build), and the fields the client reads after them — account,

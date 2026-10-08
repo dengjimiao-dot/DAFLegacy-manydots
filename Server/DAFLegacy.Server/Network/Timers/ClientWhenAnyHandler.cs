@@ -236,7 +236,7 @@ public sealed class ClientWhenAnyHandler(
                 {
                     // The launcher applies the process-local channel callback
                     // after the client's startup integrity pass. This client
-                    // can reach port 7001 a few hundred milliseconds earlier,
+                    // can reach the channel port a few hundred milliseconds earlier,
                     // and it never retries a greeting handled by the retired
                     // callback. Hold the first channel packet until that patch
                     // window has safely completed.
@@ -525,7 +525,8 @@ public sealed class ClientWhenAnyHandler(
                         // (CheckConnectionHandler) before reaching this point.
                         var gameReply = FallbackCommandReplies.TryCreateReply(
                             request,
-                            protocolSession.SessionToken);
+                            protocolSession.SessionToken,
+                            options);
                         if (gameReply is null)
                         {
                             RuntimeLogger.Warn(

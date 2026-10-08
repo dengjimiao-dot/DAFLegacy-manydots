@@ -70,7 +70,7 @@ public sealed class EntranceChannelDirectory
                 Session.Number,
                 Session.DisplayName,
                 options.Channel.Host,
-                options.Channel.Port,
+                options.Channel.PortFor(Session.Number),
                 options.Channel.MaximumUsers);
             foreach (var entry in entries)
             {
@@ -88,7 +88,7 @@ public sealed class EntranceChannelDirectory
                 "Entrance channel catalog unavailable; serving the single local channel \"{DisplayName}\" at {Host}:{Port}.",
                 EntranceMetadata.SingleChannelDisplayName,
                 options.Channel.Host,
-                options.Channel.Port);
+                options.Channel.PortFor(Session.Number));
         }
     }
 
@@ -99,10 +99,12 @@ public sealed class EntranceChannelDirectory
     public IReadOnlyList<ChannelCatalogEntry>? Catalog { get; }
 
     /// <summary>
-    /// 遗留频道端口（<c>Channel.Port</c>）与无目录回退时的会话频道（NOTI 1
-    /// displayName/channelNumber、喇叭 flag 与经验加成键的频道号来源）：
-    /// 目录首条目。M2 后常规会话频道由 accept 该连接的频道监听器决定
-    /// （<see cref="ChannelSessionState.SessionChannel"/>），本值仅作其回退。
+    /// 无目录回退时的会话频道（NOTI 1 displayName/channelNumber、喇叭 flag 与
+    /// 经验加成键的频道号来源）：目录首条目，无目录时为本地单频道。其监听端点
+    /// 为 <c>PortBase + 本值.Number</c>——有目录时即组 0 首频道的监听，无目录时
+    /// 由 <c>EntranceService</c> 的回退分支单独绑定。M2 后常规会话频道由 accept
+    /// 该连接的频道监听器决定（<see cref="ChannelSessionState.SessionChannel"/>），
+    /// 本值仅作其回退。
     /// </summary>
     public EntranceSessionChannel Session { get; }
 }

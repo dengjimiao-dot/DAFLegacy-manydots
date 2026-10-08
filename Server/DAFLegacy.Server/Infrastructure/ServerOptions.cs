@@ -10,10 +10,9 @@ public sealed class ServerOptions
     public LoggingOptions Logging { get; set; } = new();
     public PacketCaptureOptions PacketCapture { get; set; } = new();
     public McpOptions Mcp { get; set; } = new();
-    public ListenerOptions Entrance { get; set; } = new() { Port = 8080 };
-    public ListenerOptions CharacterDatagram { get; set; } = new() { Host = "127.0.0.1", Port = 2311 };
+    public ListenerOptions Entrance { get; set; } = new();
+    public ListenerOptions CharacterDatagram { get; set; } = new();
     public GameplayDatagramOptions GameplayDatagram { get; set; } = new();
-    public ListenerOptions GameProbe { get; set; } = new() { Port = 7001, Enabled = false };
 
     // 持久化库文件（R5 数据锚点）：相对路径以 HomeDirectory 为基准，默认落在
     // Data/game.sqlite，与基线 schema（Sqlite/act1_schema.sql）分属「运行期数据」与
@@ -35,8 +34,8 @@ public sealed class GameplayDatagramOptions
 {
     public bool Enabled { get; set; } = true;
     public string Host { get; set; } = "127.0.0.1";
-    public int PrimaryPort { get; set; } = 7002;
-    public int SecondaryPort { get; set; } = 7003;
+    public int PrimaryPort { get; set; }
+    public int SecondaryPort { get; set; }
     public ushort MonsterObjectType { get; set; } = 0x0211;
     public byte SenderPartyIndex { get; set; } = 0;
 
@@ -52,17 +51,17 @@ public sealed class GameplayDatagramOptions
 /// PVF 内 etc/channel_info.etc（显示名经 etc/etc.chn.str 解析，见
 /// EntranceChannelDirectory）；<c>CurrentUsers</c> 为在线会话数动态值，
 /// <c>MaximumUsers</c> 是容量上报值（客户端以在线/容量 &gt;95% 判拥挤）。
-/// <para>M2 按频道监听：目录里每条频道占 <c>PortBase + 频道号</c> 一个端口；
-/// <c>Port</c> 是遗留单频道端口，恒绑定目录首条目身份（无目录时即单频道回退监听）。</para>
+/// <para>M2 按频道监听：目录里每条频道占 <c>PortBase + 频道号</c> 一个端口；目录
+/// 缺失时空组回退记录与单频道会话共用 <c>PortBase + 会话频道号</c> 的端点，不再有
+/// 独立的遗留频道端口（端口分配见 docs/design/02 R6）。</para>
 /// </summary>
 public sealed class ChannelOptions
 {
     public int ServerNumber { get; set; } = 1;
     public string Host { get; set; } = "127.0.0.1";
-    public int Port { get; set; } = 7001;
 
-    /// <summary>按频道监听的端口基值；频道 N 的端口 = PortBase + N（默认 10000）。</summary>
-    public int PortBase { get; set; } = 10000;
+    /// <summary>按频道监听的端口基值；频道 N 的端口 = PortBase + N（无默认值，必须显式配置）。</summary>
+    public int PortBase { get; set; }
 
     /// <summary>频道容量上报值（元数据 max 字段）。</summary>
     public int MaximumUsers { get; set; } = 10;
@@ -81,7 +80,7 @@ public sealed class ChannelOptions
 public sealed class AdminOptions
 {
     public string Host { get; set; } = "127.0.0.1";
-    public int Port { get; set; } = 8081;
+    public int Port { get; set; }
 }
 
 /// <summary>
@@ -131,9 +130,14 @@ public sealed class McpOptions
 {
     public bool Enabled { get; set; }
     public string Host { get; set; } = "127.0.0.1";
-    public int Port { get; set; } = 12222;
+    public int Port { get; set; }
 }
 
+/// <summary>
+/// 监听端点。端口无代码默认值：必须在 server.json 显式配置，缺失、越界或与
+/// 同主机同传输的其他端口重复时由 <see cref="ServerOptionsValidator"/> 在
+/// 启动期拒绝（docs/design/02 R6）。
+/// </summary>
 public sealed class ListenerOptions
 {
     public bool Enabled { get; set; } = true;

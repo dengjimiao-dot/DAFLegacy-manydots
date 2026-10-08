@@ -8,7 +8,7 @@ internal static class PacketTapFunnelSmokeTests
         // 漏斗是包事件唯一汇聚点（docs/design/09-mcp-packet-tap.md §5.1/§12）：
         // Tap 通道（TapSink）与快照/日志通道（TracingEnabled）互不依赖。
         var runtime = new RuntimeState();
-        var session = runtime.Add("entrance:2311", "127.0.0.1:40000");
+        var session = runtime.Add("entrance:7001", "127.0.0.1:40000");
         var body = new byte[] { 1, 2, 3, 4 };
         var frame = PacketFrame.Create(protocolId: 49, payload: body, type: 1);
         var rawFrame = PacketFrame.Create(protocolId: 49, payload: new byte[] { 9, 9 }, type: 1);
@@ -25,7 +25,7 @@ internal static class PacketTapFunnelSmokeTests
         runtime.TracePacket(session, "RX", frame, 64, rawFrame);
         check(publications.Count == 1
                 && publications[0].SessionId == session.Id
-                && publications[0].Service == "entrance:2311"
+                && publications[0].Service == "entrance:7001"
                 && publications[0].Direction == "RX"
                 && publications[0].Type == 1
                 && publications[0].ProtocolId == 49

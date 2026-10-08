@@ -89,6 +89,9 @@ internal static class ProtocolGoldenSmokeTests
         // 再以同 seed 重建期望载荷做全字节对比。目录用空脚本源构造,
         // 回退单频道「Local Channel 1」(与真机验证过的默认字节一致)。
         var channelOptions = new ServerOptions();
+        // 端口无代码默认值：夹具显式给出模板取值，NOTI 1 通告的即这两个端口。
+        channelOptions.GameplayDatagram.PrimaryPort = 12311;
+        channelOptions.GameplayDatagram.SecondaryPort = 12312;
         var channelDirectory = new EntranceChannelDirectory(
             new ScriptFileSystem(channelOptions, NullLogger<ScriptFileSystem>.Instance),
             channelOptions,
@@ -113,8 +116,8 @@ internal static class ProtocolGoldenSmokeTests
             channelNumber: 1,
             seed: actualSeed,
             [Encoding.ASCII.GetBytes("127.0.0.1")],
-            port1: 7002,
-            port2: 7003);
+            port1: 12311,
+            port2: 12312);
         check(channelInfo.Payload.SequenceEqual(expectedChannelInfo.Payload),
             "CHANNELINFO payload matches the legacy inline branch bytes for the same seed");
         var unixNow = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

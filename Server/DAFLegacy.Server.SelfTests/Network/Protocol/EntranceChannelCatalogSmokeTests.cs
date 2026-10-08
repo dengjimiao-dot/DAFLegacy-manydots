@@ -125,7 +125,7 @@ internal static class EntranceChannelCatalogSmokeTests
         check(ChannelCatalog.TryParseChannelInfoEtc("[server]\n1\n11 `<4::a>` 1 `[t]` 5\n", null) is null,
             "no display-name table resolves no catalog");
 
-        var defaults = new EntranceChannel("127.0.0.1", 7001, 10, 3);
+        var defaults = new EntranceChannel("127.0.0.1", 10001, 10, 3);
         var composed = EntranceMetadata.BuildChannels(defaults, parsed, channelPortBase: 20000);
         check(composed.Length == 700, "parsed catalog feeds the builder (2 etc channels + 8 default records)");
         var clientText = PvfEncodings.Cp936Lossy();
@@ -142,8 +142,8 @@ internal static class EntranceChannelCatalogSmokeTests
               && BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(120, 4)) == 20200,
             "catalog records advertise their per-channel listener ports (PortBase + number)");
         check(Encoding.ASCII.GetString(composed, 56, 9) == "127.0.0.1"
-              && BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(192, 4)) == 7001,
-            "hosts stay shared and fallback-group records keep the legacy endpoint");
+              && BinaryPrimitives.ReadInt32LittleEndian(composed.AsSpan(192, 4)) == 10001,
+            "hosts stay shared and fallback-group records keep the fallback endpoint");
 
         var metadata = EntranceMetadata.BuildChannels(
             defaults,
@@ -198,7 +198,7 @@ internal static class EntranceChannelCatalogSmokeTests
                 [new ChannelCatalogEntry(0, 1, 0, null, "洛兰 2")], 20000)),
             "display names containing digits are rejected (client atol semantics)");
         check(Throws<ArgumentException>(() => EntranceMetadata.BuildSingleLocalChannel(
-                new EntranceChannel("1234567890123456", 7001, 10, 1))),
+                new EntranceChannel("1234567890123456", 10001, 10, 1))),
             "oversized host fields are rejected");
     }
 

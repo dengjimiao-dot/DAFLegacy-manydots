@@ -199,13 +199,26 @@ public sealed class PartyCoordinator(
         };
     }
 
-    /// <summary>RESPONSE_PEER: type 0 with zero value accepts the pending
-    /// invite; anything else cancels it.</summary>
+    /// <summary>RESPONSE_PEER: type 0 且 value 0 为同意,其余判拒绝(撤销 pending 邀请、
+    /// 无下行)。帧内 uid 是邀请人 uid —— 2026-10-08 IDA 复核确认:同意写入点
+    /// `sub_4FEBC0` 写 `{u16 邀请人 uid, u8 0, u32 0}`,拒绝路径(0x821E46)写
+    /// `{u16 uid, u8 弹窗结果码 3, u32}`;此前登记表「接受=7B 全零」不成立。故同意
+    /// 路径直接按帧内 uid 解析发起者,不设回退。各分支走向逐条记 Info,供真机一轮
+    /// 复现定位。</summary>
     public PartyOpResult RespondPeer(PartyMemberIdentity responder, PeerResponseFrame response)
     {
+        var accepted = PartyPacketBuilders.IsAcceptedPeerResponse(response);
+        RuntimeLogger.Info(
+            "RESPONSE_PEER from character {CharacterId} (uid {UserId}): type={ResponseType} value={Value} classified={Classification}.",
+            responder.CharacterId,
+            responder.UserId,
+            response.ResponseType,
+            response.Value,
+            accepted ? "accept" : "reject-or-cancel");
+
         var inviterPresence = FindPresence(response.PeerUserId);
         var inviterSessionId = inviterPresence?.SessionId ?? Guid.Empty;
-        if (!PartyPacketBuilders.IsAcceptedPeerResponse(response))
+        if (!accepted)
         {
             if (inviterSessionId != Guid.Empty)
             {
@@ -216,11 +229,19 @@ public sealed class PartyCoordinator(
                     inviterSessionId);
             }
 
+            RuntimeLogger.Info(
+                "RESPONSE_PEER rejection from character {CharacterId} for peer uid {PeerUserId}: pending invitation cleared (no downlink).",
+                responder.CharacterId,
+                response.PeerUserId);
             return new PartyOpResult { Ok = true, TargetUserId = response.PeerUserId };
         }
 
         if (inviterPresence is null)
         {
+            RuntimeLogger.Info(
+                "RESPONSE_PEER accept from character {CharacterId} cannot resolve inviter uid {PeerUserId}: no town presence; failing the accept.",
+                responder.CharacterId,
+                response.PeerUserId);
             return PartyOpResult.Fail("inviter_not_online");
         }
 
@@ -235,8 +256,22 @@ public sealed class PartyCoordinator(
         var result = _parties.AcceptInvite(responder, inviter, out _);
         if (!result.Ok)
         {
+            RuntimeLogger.Info(
+                "RESPONSE_PEER accept from character {CharacterId} for inviter uid {InviterUserId} was refused: {Reason}.",
+                responder.CharacterId,
+                inviter.UserId,
+                result.Reason);
             return result;
         }
+
+        RuntimeLogger.Info(
+            "RESPONSE_PEER accept applied: inviter uid {InviterUserId} (session {InviterSessionId}), joiner uid {JoinerUserId} (session {JoinerSessionId}), party {PartyId} members {MemberCount}.",
+            inviter.UserId,
+            inviter.SessionId,
+            responder.UserId,
+            responder.SessionId,
+            result.Party!.PartyId,
+            result.Party.Members.Count);
 
         if (result.PriorPartyLeave is { } prior)
         {
@@ -483,8 +518,11 @@ public sealed class PartyCoordinator(
             var records = new List<GamePeerInfo>();
             foreach (var member in party.Members)
             {
-                byte natType = 2;
-                uint mtu = 1472;
+                // NAT 字节是数据面路由开关（2026-10-08 IDA：非 0 → 客户端走其 TCP
+                // 中继，0 → 直连本记录通告的 IP:端口）。本服实现的是 UDP 中继，故一律
+                // 通告 AdvertisedDirectNatType，使客户端把数据报发到本服监听端点。
+                var natType = GameDatagramProtocol.AdvertisedDirectNatType;
+                uint mtu = GameDatagramProtocol.FallbackReportedMtu;
                 var reported = gameplayDatagram.TryGetPeerInfo(
                     member.SessionId,
                     member.UserId,
@@ -492,7 +530,6 @@ public sealed class PartyCoordinator(
                     out var reportedPeer);
                 if (reported)
                 {
-                    natType = reportedPeer.NatType;
                     mtu = reportedPeer.Mtu;
                 }
 

@@ -67,12 +67,14 @@ public sealed class StartGameHandler(
             state: 1);
         await context.Queue.SendAsync(dungeonState, Name, cancellationToken);
 
+        // 选图阶段的单人端点表：NAT 字节同样按数据面路由开关通告（见
+        // GameDatagramProtocol.AdvertisedDirectNatType 与 13 号文档 §12.1）。
         var peerInfo = gameplayDatagram.TryGetPeerInfo(
             context.Runtime.Id,
             session.Character.LocalUserId,
             accountId: 1,
             out var localPeer)
-                ? new[] { localPeer }
+                ? new[] { localPeer with { NatType = GameDatagramProtocol.AdvertisedDirectNatType } }
                 : [];
         var udpPeers = PartyPacketBuilders.CreateUdpPeerInfo(peerInfo);
         await context.Queue.SendAsync(udpPeers, Name, cancellationToken);

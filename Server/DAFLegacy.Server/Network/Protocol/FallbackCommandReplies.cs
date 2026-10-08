@@ -33,13 +33,13 @@ public static class FallbackCommandReplies
                 ["127.0.0.1"u8.ToArray()],
                 port1: 2311,
                 port2: 2311),
-            // A successful login response contains the general success byte,
-            // three account flags and one trailing client-state flag. Zeroes
-            // select the normal character-list path in this client build.
-            (byte)CmdPacketType.LOGIN => new GameServerPacket(
-                GameProtocolConstants.CommandPacketType,
-                (byte)CmdPacketType.LOGIN,
-                [1, 0, 0, 0, 0]),
+            // Login success: the four leading flags keep the verified zeroes
+            // (zeroes select the normal character-list path in this client
+            // build), and the fields the client reads after them — account,
+            // relay host, two relay ports, two trailing bytes — are supplied
+            // by the shared builder (2026-10-08 IDA 复核: the reply case reads
+            // all of them). This defensive path has no account in scope.
+            (byte)CmdPacketType.LOGIN => ConnectionPacketBuilders.CreateLoginOk(accountUid: 0),
             // The 1.0.1.9 client clears a possible old game session before it
             // begins the selected-channel login flow. A one-byte true result is
             // the complete successful response consumed by its EXIT handler.

@@ -41,6 +41,7 @@ public sealed class PartyHandlerCore(
         // connection — parse and dispatch defensively.
         PartyOpResult partyResult;
         byte partyErrorCode;
+        PeerResponseFrame peerResponse = new(0, 0, 0);
         try
         {
             var parsedSettings = PartyPacketBuilders.TryParseSetPartyInfo(
@@ -51,7 +52,7 @@ public sealed class PartyHandlerCore(
                 out var peerRequest);
             var parsedPeerResponse = PartyPacketBuilders.TryParseResponsePeer(
                 request.Body,
-                out var peerResponse);
+                out peerResponse);
             var parsedWalkoutSlot = PartyPacketBuilders.TryParseWalkoutPartyMember(
                 request.Body,
                 out var walkoutSlot);
@@ -104,9 +105,14 @@ public sealed class PartyHandlerCore(
         GameServerPacket partyReply;
         if (partyResult.Ok)
         {
-            partyReply = ConnectionPacketBuilders.CreateCommandReply(
-                request,
-                success: true);
+            // RESPONSE_PEER 的成功应答必须回显 {u16 peerUid, u8 type}:客户端
+            // case 0x4104FF 在结果字节后无条件读 u16 + u8(2026-10-08 IDA 复核),
+            // 只回 [1] 会让它读过包尾(见 CreatePeerResponseAck 注释)。
+            partyReply = request.ProtocolId == (byte)CmdPacketType.RESPONSE_PEER
+                ? PartyPacketBuilders.CreatePeerResponseAck(peerResponse)
+                : ConnectionPacketBuilders.CreateCommandReply(
+                    request,
+                    success: true);
         }
         else
         {

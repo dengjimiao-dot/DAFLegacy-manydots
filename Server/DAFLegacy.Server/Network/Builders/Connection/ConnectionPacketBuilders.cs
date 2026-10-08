@@ -35,6 +35,44 @@ internal static class ConnectionPacketBuilders
     }
     public static GameServerPacket CreateEnterGameWorldComplete() =>
         new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.ENTER_GAMEWORLD_COMPLETE, []);
+
+    /// <summary>
+    /// LOGIN (CMD 1) success reply. The 60A1 reply case (0x40F2E0) reads
+    /// <c>u8 result + u8×4 + u32 account + dstr relay host + u32 relay port1 +
+    /// u32 relay port2 + u8×2</c> (2026-10-08 IDA 复核) and hands the host and
+    /// both ports to <c>sub_906070</c>, which stores them on the client's relay
+    /// transport and sets its enable flag. The account lands in
+    /// <c>dword_B55EE0</c>, the source account of the client's relay frames.
+    /// <para>
+    /// The four leading flags keep the previously verified zeroes (the third
+    /// one is normalised to 4 by the client itself, which is why the bare
+    /// five-byte form used to work); everything after them must be present or
+    /// the client reads past the payload and configures the relay transport
+    /// from stale buffer bytes. This server implements no relay, so the relay
+    /// fields carry the inert form — empty host, zero ports — while the
+    /// account stays truthful for the frame header's source field.
+    /// </para>
+    /// </summary>
+    public static GameServerPacket CreateLoginOk(uint accountUid)
+    {
+        using var payload = new MemoryStream();
+        using var writer = new BinaryWriter(payload);
+        writer.Write((byte)1);      // result
+        writer.Write((byte)0);      // account flag 1
+        writer.Write((byte)0);      // account flag 2
+        writer.Write((byte)0);      // client-state class (client normalises 0 to 4)
+        writer.Write((byte)0);      // trailing account flag
+        writer.Write(accountUid);   // relay frame source account (dword_B55EE0)
+        writer.Write(0u);           // relay host: zero-length dstr = no relay endpoint
+        writer.Write(0u);           // relay port 1
+        writer.Write(0u);           // relay port 2
+        writer.Write((byte)0);      // trailing flag 1
+        writer.Write((byte)0);      // trailing flag 2
+        return new GameServerPacket(
+            GameProtocolConstants.CommandPacketType,
+            (byte)CmdPacketType.LOGIN,
+            payload.ToArray());
+    }
     public static GameServerPacket CreateCheckConnection(ReadOnlySpan<byte> challenge)
     {
         if (challenge.Length != 16)

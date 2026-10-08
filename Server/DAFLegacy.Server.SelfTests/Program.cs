@@ -7406,8 +7406,14 @@ async Task RunProgramInlineSuite()
 
     var loginReply = FallbackCommandReplies.TryCreateReply(decodedLogin);
     Check(loginReply?.ProtocolId == (byte)CmdPacketType.LOGIN, "login command receives a reply");
-    Check(loginReply?.Payload.SequenceEqual(new byte[] { 1, 0, 0, 0, 0 }) == true,
-        "login reply selects the normal character-list path");
+    // 2026-10-08 IDA 复核:CMD 1 应答 case(0x40F2E0)读 result + 4 标志 + u32 账号 +
+    // dstr 中继主机 + u32 端口1 + u32 端口2 + u8×2,缺字段会让客户端越包尾取残留值
+    // 配置其 TCP 中继通道。故应答固定 23 字节:前 5 字节保持原验证过的零值形态。
+    Check(loginReply?.Payload.Length == 23
+        && loginReply.Payload.AsSpan(0, 5).SequenceEqual(new byte[] { 1, 0, 0, 0, 0 })
+        && loginReply.Payload.AsSpan(5, 4).SequenceEqual(new byte[] { 0, 0, 0, 0 })
+        && loginReply.Payload.AsSpan(9, 10).SequenceEqual(new byte[10]),
+        "login reply carries the full read order with an inert relay configuration");
 
     var userInfoRequest = new PacketFrame(
         GameProtocolConstants.CommandPacketType,

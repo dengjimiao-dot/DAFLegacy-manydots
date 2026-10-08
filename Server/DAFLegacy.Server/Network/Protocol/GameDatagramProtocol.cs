@@ -36,6 +36,29 @@ public static class GameDatagramProtocol
     public const int NatReportLength = 17;
     public const byte NatResponseType = 2;
     public const int NatKeepAliveLength = 10;
+
+    /// <summary>CMD 2 第 4 个字段（偏移 13 起 u32）是客户端 ICMP/MTU 探测的结果：
+    /// 客户端经 icmp.dll 向探测主机发 1472 字节 ping（register §10 `sub_78C1B0`），
+    /// 复位占位为 -1（`sub_78CCD0` 的 this+436）。参考服把它当 MTU 校验
+    /// 576..65507（`net/peer_address.h` 的 `PeerAddress::Valid`），本服按同区间
+    /// 归一化后进 NOTI 11（见 <c>GameplayDatagramService.NormalizeNatReport</c>）。</summary>
+    public const uint MinimumReportedMtu = 576;
+
+    /// <inheritdoc cref="MinimumReportedMtu"/>
+    public const uint MaximumReportedMtu = 65507;
+
+    /// <summary>未上报成员与探测失败成员的 NOTI 11 通告 MTU（与现行默认值一致）。</summary>
+    public const uint FallbackReportedMtu = 1472;
+
+    /// <summary>
+    /// NOTI 11 记录里通告给客户端的 NAT 字节（数据面路由开关，2026-10-08 IDA 定论）：
+    /// 客户端 MT-UDP 发送函数按对端记录的该字节二选一——非 0 时把数据报套上
+    /// `{u16 type, u16 len, u32 源账号, u32 目标账号}` 交给其 TCP 中继通道（本服未
+    /// 实现，配置为惰性值），0 时走直连 UDP，目标即记录里的 IP:端口 = 本服通告的
+    /// 监听端点。故本服一律通告 0，使组队数据报落到自己的 UDP 中继上。
+    /// </summary>
+    public const byte AdvertisedDirectNatType = 0;
+
     public const byte ReliableBlockType = 1;
     public const byte UnreliableBlockType = 2;
     public const ushort SetActiveObjectHpProtocol = 12;

@@ -92,13 +92,28 @@ public sealed class GameplayDatagramService(
             return;
         }
 
-        _town.SetSelfReport(sessionId, report);
+        var normalized = NormalizeNatReport(report);
+        if (normalized.Mtu != report.Mtu)
+        {
+            // 服务端主机不回 ICMP（或防火墙拦 ICMP echo）时，客户端的 1472 字节
+            // ping 拿不到结果，上报值停在复位占位（-1）或 0；该值进 NOTI 11 会让
+            // 队友按荒谬 MTU 组包。归一化到 1472 并提示环境项（放行 ICMP）。
+            RuntimeLogger.Warn(
+                "CMD 2 report for session {SessionId} carried an out-of-range MTU/ICMP probe value {ReportedMtu} (expected {Minimum}..{Maximum}); advertising {Fallback} instead. If this repeats, the client's 1472-byte ICMP probe to the probe host is being dropped (allow inbound ICMP echo on the server host).",
+                sessionId,
+                report.Mtu,
+                GameDatagramProtocol.MinimumReportedMtu,
+                GameDatagramProtocol.MaximumReportedMtu,
+                GameDatagramProtocol.FallbackReportedMtu);
+        }
+
+        _town.SetSelfReport(sessionId, normalized);
         var endpoint = ResolveEndpoint(
             _town.GetClaimedEndpoint(sessionId),
             tcpAddress,
             _town.IsSharedTcpIp(tcpAddress),
             _observedByAddress,
-            report);
+            normalized);
         _town.SetResolvedEndpoint(sessionId, endpoint);
 
         RuntimeLogger.Info(
@@ -108,9 +123,22 @@ public sealed class GameplayDatagramService(
             report.LocalAddress,
             report.PublicAddress,
             report.PublicPort,
-            report.Mtu,
+            normalized.Mtu,
             endpoint);
     }
+
+    /// <summary>
+    /// CMD 2 第 4 字段（客户端的 ICMP/MTU 探测结果，复位占位 -1）的归一化：越界一律
+    /// 回落 <see cref="GameDatagramProtocol.FallbackReportedMtu"/>，使服务端主机不回
+    /// ICMP 的环境不会把占位值当 MTU 通告给队友。区间取参考服对同一字段的校验
+    /// （576..65507，见 <see cref="GameDatagramProtocol.MinimumReportedMtu"/>）。
+    /// 纯函数，便于单测。
+    /// </summary>
+    internal static GameNatReport NormalizeNatReport(GameNatReport report) =>
+        report.Mtu is >= GameDatagramProtocol.MinimumReportedMtu
+            and <= GameDatagramProtocol.MaximumReportedMtu
+            ? report
+            : report with { Mtu = GameDatagramProtocol.FallbackReportedMtu };
 
     public bool TryGetPeerInfo(
         Guid sessionId,

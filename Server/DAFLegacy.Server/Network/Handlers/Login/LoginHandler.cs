@@ -62,7 +62,10 @@ public sealed class LoginHandler(
         context.State.Login.AccountName = authenticated.UserName;
         context.State.Login.AccountUid = authenticated.AccountUid;
 
-        var reply = FallbackCommandReplies.TryCreateReply(frame, ReadOnlySpan<byte>.Empty)!;
+        // 应答按客户端 CMD 1 case(0x40F2E0)的读取序给全：结果 + 4 标志 + 账号 +
+        // 中继主机 dstr + 两个端口 + 2 尾字节（2026-10-08 IDA 复核）；缺字段会让
+        // 客户端越包尾取残留值去配置其 TCP 中继通道。本服无中继，中继字段给惰性值。
+        var reply = ConnectionPacketBuilders.CreateLoginOk(context.State.Login.AccountUid);
         await context.Queue.SendAsync(reply, Name, cancellationToken);
     }
 }

@@ -21,6 +21,7 @@ internal static class PartySmokeTests
         RunRelayRosterFlow(check);
         RunTransferLeaderFlow(check);
         RunCoordinatorFlow(check);
+        RunAcceptStrictness(check);
     }
 
     private static void BuildCurrentCharacterDetails(Action<bool, string> check)
@@ -244,6 +245,16 @@ internal static class PartySmokeTests
         byte[] expectedAck = [0x07, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00];
         check(ack.ProtocolId == 8 && ack.Payload.AsSpan().SequenceEqual(expectedAck),
             "NOTI 8 accept ack matches the 7-byte client shape");
+
+        // CMD 11 success reply (2026-10-08 IDA: case 0x4104FF reads u16 + u8
+        // after the result byte, so the body must echo the request's peer uid
+        // and type; a bare [1] leaves the client reading past the payload).
+        var responseAck = PartyPacketBuilders.CreatePeerResponseAck(
+            new PeerResponseFrame(0x0102, 0, 0));
+        byte[] expectedResponseAck = [0x01, 0x02, 0x01, 0x00];
+        check(responseAck.ProtocolId == 11
+            && responseAck.Payload.AsSpan().SequenceEqual(expectedResponseAck),
+            "RESPONSE_PEER success echoes the request's u16 peer uid and u8 type");
 
         var walkout = PartyPacketBuilders.CreateWalkout(9, 1);
         check(walkout.ProtocolId == 10
@@ -539,14 +550,16 @@ internal static class PartySmokeTests
             },
             1,
             System.Net.IPAddress.Loopback);
+        // 上报的 nat 取非零值:通告端必须把它压成 0(直连标记),否则客户端会把该
+        // 对端改走其 TCP 中继通道(2026-10-08 IDA,13 号文档 §12.1)。
         datagram.SetNatReport(sessionA, new GameNatReport(
-            0,
+            2,
             System.Net.IPAddress.Loopback,
             System.Net.IPAddress.Loopback,
             10001,
             1500));
         datagram.SetNatReport(sessionB, new GameNatReport(
-            0,
+            3,
             System.Net.IPAddress.Loopback,
             System.Net.IPAddress.Loopback,
             10002,
@@ -623,6 +636,10 @@ internal static class PartySmokeTests
             && endpointsA[1].Payload[22] == 0x02
             && endpointsA[1].Payload[32] == 0x5A
             && endpointsA[1].Payload[33] == 0x1B
+            // 记录步长 21:NAT 字节在 +16(记录 0 → 载荷 [17],记录 1 → [38])。
+            // 上报值 2/3 必须被压成 0,客户端才会走直连 UDP 分支。
+            && endpointsA[1].Payload[17] == GameDatagramProtocol.AdvertisedDirectNatType
+            && endpointsA[1].Payload[38] == GameDatagramProtocol.AdvertisedDirectNatType
             && endpointsA[2].Payload.AsSpan()
                 .SequenceEqual(endpointsA[1].Payload)
             && endpointsB[0].Payload[11] == 0x5A
@@ -717,6 +734,89 @@ internal static class PartySmokeTests
 
         check(coordinator.SendToParty(sessionA, partyChat) == 0,
             "party chat outside a party reaches nobody");
+    }
+
+    /// <summary>
+    /// 同意帧语义的严格性（2026-10-08 IDA 复核后）：同意写入点 `sub_4FEBC0` 写
+    /// `{u16 邀请人 uid, u8 0, u32 0}`，拒绝路径写 `{u16 uid, u8 弹窗结果码 3, u32}`。
+    /// 因此 uid 无法解析时必须失败（不得用 pending 邀请兜底——那会掩盖真实失败），
+    /// 而 type/value 非零必须仍判拒绝。
+    /// </summary>
+    private static void RunAcceptStrictness(Action<bool, string> check)
+    {
+        var registry = new CharacterSessionRegistry(NullLogger<CharacterSessionRegistry>.Instance);
+        var town = new TownPresenceService(registry);
+        var datagram = new GameplayDatagramService(
+            new ServerOptions(),
+            new RuntimeState(),
+            town
+            );
+        var coordinator = new PartyCoordinator(
+            new ServerOptions(),
+            registry,
+            town,
+            datagram
+            );
+        var inbox = new Dictionary<Guid, List<GameServerPacket>>();
+        void Capture(Guid sessionId, GameServerPacket packet)
+        {
+            if (!inbox.TryGetValue(sessionId, out var list))
+            {
+                list = new List<GameServerPacket>();
+                inbox[sessionId] = list;
+            }
+
+            list.Add(packet);
+        }
+
+        var sessionA = Guid.NewGuid();
+        var sessionB = Guid.NewGuid();
+        registry.AttachPacketChannel(sessionA, packet => Capture(sessionA, packet));
+        registry.AttachPacketChannel(sessionB, packet => Capture(sessionB, packet));
+        registry.SetDetailsProvider(sessionA, () =>
+            CharactersPacketBuilders.CreateCurrentCharacterDetails(1, mode: 3));
+        registry.SetDetailsProvider(sessionB, () =>
+            CharactersPacketBuilders.CreateCurrentCharacterDetails(2, mode: 3));
+
+        var identityA = Identity(sessionA, 1, "A");
+        var identityB = Identity(sessionB, 2, "B");
+        coordinator.PublishTownPresence(Presence(identityA), Appearance("A", 1));
+        coordinator.PublishTownPresence(Presence(identityB), Appearance("B", 2));
+        check(coordinator.RequestPeer(
+                identityA,
+                new PeerRequestFrame(identityB.UserId, 0, 0x0A)).Ok,
+            "accept-strictness setup: the invitation reaches the target");
+
+        // 帧内 uid 解析不到在场记录（0 或已离线）→ 失败，不兜底。
+        var unresolved = coordinator.RespondPeer(
+            identityB,
+            new PeerResponseFrame(0, 0, 0));
+        check(!unresolved.Ok
+            && unresolved.Reason == "inviter_not_online"
+            && Typed(inbox, sessionB, 9).Count == 0,
+            "an accept whose peer uid does not resolve fails and publishes no roster");
+
+        // 非零 value 仍是拒绝：清掉 pending 邀请、不产生名册。
+        var rosterBefore = Typed(inbox, sessionB, 9).Count;
+        check(coordinator.RespondPeer(
+                identityB,
+                new PeerResponseFrame(identityA.UserId, 0, 1)).Ok
+            && Typed(inbox, sessionB, 9).Count == rosterBefore,
+            "a non-zero value keeps the rejection semantics and publishes no roster");
+
+        // 规范同意（uid = 邀请人 uid）仍正常成队。
+        check(coordinator.RequestPeer(
+                identityA,
+                new PeerRequestFrame(identityB.UserId, 0, 0x0B)).Ok,
+            "accept-strictness setup: the invitation is re-sent after the rejection");
+        var joined = coordinator.RespondPeer(
+            identityB,
+            new PeerResponseFrame(identityA.UserId, 0, 0));
+        check(joined.Ok
+            && joined.Party!.Members.Count == 2
+            && Typed(inbox, sessionA, 8).Count == 1
+            && Typed(inbox, sessionB, 9).Count == 1,
+            "a well-formed accept joins both members through the invitation record");
     }
 
     private static GameServerPacket Appearance(string name, ushort userId) =>

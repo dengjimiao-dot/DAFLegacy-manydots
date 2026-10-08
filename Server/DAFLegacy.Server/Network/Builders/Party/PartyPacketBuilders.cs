@@ -302,12 +302,34 @@ internal static class PartyPacketBuilders
     public static bool IsAcceptedPeerResponse(PeerResponseFrame response) =>
         response.ResponseType == 0 && response.Value == 0;
     /// <summary>
+    /// RESPONSE_PEER (CMD 11) success reply. The 60A1 reply case (0x4104FF)
+    /// reads the result byte and then, on success, **unconditionally** reads
+    /// u16 + u8 (0x41050A..0x410533: sub_8F5140 then sub_8F5120) plus one more
+    /// u8 when that type byte is 1 (0x41054D, the trade completion branch), so
+    /// the body must echo the request's peer uid and type — the same shape the
+    /// reference writes for this command (`U8(1); U16(peer); U8(type)`).
+    /// Replying with a bare `[1]` makes the client read past the payload into
+    /// whatever the receive buffer still holds; a leftover 1 byte there also
+    /// routes the accept into the trade-completion branch with a garbage uid.
+    /// 2026-10-08 IDA 复核(case 0x4104FF 反编)结论。
+    /// </summary>
+    public static GameServerPacket CreatePeerResponseAck(PeerResponseFrame response) =>
+        new(
+            GameProtocolConstants.CommandPacketType,
+            (byte)CmdPacketType.RESPONSE_PEER,
+            [
+                (byte)1,
+                (byte)response.PeerUserId,
+                (byte)(response.PeerUserId >> 8),
+                response.ResponseType,
+            ]);
+    /// <summary>
     /// Party command failure replies are not the generic [0, code] form: the
     /// reply dispatcher reads a result byte first (zero = failure) and then
     /// one error byte at payload[1] for SET_PARTY_INFO (code 8 pops a party
-    /// message, case 0x410799), LEAVE_PARTY (code 0x12, case 0x4107D8) and
-    /// WALKOUT (code 4, case 0x410834). The trailing zero keeps the global
-    /// read cursor inside the payload.
+    /// message, case 0x410799), LEAVE_PARTY (code 0x12/0x13, case 0x4107D8) and
+    /// WALKOUT (case 0x410834). The trailing zero keeps the global read cursor
+    /// inside the payload.
     /// </summary>
     public static GameServerPacket CreatePartyCommandError(
         PacketFrame request,
@@ -316,9 +338,13 @@ internal static class PartyPacketBuilders
             GameProtocolConstants.CommandPacketType,
             request.ProtocolId,
             [0, errorCode, 0, 0]);
-    /// <summary>The peer commands read their error byte at payload[2]
-    /// instead: REQUEST_PEER pops a message on code 5 (case 0x4102F6) and
-    /// RESPONSE_PEER on code 1 (case 0x4104FF).</summary>
+    /// <summary>The peer commands read their failure bytes differently: REQUEST_PEER
+    /// (case 0x4102F6) reads u8 + u8 and pops on the second byte == 5, while
+    /// RESPONSE_PEER (case 0x4104FF) reads u8 + u8 where the first byte is the
+    /// A12-style error class (3/4/0x11/0x12/0x13 → strings 0x2C3..0x2CC) and
+    /// the second a sub-code. 2026-10-08 IDA 复核;本服 RESPONSE_PEER 的失败
+    /// 应答仍按现行 [0,0,code,0] 发送(类码 0 不弹提示),类码映射待确认各串
+    /// 文案后再接(PENDING P-37)。</summary>
     public static GameServerPacket CreatePeerCommandError(
         PacketFrame request,
         byte errorCode) =>

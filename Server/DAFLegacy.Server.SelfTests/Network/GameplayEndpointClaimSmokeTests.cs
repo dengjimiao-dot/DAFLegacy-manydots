@@ -90,5 +90,25 @@ internal static class GameplayEndpointClaimSmokeTests
             "the reporting session claims its own probe");
         check(GameplayDatagramService.FindUniqueClaimTarget(mixed, new IPEndPoint(PublicIp, 40002)) is null,
             "the silent session's probe claims nobody and learns nothing");
+
+        // CMD 2 第 4 字段（客户端 ICMP/MTU 探测结果，复位占位 -1）的归一化：区间内原样，
+        // 越界（含探测未完成的 -1 与 0）回落 1472，避免占位值被当 MTU 通告给队友。
+        static GameNatReport Probe(uint value) => new(
+            NatType: 2,
+            LocalAddress: TcpIp,
+            PublicAddress: PublicIp,
+            PublicPort: 40001,
+            Mtu: value);
+        check(GameplayDatagramService.NormalizeNatReport(Probe(1472)).Mtu == 1472
+            && GameplayDatagramService.NormalizeNatReport(Probe(576)).Mtu == 576
+            && GameplayDatagramService.NormalizeNatReport(Probe(65507)).Mtu == 65507,
+            "an in-range ICMP/MTU probe value is advertised unchanged");
+        check(GameplayDatagramService.NormalizeNatReport(Probe(uint.MaxValue)).Mtu
+                == GameDatagramProtocol.FallbackReportedMtu
+            && GameplayDatagramService.NormalizeNatReport(Probe(0)).Mtu
+                == GameDatagramProtocol.FallbackReportedMtu
+            && GameplayDatagramService.NormalizeNatReport(Probe(65508)).Mtu
+                == GameDatagramProtocol.FallbackReportedMtu,
+            "an out-of-range ICMP/MTU probe value falls back to the advertised default");
     }
 }

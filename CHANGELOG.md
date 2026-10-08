@@ -6,6 +6,30 @@
 
 ---
 
+## 2026-10-08
+
+### ADD-24 数据面拓扑改走"直连通告"（路线 A）+ 登录应答按客户端读取序补全
+
+- **现象**：组队成立后实时链路不通（客户端给出网络/连接类提示）；配合 ADD-23 的现场定位进一步确认失败点在数据面拓扑而非组队协议面。
+- **根因结论**（2026-10-08 客户端 IDA 复核，全文见 `docs/design/13-party-dataplane-and-cohort.md` §12）：
+  - **通告端点只在"直连"分支被使用**：客户端 MT-UDP 发送函数 `sub_907160` 按对端对象的 `+0x2C` 字节二选一——非 0 时把数据报套上 `{u16 type, u16 len, u32 源账号, u32 目标账号}` 交给其 **TCP 中继通道**（本服未实现），0 时才 `sendto(对端记录 IP:端口)`。本服原先把该字节通告为上报值（1..4）或默认 2，等于把全队推给中继通道。
+  - **中继通道配置来自登录应答**：CMD 1 应答 case（0x40F2E0）读 `u8 result + u8×4 + u32 账号 + dstr 中继主机(cap 0x10) + u32 端口1 + u32 端口2 + u8×2` 并交给 `sub_906070` 配置中继传输；本服原应答仅 5 字节，客户端继续读 23+L 字节，账号与中继主机/端口全取越包尾的残留值。
+  - 旁证：`+0x2C != 0` 时客户端在成员状态叠加层打印字面量 `"Relay"`（`sub_832F60` @0x8330CA）——即客户端自己把走中继的对端标注出来。
+- **改动**：①新增 `GameDatagramProtocol.AdvertisedDirectNatType`(0) 并在**两处通告点**统一使用——`PartyCoordinator.BroadcastPartyEndpoints`（全队端点表，自身与对端记录一致）与 `StartGameHandler`（选图阶段单人表），使客户端把组队数据报发到本服监听端点、由现有 UDP 中继承载；②新增 `ConnectionPacketBuilders.CreateLoginOk(accountUid)`，按客户端读取序给全 `结果 + 4 标志 + 账号 + 中继主机 dstr(空串) + 端口1/2(0) + 2 尾字节`（共 23 字节；本服无中继，中继字段给惰性值，账号取真实账号），`LoginHandler` 与兜底表的 LOGIN 项共用该构建器。**既有合法流量字节不变**（仅在通告里把 NAT 字节定为 0、把登录应答补长）。
+- **验证**：构建 0 警告；全量 SelfTests 31 套件绿（`party` 套件改为上报非零 NAT 并断言通告记录 NAT 字节为 0；`program-inline` 的登录应答断言更新为 23 字节读取序形态）；静态验证 = 上述 IDA 复核。**真机复测未做**，判据：组队后队友旁**不再**出现 "Relay" 标注、服务端 UDP 聚合行 `gameplay`/`relayed` 增长、副本门口 P2P 握手可见数据报。
+- **遗留项**：①若真机仍走中继（`+0x2C` 实为客户端"直连可行性判定"而非 NAT 直传，见 13 号文档 §12.6），则须转路线 B（补全中继字段 + 实现按账号转发的 TCP 中继）；②跨 NAT 场景的实时链路仍需路线 B 支撑；③组队副本协同（13 号文档 §4 G-1）未动。
+
+### ADD-23 组队"加入"失败：CMD 11 成功应答形态不足（IDA 复核）+ CMD 2 的 ICMP/MTU 字段归一化
+
+- **现象**：真机双客户端同区域组队，邀请弹窗正常到达，点"加入"后失败（客户端不落实）；客户端另出现网络/防火墙类提示。
+- **根因结论**（2026-10-08 客户端主程序 IDA 逐点复核，ImageBase 0x400000）：
+  - **CMD 11 成功应答形态不足（首选根因）**：应答 case `0x4104FF` 在结果字节后**无条件**读 `u16 + u8`（`0x41050A..0x410533`：`sub_8F5140` 读 u16、`sub_8F5120` 读 u8），且该 type 字节为 1 时再读一个 u8（`0x41054D`，交易完成分支）。本服成功只回 `[1]`，客户端读越包尾（读到接收缓冲残留；残留恰为 1 时还会带垃圾 uid 走进交易完成分支）。
+  - **同意帧语义定案**：同意写入点 `sub_4FEBC0` 写 `{u16 邀请人 uid, u8 0, u32 0}`（调用点 `0x821E08` 传 `[esi+38h]`=弹窗对端 uid，发送前用 `sub_4FDDB0` 校验该 uid 的用户记录）；拒绝路径（`0x821E46`）写 `{u16 uid, u8 弹窗结果码 3, u32}`。既有登记「接受=7B 全零」（`client-function-register-60cn.md` §6）不成立，组队分册的「u16 邀请人 uid」正确。
+  - **CMD 2 第 4 字段语义**：为客户端经 icmp.dll 的 **MTU 二分探测结果**（`sub_78C1B0`：1472 字节起、失败下调/成功上调，结果按桶 `1472/1280/1024/768/750/740` 写 `this+436`；探测未完成时为复位占位 `-1`），经 `sub_78C4F0` 随 CMD 2 上报。参考服按 MTU `576..65507` 校验该字段；越界值原样进 NOTI 11 会让队友按荒谬 MTU 组包。
+- **改动**：①新增 `PartyPacketBuilders.CreatePeerResponseAck`（成功应答 = `[1][u16 peerUid][u8 type]`，回显请求字段，与参考服同命令形态一致）并接入 `PartyHandlerCore` 的 RESPONSE_PEER 成功分支；②`GameplayDatagramService.NormalizeNatReport`：CMD 2 第 4 字段越界回落 `GameDatagramProtocol.FallbackReportedMtu`(1472，即客户端自身的最大探测桶)并 Warn 附环境提示，常量 `MinimumReportedMtu`/`MaximumReportedMtu`/`FallbackReportedMtu` 集中登记，`PartyCoordinator` 未上报默认值同源；③RESPONSE_PEER 的分类/撤销/拒绝/同意分支补 Info 日志；④撤销上一轮基于错误登记的「pending 邀请兜底」同意路径（帧内 uid 即邀请人 uid，兜底会掩盖真实失败）。**既有合法流量字节不变**（仅补齐应答缺失字段）。
+- **验证**：构建 0 警告；全量 SelfTests 31 套件绿（`party` 套件新增 CMD 11 成功应答字节断言与同意帧严格性断言，`endpoint-claim` 新增归一化三组断言）；静态验证 = 上述 IDA 逐点复核（case `0x4104FF`、`0x4FEBC0`、`0x821E46`、`0x78C1B0`、`0x78C4F0`）；**真机复测未做**，判据与复现步骤见 `PENDING.md` P-37 与 `docs/design/13-party-dataplane-and-cohort.md` §11。
+- **遗留项**：RESPONSE_PEER 失败应答的类码映射（case 链 3/4/0x11/0x12/0x13 → 串 `0x2C3..0x2CC`）结构已定，但各串文案未取证，暂维持现行 `[0,0,code,0]`（类码 0 → 不弹提示）；组队副本协同（13 号文档 §4 G-1）与数据面形态（G-2/G-3）未动。
+
 ## 2026-10-05
 
 ### CHANGE 配置变更

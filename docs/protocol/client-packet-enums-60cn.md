@@ -53,7 +53,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 
 | CMD ID | 发包(客户端→服务端) | 状态 | NOTI ID | 回包(服务端→客户端) | 状态 | 配对说明 |
 |---:|---|---|---:|---|---|---|
-| 1 | `ENUM_CMDPACKET_LOGIN` | ✅ | 2 | `ENUM_NOTIPACKET_USERINFO` | ✅ | 登录后推送角色卡列表 |
+| 1 | `ENUM_CMDPACKET_LOGIN` | ✅ | 2 | `ENUM_NOTIPACKET_USERINFO` | ✅ | 登录后推送角色卡列表;账号不存在时服务端按策略自动建号(见登录分册) |
 | 8 | `ENUM_CMDPACKET_GET_USERINFO` | ✅ | 2 | `ENUM_NOTIPACKET_USERINFO` | ✅ | 拉取角色列表 |
 | 4 | `ENUM_CMDPACKET_SELECT_CHARACTER` | ✅ | 2 | `ENUM_NOTIPACKET_USERINFO` | ✅ | 选角→当前角色详情+入场状态 |
 | 5 | `ENUM_CMDPACKET_CREATE_CHARACTER` | ✅ | 2 | `ENUM_NOTIPACKET_USERINFO` | ✅ | 创角成功→刷新列表 |
@@ -99,7 +99,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 | 25 | `ENUM_CMDPACKET_REPAIR_EQUIPMENT` | ✅ | 14 | `ENUM_NOTIPACKET_UPDATE_ITEM_LIST` | ✅ | 修理→增量更新 |
 | 18 | `ENUM_CMDPACKET_DELETE_ITEM` | ✅ | 14 | `ENUM_NOTIPACKET_UPDATE_ITEM_LIST` | ✅ | 删除物品→增量更新 |
 | 19 | `ENUM_CMDPACKET_MOVE_ITEMSPACE` | ✅ | 14 | `ENUM_NOTIPACKET_UPDATE_ITEM_LIST` | ✅ | 跨仓库移动→增量更新 |
-| 20 | `ENUM_CMDPACKET_SORT_ITEM` | ✅ | 13 | `ENUM_NOTIPACKET_ITEM_LIST` | ✅ | 整理→全量列表(增量通道无法表达搬迁,见根目录 [CHANGELOG.md](../../CHANGELOG.md)) |
+| 20 | `ENUM_CMDPACKET_SORT_ITEM` | ✅ | 13 | `ENUM_NOTIPACKET_ITEM_LIST` | ✅ | 整理→全量列表;请求可由客户端补丁追加页签字节(按页签范围整理),见 [packet-detail-item-inventory-60cn.md](packet-detail-item-inventory-60cn.md) CMD 20 |
 | 28 | `ENUM_CMDPACKET_DISJOINT_ITEM` | ✅ | 14 | `ENUM_NOTIPACKET_UPDATE_ITEM_LIST` | ✅ | 分解→增量更新 |
 | 29 | `ENUM_CMDPACKET_USE_LOTTERY_ITEM` | ✅ | 14 | `ENUM_NOTIPACKET_UPDATE_ITEM_LIST` | ✅ | 抽奖券→增量更新 |
 | 47 | `ENUM_CMDPACKET_USE_STACKABLE` | ✅ | 14 | `ENUM_NOTIPACKET_UPDATE_ITEM_LIST` | ✅ | 使用消耗品→增量更新 |
@@ -154,7 +154,7 @@ PVP、公会、个人商店、战争房间、混沌、讨伐/反外挂未实现,
 | 42 | `ENUM_CMDPACKET_DIE_MONSTER` | ✅ | 35 | `ENUM_NOTIPACKET_CLEAR_DUNGEON_REWARD` | ✅ | 通关→翻牌奖励界面(经验九元组) |
 | 73 | `ENUM_CMDPACKET_CARD_SELECT_RIGHT_STATE` | ✅ | 35 | `ENUM_NOTIPACKET_CLEAR_DUNGEON_REWARD` | ✅ | 翻牌权查询 |
 | 74 | `ENUM_CMDPACKET_SELECT_CARD` | ✅ | — | — | — | 选牌(回包含金卡奖励) |
-| 45 | `ENUM_CMDPACKET_GIVEUP_GAME` | ✅ | 33 | `ENUM_NOTIPACKET_FAIL_CLEAR_DUNGEON` | ✅ | 放弃游戏→通关失败 |
+| 45 | `ENUM_CMDPACKET_GIVEUP_GAME` | ✅ | 33 | `ENUM_NOTIPACKET_FAIL_CLEAR_DUNGEON` | ✅ | 放弃游戏/返回城镇;教程未完成时=退出教程并回城(见副本分册) |
 | 127 | `ENUM_CMDPACKET_BOSS_DIE_CHECK` | ✅ | 127 | `ENUM_NOTIPACKET_BOSS_DIE_CHECK` | ✅ | Boss 死亡校验 |
 | 148 | `ENUM_CMDPACKET_ALLDIE_MONSTER` | ✅ | 38 | `ENUM_NOTIPACKET_DIE_MONSTER` | ✅ | 全灭怪物→批量死亡 |
 | 142 | `ENUM_CMDPACKET_BACK_2_VILLAGE` | ✅ | 23 | `ENUM_NOTIPACKET_USER_AREA` | ✅ | 回城→区域同步 |

@@ -58,6 +58,10 @@ public interface IGameStore
     Task<AuthenticatedAccount?> FindAccountAsync(
         string userName,
         CancellationToken cancellationToken = default);
+    Task<AuthenticatedAccount?> TryCreateLoginAccountAsync(
+        string userName,
+        string password,
+        CancellationToken cancellationToken = default);
     Task<AuthenticatedAccount?> GetAccountAsync(
         uint accountUid,
         CancellationToken cancellationToken = default);

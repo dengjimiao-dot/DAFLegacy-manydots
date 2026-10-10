@@ -10,6 +10,7 @@ public sealed class ServerOptions
     public LoggingOptions Logging { get; set; } = new();
     public PacketCaptureOptions PacketCapture { get; set; } = new();
     public McpOptions Mcp { get; set; } = new();
+    public AccountOptions Accounts { get; set; } = new();
     public ListenerOptions Entrance { get; set; } = new();
     public ListenerOptions CharacterDatagram { get; set; } = new();
     public GameplayDatagramOptions GameplayDatagram { get; set; } = new();
@@ -75,6 +76,20 @@ public sealed class ChannelOptions
 
     /// <summary>频道 <paramref name="channelNumber"/> 的监听端口（PortBase + 频道号）。</summary>
     public int PortFor(int channelNumber) => checked(PortBase + channelNumber);
+}
+
+/// <summary>
+/// 账号策略（登录期行为）。协议面不新增字段，仅决定 CMD 1 收到不存在的账号时
+/// 服务端如何应答（见 docs/protocol/packet-detail-login-character-60cn.md CMD 1）。
+/// </summary>
+public sealed class AccountOptions
+{
+    /// <summary>
+    /// 登录时账号不存在则用提交的账号/口令直接建号（默认开启）。关闭后按原行为回
+    /// 登录失败错误码。建号沿用管理接口的账号名规则（4-32 位）但不要求 QQ 码，口令
+    /// 只要求非空（登录表单没有单独的开号步骤，见 GameStoreCore.TryCreateLoginAccountAsync）。
+    /// </summary>
+    public bool CreateMissingAccountsOnLogin { get; set; } = true;
 }
 
 public sealed class AdminOptions

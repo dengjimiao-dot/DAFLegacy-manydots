@@ -6,7 +6,7 @@
 
 ## NOTI 13 `ENUM_NOTIPACKET_ITEM_LIST` — 全量物品列表 ✅
 
-`CreateItemList`;登录、拉取列表及整理物品等全量刷新回本包。整理必须回全量列表:客户端 NOTI 14 处理器对 listType≠3 只做"忽略 0xFFFF + 新增播报"(IDA 0x41D34F/0x41D769),无法表达整排搬迁(见根目录 [PENDING.md](../../PENDING.md) P-21)。
+`CreateItemList`;登录、拉取列表及整理物品等全量刷新回本包。整理目前回全量列表:该处理器先清空对应容器再逐条 `sub_45E280` 重建,而插入路径会在主背包(space=0)时改写背包页签——全量列表的末条 slot≥9 记录决定整理后停留的页签(2026-10-10 IDA 复核,见根目录 [PENDING.md](../../PENDING.md) P-21);NOTI 14 的 listType≠3 分支并非"忽略 0xFFFF",该通道可表达清槽与新建,细节见下节。
 
 | 偏移 | 宽度 | 字段 | 说明 |
 |---:|---:|---|---|
@@ -42,6 +42,11 @@
 
 总长 = 3 + 12n;堆叠耗尽用清槽条目 `{slot, 0xFFFF, 0}`。
 
+**通道能力(2026-10-10 IDA 复核,`sub_419420` case 14 @0x41D237..0x41D942,非穿戴栏 listType≠3 分支)**:
+- 该槽已有物品且 `itemId==0xFFFF` → `sub_45E210(container, slot)` 移除该槽物品(主背包槽≥3 真删除,钱包位 0..2 复位);槽内无物品且 `itemId!=0xFFFF` → `sub_51AB60` 新建 + `sub_45E280` 插入(0x41D762 一带)。
+- 该槽已有物品且 `itemId` 指向不同物品 → 0x41D5C3 一带按物品类型走"删+建"窄分支。
+- 故增量通道可表达"清槽 + 目标槽新建",即搬迁;唯一副作用与 NOTI 13 相同:新建分支 (`push 1` @0x41D7EC) 在主背包会改写页签(见根目录 [PENDING.md](../../PENDING.md) P-21)。
+
 回包字节(示例):`00 0E 15 00 00 00 D6 D2 D6 D2 D6 71 DA C2 D6 D6 D6 D6 FE D6 D6`
 
 ## CMD 18 `ENUM_CMDPACKET_DELETE_ITEM` — 删除物品 ✅
@@ -71,6 +76,12 @@
 
 **应答**:11B `[1, srcList, srcSlot u16, movedCount u32, dstList, dstSlot u16]`;随后推 NOTI 14。
 
+**同空间移动的编码与刷新**（2026-10-10 抓包重建复核，见根目录 [PENDING.md](../../PENDING.md) P-41）:
+
+- **空目标格反向编码**：把物品拖到同空间的空格时，客户端把**空格**放在 `srcSlot`、**物品所在格**放在 `dstSlot`（`count=0`）。主背包 `0→0`、装扮背包 `1→1`、仓库 `2→2` 三处都走这一形态；服务端按"`src` 为空且 `dst` 有物品"识别后交换两端再落库（宠物空间 `7→7` 的等价识别在 `CreatureInventoryMovePlanner` 内）。`dst` 为同空间被占用格且 `src` 非空时才是正常顺序的**交换**，走通用路径。
+- **未指定目标**：`dstSlot` 为负（0xFFFF）表示未指定，服务端按部分堆叠 → 类别空槽自动定址。
+- **刷新形态**：主背包路径按 `ShouldUseIncrementalMainMoveRefresh` 选增量（NOTI 14 两槽）或全量（NOTI 13 listType=0）；仓库路径推 listType=2 全量列表；装扮背包推装扮列表；穿戴栏另发装备状态同步。反向编码分支的应答按请求原样回显 `src/dst` 与真实移动数量。
+
 发包字节(示例):`01 13 0C 00 00 00 BE 23 C2 58 01 00` *
 
 ## CMD 20 `ENUM_CMDPACKET_SORT_ITEM` — 整理物品 ✅
@@ -79,8 +90,13 @@
 |---:|---:|---|---|
 | 0 | u16 | seq | |
 | 2 | u8 | space | 背包空间类型 |
+| 3 | u8 | section | 仅客户端补丁启用时存在:主背包为页签 0..3(装备/消耗品/材料/任务),宠物背包为页签 0..2(宠物/宠物装备/消耗品);`0xFF` 或本字段缺失 = 整包整理 |
 
-**应答**:成功 2B `[1, space]`;错误 3B `[0, errorCode, space]`。随后推 NOTI 13 全量列表(客户端增量通道无法表达整排搬迁,见根目录 [PENDING.md](../../PENDING.md) P-21)。
+**整理范围**:`section` 为有效页签号时服务端只整理该页签对应槽段,其余槽位原样保留;`section` 为 `0xFF`(含旧三字节形态)时按全部分区整理。槽段首:主背包 9/41/73/105(装备/消耗品/材料/任务),宠物背包 0/140/189(宠物/宠物装备/消耗品;238 起为已装备槽,不参与整理);两队数值分别与服务端 `CharacterInventoryLayout`、`CharacterCreatureInventoryLayout` 及客户端 `sub_7AAA10`、`sub_7A8D30` 同值。页签字节由 `Client/DAFLegacy.Ijl15` 的补丁在 `sub_45FF70` 内追加:space=0 取背包窗口页签条 `[[dword_B5DCE8]+0x80]+0x3C`,space=7 取宠物视图 `[宠物视图+0x90]`(视图地址在游戏初始化期由补丁缓存),仓库 space=2 及无法解析的视图写 `0xFF`;未装补丁的客户端仍发三字节。字段面与验收见根目录 [PENDING.md](../../PENDING.md) P-40。
+
+**应答**:成功 2B `[1, space]`;错误 3B `[0, errorCode, space]`。随后推 NOTI 13 全量列表。
+
+应答本身不触碰页签:成功分支(客户端 case 20 @0x411224)只对 `sub_4338F0(space)` 取到的容器做挂起项出栈(`sub_40E290`)并记 `ARRANGE_FINISH` 日志。整理后的页签变化来自随后的 NOTI 13 重建(插入路径改写页签,末条 slot≥9 记录决定停留页签),见根目录 [PENDING.md](../../PENDING.md) P-21。
 
 发包字节(示例):`01 14 0C 00 00 00 BE 23 C2 58 01 00` *
 

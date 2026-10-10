@@ -1332,6 +1332,53 @@ public abstract class GameStoreCore(
         }
     }
 
+    public async Task<AuthenticatedAccount?> TryCreateLoginAccountAsync(
+        string userName,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        // 登录期建号（AccountOptions.CreateMissingAccountsOnLogin）：账号名沿用
+        // CreateAccountAsync 的 4-32 位规则，但不要求 QQ 码——登录表单没有该字段，
+        // QQ 码只服务管理接口的密码找回。口令只要求非空且不超过 128 位：登录路径
+        // 本身就是"用户输入的即凭据"，预置账号 test/test 亦为短口令，过严的下限只会
+        // 把未注册账号挡在门外且无从提示。管理接口的开号/改密仍走 IsValidPassword
+        // 的 6-128 位规则，两处策略不同是有意的。
+        var name = userName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)
+            || name.Length is < 4 or > 32
+            || string.IsNullOrEmpty(password)
+            || password.Length > 128)
+        {
+            return null;
+        }
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (FindAccountLocked(name) is not null)
+            {
+                return null;
+            }
+
+            var account = new AccountRecord(
+                Guid.NewGuid(),
+                name,
+                HashPassword(password),
+                [],
+                AllocateAccountUidLocked(testAccount: false),
+                PresetCharactersInitialized: false,
+                Cash: DefaultAccountCash,
+                OicqCode: null);
+            _accounts.Add(account);
+            await SaveLockedAsync(cancellationToken);
+            return ToAuthenticatedAccount(account);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<AccountPasswordUpdateResult> ChangePasswordAsync(
         string userName,
         ChangeAccountPasswordRequest request,

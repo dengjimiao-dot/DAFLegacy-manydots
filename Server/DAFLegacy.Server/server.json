@@ -2,6 +2,7 @@
   "DAFLegacy": {
     "Admin": { "Host": "127.0.0.1", "Port": 8081 },
     "Logging": { "Enabled": false },
+    "Accounts": { "CreateMissingAccountsOnLogin": true },
     "Mcp": { "Enabled": true, "Host": "127.0.0.1", "Port": 12222 },
     "Entrance": {
       "Enabled": true,

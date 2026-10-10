@@ -226,6 +226,7 @@ public sealed class EntranceService(
             senders: _sessionSenders));
         // 放弃副本 CMD 45 (0x2D) ENUM_CMDPACKET_GIVEUP_GAME
         registry.Register("combat.dungeon", new GiveupGameHandler(
+            store,
             senders: _sessionSenders));
         // 副本结算握手(EPLP) CMD 75 (0x4B) ENUM_CMDPACKET_EPLP_COMMAND
         registry.Register("combat.dungeon", new EplpHandler(
@@ -397,7 +398,7 @@ public sealed class EntranceService(
         // 精灵脚本消息 CMD 132 (0x84) ENUM_CMDPACKET_CREATURE_SCRIPT_MESSAGE
         registry.Register("social.chat", new CreatureScriptMessageHandler());
         // 账号登录 CMD 1 (0x01) ENUM_CMDPACKET_LOGIN
-        registry.Register("session.login", new LoginHandler(store));
+        registry.Register("session.login", new LoginHandler(store, options));
         // UDP 端点上报 CMD 2 (0x02) ENUM_CMDPACKET_SET_UDP_IP_PORT
         registry.Register("session.login", new SetUdpEndpointHandler(gameplayDatagram, partyCoordinator));
         // 用户信息查询 CMD 8 (0x08) ENUM_CMDPACKET_GET_USERINFO

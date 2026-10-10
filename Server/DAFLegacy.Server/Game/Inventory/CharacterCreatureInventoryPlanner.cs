@@ -675,26 +675,33 @@ public static class CharacterCreatureInventorySorter
     ];
 
     public static Dictionary<ushort, CharacterItemRecord> Sort(
-        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory)
+        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
+        byte section = CharacterInventorySorter.SortAllSections)
     {
         var arranged = inventory.ToDictionary(pair => pair.Key, pair => pair.Value);
-        foreach (var section in Sections)
+        for (var sectionIndex = 0; sectionIndex < Sections.Length; sectionIndex++)
         {
+            if (section < Sections.Length && section != sectionIndex)
+            {
+                continue;
+            }
+
+            var current = Sections[sectionIndex];
             var sorted = inventory
-                .Where(pair => pair.Key >= section.Start && pair.Key < section.End)
+                .Where(pair => pair.Key >= current.Start && pair.Key < current.End)
                 .Select(pair => (OldSlot: pair.Key, Item: pair.Value))
                 .OrderBy(entry => entry.Item.ItemId)
                 .ThenBy(entry => entry.Item.CountOrValue)
                 .ThenBy(entry => entry.OldSlot)
                 .ToArray();
-            for (var slot = (int)section.Start; slot < section.End; slot++)
+            for (var slot = (int)current.Start; slot < current.End; slot++)
             {
                 arranged.Remove(checked((ushort)slot));
             }
 
             for (var index = 0; index < sorted.Length; index++)
             {
-                var destination = checked((ushort)(section.Start + index));
+                var destination = checked((ushort)(current.Start + index));
                 arranged[destination] = sorted[index].Item with { Slot = destination };
             }
         }

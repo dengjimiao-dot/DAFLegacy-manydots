@@ -121,6 +121,7 @@ dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release 
 | `DatabasePath` | SQLite 存档路径，默认 `Data/game.sqlite`（2026-10-03 起由 `game.db` 更名，旧档手动改名即可沿用），相对路径以服务端程序目录为基准。库不存在时按基线 schema 建空库（不播种任何数据，账号与角色经 Admin API 或客户端流程创建），已存在时直接使用、不重建。 |
 
 爆率、经验倍率、深渊掉落次数与配方率、掉落开关、黑钻与活动经验加成等**游戏内容参数不在本文件**——它们以 `server_settings` 表为唯一真源，随库持久化；启动时读一次并打印生效值，改库后重启生效。频道容量（`Channel.MaximumUsers`，默认 10）在本文件 `Channel` 节；频道当前人数为在线会话数动态值；频道目录解析自 PVF（`etc/channel_info.etc` + `etc/etc.chn.str`），启动成功时打印列表；收录的 `[server]` 组号由 `Channel.ServerGroup` 配置（默认 1）。
+| `Accounts.CreateMissingAccountsOnLogin` | 登录时账号不存在则用提交的账号/口令直接建号并继续登录，默认 `true`（空库首次登录即自动开号，无需先经 Admin API 建账号）。建号沿用账号名 4-32 位规则、不要求 QQ 码、口令只要求非空；置 `false` 回到"账号不存在→登录失败"。 |
 | `Admin` | HTTP 监听地址和端口，模板 `127.0.0.1:8081`。 |
 | `Mcp.Enabled` | DAF-MCP 总网关（标准 MCP 端点，供智能体实时抓包分析协议），默认 `false`。开启需发布目录存在 `DAFLegacy.Mcp.dll`。 |
 | `Mcp.Host` / `Mcp.Port` | MCP 监听地址和端口，模板 `127.0.0.1:12222`。仅回环使用；改非回环等同主动暴露协议流与游戏数据。 |
@@ -185,10 +186,20 @@ EnableCustomStackableUseMode1=1
 RemoveCustomPopupAnnouncementTitle=1
 UseExternalDnfStringTable=1
 FixMailboxArchiveRefresh=1
+KeepInventoryTabOnListRefresh=1
+SendInventorySortTab=1
+UnblockStorageUpgradeButton=1
+StorageUpgradeButtonRect=
 BypassCeraPurchaseRestrictions=1
 ForcePlainTextLogs=1
 DisableType16ChatMessageSound=1
 RedirectClientOutputPaths=0
+RegisterLocalFonts=1
+
+[Fonts]
+LocalFontFile=fonts/simsun.ttc
+LocalFontFamily=XPSimSun
+LocalFontFamilyTarget=large
 
 [CeraPurchaseGate]
 LegacySaleWindow=1
@@ -202,6 +213,8 @@ GiftEligibility=0
 ```
 
 窗口大小只改变外层缩放，内部渲染保持 `640×480`。`ScaleFilter` 支持 `native`、`point`/`nearest`、`linear` 和 `anisotropic`。两个功能开关分别控制性能信息覆盖层与鼠标滚轮支持，设为 `0` 关闭。修改后重启客户端生效。
+
+`[Fonts]` 与 `RegisterLocalFonts` 用于把客户端目录里的字体文件按进程私有方式注册（`AddFontResourceEx(FR_PRIVATE)`）后再启动引擎：客户端在启动时固定按 `SimSun` 12/18 两号取字（见 `docs/protocol/client-function-register-60cn.md` §12）：12 号是常规 UI 默认字体，18 号只有一个消费方（窗口组件 `sub_815B20`，即 NPC 对话弹窗一类多行大字窗）。实测仅注册文件并不生效——GDI 对"系统已装的同族名"仍选系统字体——因此补丁在注册成功后会把引擎两处字体创建的族名改成 `LocalFontFamily`（用字体文件的英文族名，默认值即客户端 `fonts/simsun.ttc` 的 `XPSimSun`；族名可先用 `tools/diagnostics/font_family_names.py` 查看）。生效范围由 `LocalFontFamilyTarget` 控制：`large`（默认）只改 18 号字体，客户端里只有 `sub_815B20` 构造的那个大字窗口组件消费它（NPC 对话弹窗一类的多行大字窗），12 号常规 UI 字体保持 `SimSun` 不动；`small` 只改 12 号常规 UI（影响整个界面）；`both` 两者都改。`LocalFontFile` 按客户端可执行文件所在目录解析，也可写盘符绝对路径；文件缺失、注册失败、族名留空或开关关闭时保持系统字体，不影响启动。
 
 ## 测试
 

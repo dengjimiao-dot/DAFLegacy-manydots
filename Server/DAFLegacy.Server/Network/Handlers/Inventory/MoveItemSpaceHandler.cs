@@ -195,6 +195,66 @@ public sealed partial class MoveItemSpaceHandler(IGameStore store,
                 return;
             }
 
+            // Warehouse-internal empty targets are encoded in the
+            // same reverse form as main-bag and avatar-bag empty
+            // targets: the empty character-storage slot arrives as
+            // the source and the occupied origin as the destination.
+            // Swaps between two occupied cargo slots arrive in the
+            // normal order and never reach this branch.
+            if (session.Character.Active is not null
+                && parsedMove
+                && sourceListType == 2
+                && destinationListType == 2
+                && sourceSlot < session.Inventory.WarehouseCapacity
+                && destinationSlot < session.Inventory.WarehouseCapacity
+                && !session.Inventory.Warehouse.ContainsKey(sourceSlot)
+                && session.Inventory.Warehouse.TryGetValue(
+                    destinationSlot,
+                    out var warehouseItemToMove)
+                && senders.IsCompatibleInventorySlot(
+                    2,
+                    warehouseItemToMove,
+                    sourceSlot,
+                    session.Inventory.WarehouseCapacity))
+            {
+                session.Inventory.Warehouse.Remove(destinationSlot);
+                session.Inventory.Warehouse[sourceSlot] = warehouseItemToMove with
+                {
+                    Slot = sourceSlot
+                };
+                session.Character.Active = await store.SaveCharacterItemSpacesAsync(
+                    session.Login.AccountName,
+                    session.Character.Active.Id,
+                    session.Currency.Gold,
+                    session.Inventory.Main.Values,
+                    session.Inventory.Equipped.Values,
+                    session.Inventory.Warehouse.Values,
+                    cancellationToken,
+                    avatarInventory: session.Inventory.Avatar.Values)
+                    ?? session.Character.Active;
+
+                var reverseWarehouseReply =
+                    InventoryPacketBuilders.CreateMoveItemSpaceReply(
+                        sourceListType,
+                        sourceSlot,
+                        warehouseItemToMove.CountOrValue,
+                        destinationListType,
+                        destinationSlot);
+                await context.Queue.SendAsync(reverseWarehouseReply, Name, cancellationToken);
+
+                var refreshWarehouse = builders.CreateWarehousePacket(
+                    session.Inventory.Warehouse.Values,
+                    session.Inventory.WarehouseCapacity);
+                await context.Queue.SendAsync(refreshWarehouse, Name, cancellationToken);
+
+                RuntimeLogger.Info(
+                    "Moved warehouse item {ItemId} from empty-target encoded 2:{DestinationSlot} to 2:{SourceSlot}.",
+                    warehouseItemToMove.ItemId,
+                    destinationSlot,
+                    sourceSlot);
+                return;
+            }
+
             // Unequipping an Avatar also arrives as list 1
             // empty source -> list 3 occupied destination.
             if (session.Character.Active is not null

@@ -448,7 +448,12 @@ public sealed partial class SelectCharacterHandler(
                     .Select(state => state.ServiceType));
 
         session.Skill.CurrentSp = Math.Max(0, session.Character.Active.Sp);
-        if (session.Character.Active.Skills is null)
+        // 空技能表同样按"未初始化"处理:每个职业的 `GetInitialSkills` 都有基础
+        // 技能(含被动),空表只可能来自旧版本建号时的空白表(2026-10-10:鬼剑士
+        // 在 job 0 基础技能表补齐之前建号,空表被持久化后一直沿用)。补种不清空
+        // 任何已学技能,只在本表为空时填入该职业的初始表。
+        if (session.Character.Active.Skills is null
+            or { Count: 0 })
         {
             session.Skill.Current = skillCatalog
                 .CreateInitialLayout(character.Job, CharacterPacketBuilders.GetInitialSkills(character))

@@ -11,7 +11,8 @@ namespace DAFLegacy.Server;
 /// which selects the normal character-list path in this client build.
 /// </summary>
 public sealed class LoginHandler(
-    IGameStore store
+    IGameStore store,
+    ServerOptions options
     ) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.LOGIN;
@@ -50,6 +51,35 @@ public sealed class LoginHandler(
                 loginPassword,
                 cancellationToken)
             : await store.FindAccountAsync(loginName, cancellationToken);
+
+        // 未注册账号：按策略用提交的账号/口令直接建号并继续登录（协议面不新增字段，
+        // 见 ServerOptions.AccountOptions）。只有带口令的登录请求（登录表单形态）才
+        // 建号；仅账号名的旧短包形态仍按原逻辑回登录失败。
+        var accountCreated = false;
+        if (authenticated is null
+            && loginPassword is not null
+            && options.Accounts.CreateMissingAccountsOnLogin)
+        {
+            authenticated = await store.TryCreateLoginAccountAsync(
+                loginName,
+                loginPassword,
+                cancellationToken);
+            accountCreated = authenticated is not null;
+            if (accountCreated)
+            {
+                RuntimeLogger.Info(
+                    "Created account {AccountName} on login (uid {AccountUid}).",
+                    authenticated!.UserName,
+                    authenticated.AccountUid);
+            }
+            else
+            {
+                RuntimeLogger.Warn(
+                    "Could not create account {AccountName} on login; the name or password did not satisfy the login-time rules.",
+                    loginName);
+            }
+        }
+
         if (authenticated is null)
         {
             var loginError = ConnectionPacketBuilders.CreateCommandError(

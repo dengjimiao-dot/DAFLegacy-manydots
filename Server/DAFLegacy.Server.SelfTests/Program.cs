@@ -4325,12 +4325,11 @@ async Task RunProgramInlineSuite()
             AccountUidRules.MaximumTestUid + 1);
         var normalUidStarterItems = CharacterPacketBuilders.GetStarterInventoryItems(
             AccountUidRules.NormalUidStart);
-        Check(firstTestUidStarterItems.Count == 13
-            && lastTestUidStarterItems.SequenceEqual(firstTestUidStarterItems)
+        Check(firstTestUidStarterItems.Count == 0
+            && lastTestUidStarterItems.Count == 0
             && reservedUidStarterItems.Count == 0
-            && normalUidStarterItems.SequenceEqual(
-                new (ushort ItemId, uint Count)[] { (26043, 1), (8, 100) }),
-            "starter inventory keeps the full debug grant in the test UID range and gives normal accounts only title 26043 plus one stack of 100 item 8");
+            && normalUidStarterItems.Count == 0,
+            "newly created characters receive no starter items for test, reserved or normal account UIDs");
 
         var normalAccountCreation = await identityStore.CreateAccountAsync(
             new CreateAccountRequest(
@@ -4505,6 +4504,36 @@ async Task RunProgramInlineSuite()
             && rejectedChangedPassword is null
             && authenticatedResetPassword?.AccountUid == normalAccountUid,
             "password reset requires the persisted QQ recovery value and replaces the credential");
+
+        var createdLoginAccount = await identityStore.TryCreateLoginAccountAsync(
+            "login-created",
+            "pw");
+        var authenticatedLoginAccount = await identityStore.AuthenticateAsync(
+            "login-created",
+            "pw");
+        var secondLoginAccount = await identityStore.TryCreateLoginAccountAsync(
+            "login-created",
+            "pw");
+        var shortNameLoginAccount = await identityStore.TryCreateLoginAccountAsync(
+            "ab",
+            "pw");
+        var emptyPasswordLoginAccount = await identityStore.TryCreateLoginAccountAsync(
+            "long-enough-name",
+            string.Empty);
+        Check(createdLoginAccount is { UserName: "login-created" }
+            && authenticatedLoginAccount?.AccountUid == createdLoginAccount.AccountUid
+            && secondLoginAccount is null
+            && shortNameLoginAccount is null
+            && emptyPasswordLoginAccount is null,
+            "login-time account creation registers a new credential pair, rejects an existing name and refuses names or passwords outside the login-time rules");
+
+        var loginAccountReload = TestGameStore.Create(identityStoreOptions);
+        await loginAccountReload.InitializeAsync();
+        var persistedLoginAccount = await loginAccountReload.AuthenticateAsync(
+            "login-created",
+            "pw");
+        Check(persistedLoginAccount?.UserName == "login-created",
+            "a login-time created account survives a store reload");
 
         var deletedNormalCharacter = await identityStore.DeleteCharacterAsync(normalAccountUid, 0);
         var recreatedNormalCharacter = await identityStore.CreateCharacterAsync(
@@ -6690,11 +6719,18 @@ async Task RunProgramInlineSuite()
     var sortItemParser = typeof(InventoryParsers).GetMethod(
         "TryReadSortItem",
         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-    object?[] sortItemArguments = [new byte[] { 0x0E, 0x00, 0x00 }, (byte)0xFF];
+    object?[] legacySortItemArguments =
+        [new byte[] { 0x0E, 0x00, 0x00 }, (byte)0xFF, (byte)0x00];
+    object?[] sectionSortItemArguments =
+        [new byte[] { 0x0F, 0x00, 0x00, 0x02 }, (byte)0xFF, (byte)0x00];
     Check(sortItemParser is not null
-        && (bool)sortItemParser.Invoke(null, sortItemArguments)!
-        && (byte)sortItemArguments[1]! == 0,
-        "DAFLegacy sort-item parser reads the item-space byte after the request sequence");
+        && (bool)sortItemParser.Invoke(null, legacySortItemArguments)!
+        && (byte)legacySortItemArguments[1]! == 0
+        && (byte)legacySortItemArguments[2]! == CharacterInventorySorter.SortAllSections
+        && (bool)sortItemParser.Invoke(null, sectionSortItemArguments)!
+        && (byte)sectionSortItemArguments[1]! == 0
+        && (byte)sectionSortItemArguments[2]! == 2,
+        "DAFLegacy sort-item parser keeps the legacy whole-space form and reads the appended section byte");
 
     var unsortedMainInventory = new Dictionary<ushort, CharacterItemRecord>
     {
@@ -6718,6 +6754,61 @@ async Task RunProgramInlineSuite()
         && sortedMainInventory[75].ItemId == 3_176
         && sortedMainInventory.Count == unsortedMainInventory.Count,
         "main-inventory sorting keeps quick slots, orders equipment by rarity/id, and does not merge stacks");
+
+    const byte materialSection = 2;
+    var sectionSortedMainInventory = CharacterInventorySorter.SortMain(
+        unsortedMainInventory,
+        smokeItemCatalog!,
+        materialSection);
+    Check(CharacterInventoryLayout.MaterialSlotStart == 73
+        && sectionSortedMainInventory[73].ItemId == 3_037
+        && sectionSortedMainInventory[73].CountOrValue == 1
+        && sectionSortedMainInventory[74].ItemId == 3_037
+        && sectionSortedMainInventory[74].CountOrValue == 58
+        && sectionSortedMainInventory[75].ItemId == 3_176
+        && sectionSortedMainInventory[12].ItemId == 10_000
+        && sectionSortedMainInventory[15].ItemId == 14_873
+        && sectionSortedMainInventory[3].ItemId == 1_055
+        && sectionSortedMainInventory.Count == unsortedMainInventory.Count,
+        "section-scoped sorting compacts only the requested tab and leaves the other tabs untouched");
+
+    var unsortedPetInventory = new Dictionary<ushort, CharacterItemRecord>
+    {
+        [3] = new CharacterItemRecord(3, 3_176, 1),
+        [20] = new CharacterItemRecord(20, 3_037, 2),
+        [145] = new CharacterItemRecord(145, 10_000, 1, Durability: 1_000),
+        [190] = new CharacterItemRecord(190, 1_031, 7),
+        [200] = new CharacterItemRecord(200, 7_518, 3),
+        [238] = new CharacterItemRecord(238, 14_873, 1)
+    };
+    var sortedPetInventory = CharacterCreatureInventorySorter.Sort(
+        unsortedPetInventory);
+    Check(CharacterCreatureInventoryLayout.CreatureBagStart == 0
+        && CharacterCreatureInventoryLayout.ArtifactBagStart == 140
+        && CharacterCreatureInventoryLayout.StackableBagStart == 189
+        && sortedPetInventory[0].ItemId == 3_037
+        && sortedPetInventory[1].ItemId == 3_176
+        && sortedPetInventory[140].ItemId == 10_000
+        && sortedPetInventory[189].ItemId == 1_031
+        && sortedPetInventory[189].CountOrValue == 7
+        && sortedPetInventory[190].ItemId == 7_518
+        && sortedPetInventory[238].ItemId == 14_873
+        && sortedPetInventory.Count == unsortedPetInventory.Count,
+        "whole-space pet sorting compacts the creature, artifact and stackable bags and keeps the equipped slot");
+
+    const byte artifactPetSection = 1;
+    var sectionSortedPetInventory = CharacterCreatureInventorySorter.Sort(
+        unsortedPetInventory,
+        artifactPetSection);
+    Check(sectionSortedPetInventory[140].ItemId == 10_000
+        && !sectionSortedPetInventory.ContainsKey(145)
+        && sectionSortedPetInventory[3].ItemId == 3_176
+        && sectionSortedPetInventory[20].ItemId == 3_037
+        && sectionSortedPetInventory[190].ItemId == 1_031
+        && sectionSortedPetInventory[200].ItemId == 7_518
+        && sectionSortedPetInventory[238].ItemId == 14_873
+        && sectionSortedPetInventory.Count == unsortedPetInventory.Count,
+        "section-scoped pet sorting moves only the requested pet tab");
 
     var sortedWarehouse = CharacterInventorySorter.SortWarehouse(
         new Dictionary<ushort, CharacterItemRecord>

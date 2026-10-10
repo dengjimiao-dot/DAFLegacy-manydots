@@ -12,6 +12,7 @@
 #include "dnf_patches.h"
 #include "d3d8_scaler.h"
 #include "external_string_table.h"
+#include "font_resources.h"
 #include "ijl15_config.h"
 #include "message_audio.h"
 #include "memory_patch.h"
@@ -30,6 +31,19 @@ namespace
     constexpr std::uintptr_t ClientPayUrlOperand = 0x0082034D;
     constexpr std::uint32_t OriginalClientDiamondUrl = 0x00A81C34;
     constexpr std::uint32_t OriginalClientPayUrl = 0x00A81C0C;
+
+    // The engine creates its two text fonts (sub_40B630, sizes 12 and 18)
+    // with the hard-coded family name "SimSun" at 0x00998C6C. A font that is
+    // registered for this process only does not win over an installed family
+    // with the same name, so the family operand is redirected to the family of
+    // the locally registered file instead (see PENDING P-42).
+    // 0x40BA71 belongs to the 12px creation (the general UI font, referenced
+    // by more than two hundred call sites); 0x40BAB7 belongs to the 18px
+    // creation, which only the large-text window component built by
+    // sub_815B20 consumes.
+    constexpr std::uintptr_t TextFontSmallNameOperand = 0x0040BA71;
+    constexpr std::uintptr_t TextFontLargeNameOperand = 0x0040BAB7;
+    constexpr std::uint32_t OriginalTextFontName = 0x00998C6C;
 
     // CNRDStackable::getUseMode at 0x00457150 does not expose an action for
     // [cera booster] and returns mode 2 for generic [etc] items. Redirect
@@ -63,6 +77,73 @@ namespace
         0xBE,
         0x00,
         0x01};
+
+    // NOTI 13 (ENUM_NOTIPACKET_ITEM_LIST) rebuilds the bag by inserting every
+    // record with the fourth argument of sub_45E280 set to one. Inside
+    // sub_45E280 that flag makes the main container (space 0) rewrite the bag
+    // window's page-tab strip (window+0x80, current tab at +0x3C) to the tab
+    // that owns the inserted item's slot. A full-list refresh therefore leaves
+    // the tab on the slot range of the last inserted item instead of keeping
+    // the tab the player selected. Clear the flag so the rebuild stays silent;
+    // the incremental path (NOTI 14) keeps its own flag and its auto-switch.
+    constexpr std::uintptr_t MainListInsertFlag = 0x0041D1FB;
+    constexpr std::array<unsigned char, 6> OriginalMainListInsertFlag{
+        0x6A,
+        0x01,
+        0x8B,
+        0x8D,
+        0x98,
+        0xEF};
+
+    // sub_45FF70 appends the one-byte item space to the CMD 20 body. Extend
+    // that append to two bytes and add the current page tab as the second
+    // byte, so the server can sort only the selected tab: the bag window's tab
+    // strip for space 0, the pet-grid view for space 7. The warehouse (space 2)
+    // has no page tabs, and a view that cannot be resolved writes 0xFF, which
+    // the server reads as "whole item space". The legacy three-byte body keeps
+    // working for unpatched clients.
+    constexpr std::uintptr_t BagWindowPointer = 0x00B5DCE8;
+    constexpr std::size_t BagWindowTabStripOffset = 0x80;
+    constexpr std::size_t TabStripCurrentTabOffset = 0x3C;
+    constexpr std::uint8_t SortAllSections = 0xFF;
+    constexpr std::uintptr_t InventorySortPayloadAppend = 0x0046007C;
+    constexpr std::uintptr_t InventorySortPayloadResume = 0x00460084;
+    constexpr std::array<unsigned char, 8> OriginalInventorySortAppend{
+        0x6A,
+        0x01,
+        0x8D,
+        0x45,
+        0xFC,
+        0x50,
+        0x8B,
+        0xCE};
+
+    // The bag window constructor (sub_79B740) clears the pet-grid view object
+    // once while the item windows are built at game init, so its address stays
+    // valid for the whole session. That view keeps its current page tab at
+    // +0x90 (0..2: creature / artifact / creature stackable), selected by
+    // sub_7A6A50 and mapped to the pet section starts 0/140/189 through
+    // sub_7A8D30 - the same boundaries the server uses for space 7.
+    constexpr std::uintptr_t PetGridViewInit = 0x007A6110;
+    constexpr std::uintptr_t PetGridViewResume = 0x007A6115;
+    constexpr std::size_t PetGridTabOffset = 0x90;
+    constexpr std::uint32_t PetGridTabCount = 3;
+    constexpr std::array<unsigned char, 5> OriginalPetGridViewInit{
+        0x33,
+        0xC0,
+        0x89,
+        0x41,
+        0x10};
+
+    // Storage window (CNRDStorageWindow) frame function sub_823C80 prologue,
+    // displaced by the upgrade-button hook.
+    constexpr std::array<unsigned char, 6> OriginalStorageUpgradeTickPrologue{
+        0x55,
+        0x8B,
+        0xEC,
+        0x83,
+        0xEC,
+        0x38};
 
     constexpr char LocalClientDiamondUrl[] =
         "http://127.0.0.1:8081/client/client_diamond.htm";
@@ -145,6 +226,128 @@ namespace
         *reinterpret_cast<volatile unsigned char*>(ArchiveDirtyFlag) = 1;
     }
 
+    const void* PetGridComponent = nullptr;
+
+    extern "C" void __cdecl CapturePetGridComponent(const void* component) noexcept
+    {
+        PetGridComponent = component;
+    }
+
+    extern "C" unsigned char __cdecl CurrentPetInventorySection() noexcept
+    {
+        const auto* grid = static_cast<const unsigned char*>(PetGridComponent);
+        if (grid == nullptr)
+        {
+            return SortAllSections;
+        }
+
+        std::uint32_t tab = 0;
+        std::memcpy(&tab, grid + PetGridTabOffset, sizeof(tab));
+        return tab < PetGridTabCount
+            ? static_cast<unsigned char>(tab)
+            : SortAllSections;
+    }
+
+    __declspec(naked) void PetGridViewHook()
+    {
+        __asm
+        {
+            // Remember the pet-grid view while the bag window builds it once.
+            push eax
+            push ecx
+            call CapturePetGridComponent
+            pop ecx
+            pop eax
+
+            // Recreate the displaced clear stores, then resume right after.
+            xor eax, eax
+            mov [ecx + 10h], eax
+            push 007A6115h
+            ret
+        }
+    }
+
+    bool BuildPetGridViewHookBytes(
+        std::array<unsigned char, 5>& bytes) noexcept
+    {
+        constexpr std::size_t JumpSize = 5;
+        const auto hookAddress = reinterpret_cast<std::uintptr_t>(
+            &PetGridViewHook);
+        const auto displacement = static_cast<std::uint32_t>(
+            hookAddress - PetGridViewInit - JumpSize);
+
+        bytes[0] = 0xE9;
+        std::memcpy(
+            bytes.data() + 1,
+            &displacement,
+            sizeof(displacement));
+        return true;
+    }
+
+    __declspec(naked) void InventorySortTabHook()
+    {
+        __asm
+        {
+            // The space byte already sits in the first payload slot of the
+            // stack local; default the second slot to "whole item space".
+            push eax
+            push edx
+            mov byte ptr[ebp - 3], 0FFh
+            cmp byte ptr[ebp - 4], 0
+            jnz check_pet_space
+
+            // Main bag: the bag window's tab strip keeps the page tab.
+            mov edx, dword ptr ds:[0B5DCE8h]
+            test edx, edx
+            jz sort_tab_ready
+            mov edx, dword ptr[edx + 80h]
+            test edx, edx
+            jz sort_tab_ready
+            mov eax, dword ptr[edx + 3Ch]
+            cmp eax, 3
+            ja sort_tab_ready
+            mov byte ptr[ebp - 3], al
+            jmp sort_tab_ready
+
+            // Pet inventory: the pet-grid view keeps the page tab.
+        check_pet_space:
+            cmp byte ptr[ebp - 4], 7
+            jnz sort_tab_ready
+            call CurrentPetInventorySection
+            mov byte ptr[ebp - 3], al
+
+        sort_tab_ready:
+            pop edx
+            pop eax
+            // Recreate the displaced append sequence with a two-byte payload,
+            // then resume at the sub_8B2450 call.
+            push 2
+            lea eax, [ebp - 4]
+            push eax
+            mov ecx, esi
+            push 00460084h
+            ret
+        }
+    }
+
+    bool BuildInventorySortTabHookBytes(
+        std::array<unsigned char, 8>& bytes) noexcept
+    {
+        constexpr std::size_t JumpSize = 5;
+        const auto hookAddress = reinterpret_cast<std::uintptr_t>(
+            &InventorySortTabHook);
+        const auto displacement = static_cast<std::uint32_t>(
+            hookAddress - InventorySortPayloadAppend - JumpSize);
+
+        bytes.fill(0x90);
+        bytes[0] = 0xE9;
+        std::memcpy(
+            bytes.data() + 1,
+            &displacement,
+            sizeof(displacement));
+        return true;
+    }
+
     bool BuildMailboxDirtyHookBytes(
         std::array<unsigned char, 7>& bytes) noexcept
     {
@@ -163,6 +366,247 @@ namespace
         return true;
     }
 
+    // ---- Storage-window "upgrade" button (see PENDING P-49) ----
+    //
+    // The client wires the button (element 2 of the window's control array,
+    // CNRDStorageWindow tick sub_823C80) to the Cera shop: the branch at
+    // 0x823D39 opens the shop window (sub_864B60) and selects the storage
+    // upgrade kit of the current stage (sub_8659E0). In this build the
+    // control's hit rectangle does not sit where the button is drawn, so a
+    // click never reaches it. The hook below runs one tiny step per window
+    // frame: it keeps the control's rectangle anchored next to the sort
+    // button (the layout offsets come from the client's own construction
+    // data), and it detects the click itself instead of relying on the
+    // client's control dispatch. Both actions use the client's own routines,
+    // so the button is drawn with its own art and behaves like the stock
+    // button, still without sending any packet.
+
+    constexpr std::uintptr_t StorageUpgradeTickFunction = 0x00823C80;
+    constexpr std::uintptr_t StorageUpgradeTickResume = 0x00823C86;
+    constexpr std::uintptr_t ControlMoveFunction = 0x008F69A0;
+    constexpr std::uintptr_t CashShopSetStateFunction = 0x00864B60;
+    constexpr std::uintptr_t CashShopSelectUpgradeKitFunction = 0x008659E0;
+    constexpr std::uintptr_t MousePositionXFunction = 0x008FC710;
+    constexpr std::uintptr_t MousePositionYFunction = 0x008FC720;
+    constexpr std::uintptr_t IsInGameFunction = 0x00901150;
+    constexpr std::uintptr_t DecryptFieldFunction = 0x00402030;
+    constexpr std::uintptr_t StorageUpgradeStageField = 0x00BEE728;
+
+    constexpr std::size_t WindowOwnerOffset = 0x10;
+    constexpr std::size_t WindowButtonArrayOffset = 0x38;
+    constexpr std::size_t ButtonStride = 0x88;
+    constexpr std::size_t ButtonIdOffset = 0x0C;
+    constexpr std::size_t ButtonRectXOffset = 0x14;
+    constexpr std::size_t ButtonRectYOffset = 0x18;
+    constexpr std::size_t ButtonRectWidthOffset = 0x1C;
+    constexpr std::size_t ButtonRectHeightOffset = 0x20;
+    constexpr std::size_t ShopStateOffset = 0x10;
+    constexpr std::size_t CashShopFrameOffset = 0xF24;
+    constexpr int StorageUpgradeStageMax = 7;
+    // sub_825780 builds the sort button at x=223 and the upgrade button at
+    // x=18 on the same row; keep that offset when the layout moves them.
+    constexpr int UpgradeButtonOffsetFromSortX = 18 - 223;
+
+    using ControlMove = void(__thiscall*)(void*, int, int);
+    using ShopSetState = void(__thiscall*)(void*, int);
+    using ShopCommand = void(__thiscall*)(void*);
+    using QueryMouse = int(__cdecl*)();
+    using IsInGame = unsigned char(__cdecl*)();
+    using DecryptField = int(__thiscall*)(const void*);
+
+    bool UpgradeButtonMouseWasDown = false;
+    bool UpgradeButtonProbeShown = false;
+    int UpgradeButtonRect[4] = { 0, 0, 0, 0 };
+    bool UpgradeButtonRectConfigured = false;
+    bool UpgradeButtonRectParsed = false;
+    const void* UpgradeButtonWeightsOwner = nullptr;
+
+    int CurrentStorageUpgradeStage() noexcept
+    {
+        if (reinterpret_cast<IsInGame>(IsInGameFunction)() != 0)
+        {
+            const auto* field = *reinterpret_cast<const void* const*>(
+                StorageUpgradeStageField);
+            return field != nullptr
+                ? reinterpret_cast<DecryptField>(DecryptFieldFunction)(field)
+                : StorageUpgradeStageMax;
+        }
+        return *reinterpret_cast<const int*>(StorageUpgradeStageField);
+    }
+
+    void ParseUpgradeButtonRect() noexcept
+    {
+        UpgradeButtonRectParsed = true;
+        UpgradeButtonRectConfigured = false;
+        const auto& settings = dfl::ijl15_config::Get();
+        const char* text = settings.StorageUpgradeButtonRect.data();
+        if (text[0] == '\0')
+        {
+            return;
+        }
+
+        int values[4]{};
+        int index = 0;
+        const char* cursor = text;
+        while (index < 4 && *cursor != '\0')
+        {
+            while (*cursor == ' ' || *cursor == ',')
+            {
+                ++cursor;
+            }
+            if (*cursor < '0' || *cursor > '9')
+            {
+                return;
+            }
+            int value = 0;
+            while (*cursor >= '0' && *cursor <= '9')
+            {
+                value = value * 10 + (*cursor - '0');
+                ++cursor;
+            }
+            values[index++] = value;
+        }
+        if (index != 4)
+        {
+            return;
+        }
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            UpgradeButtonRect[slot] = values[slot];
+        }
+        UpgradeButtonRectConfigured = true;
+    }
+
+    extern "C" void __cdecl MaintainStorageUpgradeButton(void* window) noexcept
+    {
+        if (window == nullptr)
+        {
+            return;
+        }
+        auto* win = static_cast<unsigned char*>(window);
+        auto* owner = *reinterpret_cast<unsigned char**>(win + WindowOwnerOffset);
+        auto* buttons = *reinterpret_cast<unsigned char**>(win + WindowButtonArrayOffset);
+        if (owner == nullptr || buttons == nullptr)
+        {
+            return;
+        }
+        auto* shop = *reinterpret_cast<unsigned char**>(owner + CashShopFrameOffset);
+        if (shop == nullptr)
+        {
+            return;
+        }
+
+        if (!UpgradeButtonRectParsed)
+        {
+            ParseUpgradeButtonRect();
+        }
+
+        auto* sortButton = buttons + ButtonStride;
+        auto* upgradeButton = buttons + ButtonStride * 2;
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
+        if (UpgradeButtonRectConfigured)
+        {
+            x = UpgradeButtonRect[0];
+            y = UpgradeButtonRect[1];
+            width = UpgradeButtonRect[2];
+            height = UpgradeButtonRect[3];
+        }
+        else
+        {
+            x = *reinterpret_cast<int*>(sortButton + ButtonRectXOffset)
+                + UpgradeButtonOffsetFromSortX;
+            y = *reinterpret_cast<int*>(sortButton + ButtonRectYOffset);
+            width = *reinterpret_cast<int*>(upgradeButton + ButtonRectWidthOffset);
+            height = *reinterpret_cast<int*>(upgradeButton + ButtonRectHeightOffset);
+        }
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        if (*reinterpret_cast<int*>(upgradeButton + ButtonRectXOffset) != x
+            || *reinterpret_cast<int*>(upgradeButton + ButtonRectYOffset) != y)
+        {
+            reinterpret_cast<ControlMove>(ControlMoveFunction)(
+                upgradeButton,
+                x,
+                y);
+        }
+        *reinterpret_cast<int*>(upgradeButton + ButtonRectWidthOffset) = width;
+        *reinterpret_cast<int*>(upgradeButton + ButtonRectHeightOffset) = height;
+
+        const bool mouseDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+        const bool clicked = mouseDown && !UpgradeButtonMouseWasDown;
+        UpgradeButtonMouseWasDown = mouseDown;
+        const int mouseX = reinterpret_cast<QueryMouse>(MousePositionXFunction)();
+        const int mouseY = reinterpret_cast<QueryMouse>(MousePositionYFunction)();
+        const bool inside =
+            mouseX >= x && mouseX < x + width
+            && mouseY >= y && mouseY < y + height;
+
+
+        if (!clicked || !inside)
+        {
+            return;
+        }
+        if (*reinterpret_cast<const int*>(shop + ShopStateOffset) != 0)
+        {
+            return;
+        }
+        if (CurrentStorageUpgradeStage() >= StorageUpgradeStageMax)
+        {
+            return;
+        }
+
+        reinterpret_cast<ShopSetState>(CashShopSetStateFunction)(shop, 1);
+        reinterpret_cast<ShopCommand>(CashShopSelectUpgradeKitFunction)(shop);
+    }
+
+    __declspec(naked) void StorageUpgradeButtonHook()
+    {
+        __asm
+        {
+            // Preserve the registers the maintainer may clobber.
+            push eax
+            push ecx
+            push edx
+            push ecx
+            call MaintainStorageUpgradeButton
+            add esp, 4
+            pop edx
+            pop ecx
+            pop eax
+
+            // Recreate the displaced prologue, then resume at 0x00823C86.
+            push ebp
+            mov ebp, esp
+            sub esp, 38h
+            push 00823C86h
+            ret
+        }
+    }
+
+    bool BuildStorageUpgradeButtonHookBytes(
+        std::array<unsigned char, 6>& bytes) noexcept
+    {
+        constexpr std::size_t JumpSize = 5;
+        const auto hookAddress = reinterpret_cast<std::uintptr_t>(
+            &StorageUpgradeButtonHook);
+        const auto displacement = static_cast<std::uint32_t>(
+            hookAddress - StorageUpgradeTickFunction - JumpSize);
+
+        bytes.fill(0x90);
+        bytes[0] = 0xE9;
+        std::memcpy(
+            bytes.data() + 1,
+            &displacement,
+            sizeof(displacement));
+        return true;
+    }
+
     struct CodePatch
     {
         bool Enabled;
@@ -171,7 +615,7 @@ namespace
         std::array<unsigned char, 6> Replacement;
     };
 
-    std::array<CodePatch, 37> BuildPatches() noexcept
+    std::array<CodePatch, 38> BuildPatches() noexcept
     {
         const auto& settings = dfl::ijl15_config::Get();
         return { {
@@ -299,6 +743,14 @@ namespace
             0x008666BA,
             {0xC6, 0x40, 0x10, 0x00, 0x8B, 0x5D},
             {0xC6, 0x40, 0x10, 0x01, 0x8B, 0x5D}
+        },
+        {
+            settings.KeepInventoryTabOnListRefresh,
+            // Full-list rebuild: pass a zero insert flag so the rebuilt list
+            // keeps the bag page tab on the range the player selected.
+            MainListInsertFlag,
+            OriginalMainListInsertFlag,
+            {0x6A, 0x00, 0x8B, 0x8D, 0x98, 0xEF}
         },
         {
             true,
@@ -458,7 +910,7 @@ namespace
     }
 
     bool ValidatePatchRanges(
-        const std::array<CodePatch, 37>& patches) noexcept
+        const std::array<CodePatch, 38>& patches) noexcept
     {
         const auto& settings = dfl::ijl15_config::Get();
         const auto* base = reinterpret_cast<const unsigned char*>(DnfImageBase);
@@ -512,6 +964,12 @@ namespace
             return false;
         }
 
+        if (!pointerFitsImage(TextFontSmallNameOperand)
+            || !pointerFitsImage(TextFontLargeNameOperand))
+        {
+            return false;
+        }
+
         if (settings.EnableCustomStackableUseMode1
             && !rangeFitsImage(
                 StackableUseModeFunction,
@@ -524,6 +982,22 @@ namespace
             && !rangeFitsImage(
                 MailboxFirstInsertDirtyWrite,
                 OriginalMailboxDirtyWrite.size()))
+        {
+            return false;
+        }
+
+        if (settings.SendInventorySortTab
+            && !rangeFitsImage(
+                InventorySortPayloadAppend,
+                OriginalInventorySortAppend.size()))
+        {
+            return false;
+        }
+
+        if (settings.SendInventorySortTab
+            && !rangeFitsImage(
+                PetGridViewInit,
+                OriginalPetGridViewInit.size()))
         {
             return false;
         }
@@ -627,6 +1101,132 @@ namespace
             MailboxFirstInsertDirtyWrite,
             OriginalMailboxDirtyWrite.data(),
             OriginalMailboxDirtyWrite.size());
+    }
+
+    PatchState InspectInventorySortTabHook() noexcept
+    {
+        const auto* target = reinterpret_cast<const unsigned char*>(
+            InventorySortPayloadAppend);
+        if (std::memcmp(
+                target,
+                OriginalInventorySortAppend.data(),
+                OriginalInventorySortAppend.size()) == 0)
+        {
+            return PatchState::Original;
+        }
+
+        std::array<unsigned char, 8> replacement{};
+        if (BuildInventorySortTabHookBytes(replacement)
+            && std::memcmp(
+                target,
+                replacement.data(),
+                replacement.size()) == 0)
+        {
+            return PatchState::Applied;
+        }
+        return PatchState::Mismatch;
+    }
+
+    bool WriteInventorySortTabHook() noexcept
+    {
+        std::array<unsigned char, 8> replacement{};
+        return BuildInventorySortTabHookBytes(replacement)
+            && dfl::memory_patch::WriteBytes(
+                InventorySortPayloadAppend,
+                replacement.data(),
+                replacement.size());
+    }
+
+    bool RestoreInventorySortAppend() noexcept
+    {
+        return dfl::memory_patch::WriteBytes(
+            InventorySortPayloadAppend,
+            OriginalInventorySortAppend.data(),
+            OriginalInventorySortAppend.size());
+    }
+
+    PatchState InspectPetGridViewHook() noexcept
+    {
+        const auto* target = reinterpret_cast<const unsigned char*>(
+            PetGridViewInit);
+        if (std::memcmp(
+                target,
+                OriginalPetGridViewInit.data(),
+                OriginalPetGridViewInit.size()) == 0)
+        {
+            return PatchState::Original;
+        }
+
+        std::array<unsigned char, 5> replacement{};
+        if (BuildPetGridViewHookBytes(replacement)
+            && std::memcmp(
+                target,
+                replacement.data(),
+                replacement.size()) == 0)
+        {
+            return PatchState::Applied;
+        }
+        return PatchState::Mismatch;
+    }
+
+    PatchState InspectStorageUpgradeButtonHook() noexcept
+    {
+        const auto* target = reinterpret_cast<const unsigned char*>(
+            StorageUpgradeTickFunction);
+        if (std::memcmp(
+                target,
+                OriginalStorageUpgradeTickPrologue.data(),
+                OriginalStorageUpgradeTickPrologue.size()) == 0)
+        {
+            return PatchState::Original;
+        }
+
+        std::array<unsigned char, 6> replacement{};
+        if (BuildStorageUpgradeButtonHookBytes(replacement)
+            && std::memcmp(
+                target,
+                replacement.data(),
+                replacement.size()) == 0)
+        {
+            return PatchState::Applied;
+        }
+        return PatchState::Mismatch;
+    }
+
+    bool WriteStorageUpgradeButtonHook() noexcept
+    {
+        std::array<unsigned char, 6> replacement{};
+        return BuildStorageUpgradeButtonHookBytes(replacement)
+            && dfl::memory_patch::WriteBytes(
+                StorageUpgradeTickFunction,
+                replacement.data(),
+                replacement.size());
+    }
+
+    bool RestoreStorageUpgradeTickPrologue() noexcept
+    {
+        return dfl::memory_patch::WriteBytes(
+            StorageUpgradeTickFunction,
+            OriginalStorageUpgradeTickPrologue.data(),
+            OriginalStorageUpgradeTickPrologue.size());
+    }
+
+    bool WritePetGridViewHook() noexcept
+    {
+        std::array<unsigned char, 5> replacement{};
+        return BuildPetGridViewHookBytes(replacement)
+            && dfl::memory_patch::WriteBytes(
+                PetGridViewInit,
+                replacement.data(),
+                replacement.size());
+    }
+
+    bool RestorePetGridViewInit() noexcept
+    {
+        return dfl::memory_patch::WriteBytes(
+            PetGridViewInit,
+            OriginalPetGridViewInit.data(),
+            OriginalPetGridViewInit.size());
     }
 
     PointerPatchState InspectClientPageUrl(
@@ -762,7 +1362,14 @@ namespace dfl::dnf_patches
     {
         dfl::ijl15_config::Load();
         const auto& settings = dfl::ijl15_config::Get();
-        const std::array<CodePatch, 37> patches = BuildPatches();
+
+        // Register the local font before the client reaches its own font
+        // creation, so GDI resolves the family it asks for against the file
+        // shipped in the client directory. A failure is non-fatal: the client
+        // keeps using the installed system fonts.
+        const bool localFontRegistered =
+            dfl::font_resources::RegisterLocalFonts();
+        const std::array<CodePatch, 38> patches = BuildPatches();
         if (!ValidatePatchRanges(patches))
         {
             OutputDebugStringA(
@@ -809,6 +1416,39 @@ namespace dfl::dnf_patches
             return false;
         }
 
+        const PatchState inventorySortTabHookState =
+            settings.SendInventorySortTab
+                ? InspectInventorySortTabHook()
+                : PatchState::Applied;
+        if (inventorySortTabHookState == PatchState::Mismatch)
+        {
+            OutputDebugStringA(
+                "DAFLegacy.Ijl15: inventory sort payload bytes do not match 2008DF.\n");
+            return false;
+        }
+
+        const PatchState petGridViewHookState =
+            settings.SendInventorySortTab
+                ? InspectPetGridViewHook()
+                : PatchState::Applied;
+        if (petGridViewHookState == PatchState::Mismatch)
+        {
+            OutputDebugStringA(
+                "DAFLegacy.Ijl15: pet-grid view bytes do not match 2008DF.\n");
+            return false;
+        }
+
+        const PatchState storageUpgradeButtonHookState =
+            settings.UnblockStorageUpgradeButton
+                ? InspectStorageUpgradeButtonHook()
+                : PatchState::Applied;
+        if (storageUpgradeButtonHookState == PatchState::Mismatch)
+        {
+            OutputDebugStringA(
+                "DAFLegacy.Ijl15: storage-upgrade tick bytes do not match 2008DF.\n");
+            return false;
+        }
+
         const external_string_table::HookState stringTableHookState =
             settings.UseExternalDnfStringTable
                 ? external_string_table::InspectHook()
@@ -838,8 +1478,7 @@ namespace dfl::dnf_patches
         }
 
         bool diamondUrlChanged = false;
-        bool payUrlChanged = false;
-        if (diamondUrlState == PointerPatchState::Original)
+        bool payUrlChanged = false;        if (diamondUrlState == PointerPatchState::Original)
         {
             if (!WriteClientPageUrl(
                     ClientDiamondUrlOperand,
@@ -872,6 +1511,77 @@ namespace dfl::dnf_patches
                 return false;
             }
             payUrlChanged = true;
+        }
+
+        // Point the engine's text-font creations at the family of the locally
+        // registered file. Only the sizes selected by LocalFontFamilyTarget
+        // are redirected: the 18px font has a single consumer (the large-text
+        // window component built by sub_815B20) while the 12px font drives the
+        // rest of the interface. This runs only when the registration
+        // succeeded, because an unregistered family would make GDI substitute
+        // an arbitrary face. Both a byte mismatch and a failed write are
+        // non-fatal here: the font is cosmetic and must not disable the
+        // protocol patches.
+        bool textFontFamilyChanged = false;
+        if (localFontRegistered && settings.LocalFontFamily[0] != '\0')
+        {
+            const bool wantsSmall = _stricmp(
+                    settings.LocalFontFamilyTarget.data(), "small") == 0
+                || _stricmp(
+                    settings.LocalFontFamilyTarget.data(), "both") == 0;
+            const bool wantsLarge = _stricmp(
+                    settings.LocalFontFamilyTarget.data(), "large") == 0
+                || _stricmp(
+                    settings.LocalFontFamilyTarget.data(), "both") == 0;
+            if (!wantsSmall && !wantsLarge)
+            {
+                OutputDebugStringA(
+                    "DAFLegacy.Ijl15: text font family target is unknown; keeping the stock family.\n");
+            }
+            else
+            {
+                const PointerPatchState smallFontFamilyState =
+                    InspectClientPageUrl(
+                        TextFontSmallNameOperand,
+                        OriginalTextFontName,
+                        settings.LocalFontFamily.data());
+                const PointerPatchState largeFontFamilyState =
+                    InspectClientPageUrl(
+                        TextFontLargeNameOperand,
+                        OriginalTextFontName,
+                        settings.LocalFontFamily.data());
+                if ((wantsSmall
+                        && smallFontFamilyState == PointerPatchState::Mismatch)
+                    || (wantsLarge
+                        && largeFontFamilyState == PointerPatchState::Mismatch))
+                {
+                    OutputDebugStringA(
+                        "DAFLegacy.Ijl15: text font family operands do not match; keeping the stock family.\n");
+                }
+                else
+                {
+                    if (wantsSmall
+                        && smallFontFamilyState == PointerPatchState::Original)
+                    {
+                        textFontFamilyChanged = WriteClientPageUrl(
+                            TextFontSmallNameOperand,
+                            settings.LocalFontFamily.data());
+                    }
+                    if (wantsLarge
+                        && largeFontFamilyState == PointerPatchState::Original)
+                    {
+                        textFontFamilyChanged = WriteClientPageUrl(
+                            TextFontLargeNameOperand,
+                            settings.LocalFontFamily.data())
+                            || textFontFamilyChanged;
+                    }
+                    if (!textFontFamilyChanged)
+                    {
+                        OutputDebugStringA(
+                            "DAFLegacy.Ijl15: text font family was not redirected.\n");
+                    }
+                }
+            }
         }
 
         std::size_t appliedCount = 0;
@@ -1139,11 +1849,57 @@ namespace dfl::dnf_patches
                 "DAFLegacy.Ijl15: mouse-wheel scroll hook was not installed.\n");
         }
 
+        // Installed after every fatal check and write: a failure here leaves
+        // the stock three-byte sort request in place, which the server still
+        // accepts as a whole-space sort.
+        bool inventorySortTabChanged = false;
+        if (settings.SendInventorySortTab
+            && inventorySortTabHookState == PatchState::Original)
+        {
+            if (!WriteInventorySortTabHook())
+            {
+                RestoreInventorySortAppend();
+                OutputDebugStringA(
+                    "DAFLegacy.Ijl15: inventory sort tab hook was not installed.\n");
+            }
+            else
+            {
+                inventorySortTabChanged = true;
+            }
+        }
+
+        if (settings.SendInventorySortTab
+            && petGridViewHookState == PatchState::Original)
+        {
+            if (!WritePetGridViewHook())
+            {
+                // The payload hook stays useful for the bag: without a cached
+                // pet-grid view the pet space reports 0xFF, i.e. whole-space.
+                RestorePetGridViewInit();
+                OutputDebugStringA(
+                    "DAFLegacy.Ijl15: pet-grid view hook was not installed.\n");
+            }
+        }
+
+        if (settings.UnblockStorageUpgradeButton
+            && storageUpgradeButtonHookState == PatchState::Original)
+        {
+            if (!WriteStorageUpgradeButtonHook())
+            {
+                RestoreStorageUpgradeTickPrologue();
+                OutputDebugStringA(
+                    "DAFLegacy.Ijl15: storage-upgrade button hook was not installed.\n");
+            }
+        }
+
         if (appliedCount != 0
             || diamondUrlChanged
             || payUrlChanged
             || etcStackableUseModeChanged
             || mailboxDirtyHookChanged
+            || inventorySortTabChanged
+            || localFontRegistered
+            || textFontFamilyChanged
             || stringTableHookChanged)
         {
             OutputDebugStringA(

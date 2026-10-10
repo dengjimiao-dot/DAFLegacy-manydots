@@ -10,20 +10,9 @@ namespace DAFLegacy.Server;
 /// </summary>
 public sealed partial class CharacterPacketBuilders
 {
-    private static readonly (ushort ItemId, uint Count)[] TestStarterInventoryItems =
-    [
-        (8, 100), (27093, 1), (14873, 1), (12874, 1),
-        (10874, 1), (16873, 1), (18874, 1), (22021, 1),
-        (20093, 1), (24032, 1), (27546, 1), (28223, 1),
-        (3037, 1000)
-    ];
-
-    private static readonly (ushort ItemId, uint Count)[] NormalStarterInventoryItems =
-    [
-        (26043, 1),
-        (8, 100)
-    ];
-
+    // 新建角色不再发放初始物品（2026-10-10）：取消原先的调试发放——测试账号的整套装备
+    // （11 件）+ 一叠消耗品（item 8）+ 一叠无色小晶块（item 3037），以及普通账号的
+    // 称号 26043 + 一叠消耗品。账号类型分流的方法形态保留，便于日后需要差异化发放时恢复。
     public async Task<GameServerPacket> CreateUserInfoAsync(uint accountUid, CancellationToken cancellationToken)
     {
         var characters = await store.GetCharactersAsync(accountUid, cancellationToken);
@@ -64,11 +53,10 @@ public sealed partial class CharacterPacketBuilders
                 itemCatalog))
             .ToList();
 
+    /// <summary>
+    /// 新建角色的初始物品清单：当前一律为空（2026-10-10 起不发放任何初始物品）。
+    /// 保留账号类型入参，便于日后需要按账号类型差异化发放时恢复。
+    /// </summary>
     internal static IReadOnlyList<(ushort ItemId, uint Count)>
-        GetStarterInventoryItems(uint accountUid) =>
-        AccountUidRules.IsTest(accountUid)
-            ? TestStarterInventoryItems
-            : AccountUidRules.IsNormal(accountUid)
-                ? NormalStarterInventoryItems
-                : [];
+        GetStarterInventoryItems(uint accountUid) => [];
 }

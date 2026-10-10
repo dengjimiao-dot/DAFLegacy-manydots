@@ -210,3 +210,69 @@
 | `sub_78C1B0`(this) 细节(2026-10-08 复核) | 0x78C1B0 | 反编 | ICMP **MTU 二分探测**:`LoadLibraryA(icmp.dll)` + `IcmpCreateFile/SendEcho/CloseHandle`,目标 = `inet_addr(*(this+492))`(NOTI 1 通告的探测主机),载荷初值 **1472** 字节(`memset 0xAA`),失败下调(`v16 = v6-1`)/成功上调(`v6=(v6+v16+1)/2`),超时 1000ms;**结果按桶写 `this+436`**:`>=0x5C0(1472)→1472`、`>=0x500(1280)→1280`、`>=0x400(1024)→1024`、否则 `768/750/740`(0x78C2ED..0x78C37D);探测未完成保持复位占位 **-1** |
 | `sub_8B2650(sock, id)` / `sub_8B2450` / `sub_8B24C0` | 0x8B2650 / 0x8B2450 / 0x8B24C0 | 反编 | 客户端命令发送三件套:开始(协议号)/追加字段/提交发送(CMD 2 定位即按 100 个调用方筛立即数 2) |
 | IJL15 `ChannelInfoProbeResetHook`(补丁点 0x419647) | 0x419647(call sub_78C3B0) | 反编+字节校验(E8 64 2D 37 00 83) | NOTI 1 探测端口对写入调用重定向至补丁桩:按原签名转发参数后调 `sub_78C3B0`,再清模块跨会话残留(状态 +0x40=0、上报 NAT 类型 +0x44=0、重试计数 +0x1AC=0、等待标志 +0x1B0=0),使每次频道连接(含切频道重连)探测立即重跑;**该补丁两轮真机证伪已撤销**(参数转发修复后仍致 NOTI 1 处理内静默挂死,运行态交互超出静态可证范围,见 PENDING P-32);Config.ini 键(已随补丁撤销移除)。**调用点签名坑**:`sub_78C3B0` 为 `__thiscall(this, port1, port2)`——调用点先右序 push 两端口、被调方 `ret 8` 自清参数;补丁桩必须转发两参并以 `ret 8` 收尾,漏转发/漏清参即探测列表端口错乱(首选频道挂死,2026-09-30 真机踩坑) |
+
+## 11. 物品栏容器、页签与整理(2026-10-10,页签跳转与按页签整理取证)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| `sub_45FF70`(container) | 0x45FF70 | 反编+字节校验 | CMD 20 发送器:主背包分支先按页签槽段扫 9/41/73/105/137(`sub_45D870` 判该段"至多一段连续占用"),四段皆无空洞则拒绝发送(无事可做);载荷 1B = 容器空间号(`sub_402030` 读 `container+4`);请求体 3B `{seq u16, space u8}`。发送点:背包 `0x7AB032`(主容器)、`0x7A7591`(space 7)、`0x824117`(space 2) |
+| 容器空间号 | `container+4` | 反编 | 构造 `sub_43AB70(this, space, capacity)`:主背包 space=0/容量 137、space=1/容量 105、仓库 space=2/容量 120、宠物 space=7/容量 238;`sub_4338F0(space)` 由空间号取容器 |
+| 背包窗口 `dword_B5DCE8` / 页签条 | 窗口 +0x80 | 反编 | 窗口构造 `sub_79B740` 把页签条挂到 `*(this+32)`;页签条 0x40 字节、vtable `0xA7CF44`,+0x18 起 4 个页签按钮,当前页签 = 页签条 +0x3C(dword,0..3);`sub_7AA740` 构造时清零 |
+| `sub_7AAA10`(tab) | 0x7AAA10 | 反汇 | 页签→槽段首:0→9、1→41、2→73、3→105、4→137(与服务端 `CharacterInventoryLayout` 同值) |
+| `sub_7AAA60`(item) | 0x7AAA60 | 反编 | 物品→页签:装备 0、其余堆叠品 1、`[stackable type]==1`(材料)2、`==7`(任务)3;钱包类(type ≤ 2)返回 -1 |
+| `sub_45E280`(container, slot, item, flag) | 0x45E280 | 反编 | 容器插入;`flag==1 && container+4==0` 时调 `sub_7AAAF0(页签条, item)` 把页签改写为该物品所在槽段(写 `+0x3C` 于 `0x7AAB52`);槽号 <9 不写 |
+| `sub_4EC4B0`(obj) | 0x4EC4B0 | 反编 | NOTI 13 尾部(仅 listType==0)对 `dword_B5DD00` 的收尾刷新 |
+| NOTI 13 case | 0x41D01C..0x41D237 | 反汇 | 全量列表:清容器(`sub_45E2F0`)→逐条查槽/建物品并插入(`flag=1` @0x41D1FB)→listType==0 时 `sub_4EC4B0` |
+| NOTI 14 case | 0x41D237..0x41D942 | 反汇 | 增量:listType==3 走完整路径;其余分支在"槽内已有物品且 `itemId==0xFFFF`"时 `sub_45E210` 清槽(主背包槽≥3 真删、钱包位 0..2 复位)、"槽内无物品且 `itemId!=0xFFFF`"时新建并插入(`flag=1` @0x41D7EC) |
+| IJL15 补丁:列表插入标志 / 整理页签字节 | 0x41D1FB / 0x46007C | 字节校验 | `push 1`→`push 0` 使全量重建不改写页签(见 PENDING P-21);`sub_45FF70` 载荷追加页签字节(4B 请求体,`0xFF` = 整包,见 PENDING P-40) |
+| 宠物视图组件 | 初始化清理函数 0x7A6110(唯一调用点 `sub_79B740+54B`) | 反汇+字节校验 | 宠物栏(宠物/宠物装备/消耗品三页签)的视图对象在**背包窗口构造期一次性创建**,地址整局有效;当前页签 = 组件 +0x90(dword,0..2),页签按钮两组分别在 +0x14、+0x40 |
+| `sub_7A6A50`(this, tab) | 0x7A6A50 | 反汇 | 选择宠物页签:重建两组按钮的选中态后写 `[this+90h]=tab`(tab<3);已知调用点 `0x4114F1`(CMD 21 购买应答内) |
+| `sub_7A8D30`(this) | 0x7A8D30 | 反汇 | 宠物当前页签→槽段首:`[ecx+90h]` 0→0、1→140(0x8C)、2→189(0xBD);与服务端 `CharacterCreatureInventoryLayout`(0/140/189/238)同值 |
+| `sub_7A6410`(item) | 0x7A6410 | 反汇 | 物品→宠物页签:堆叠品 `[type]` 8/9(creature/feed)→2、`0x13`→0、`0x14..0x16`→1(详见反汇编 0x7A6455..0x7A6488) |
+| IJL15 补丁:宠物视图缓存 | 0x7A6110 | 字节校验 | 在视图初始化清理函数入口跳转到补丁桩,把 `ecx`(视图对象)存入模块变量,供整理请求读取宠物页签(钩子仅 5 字节占位 `33 C0 89 41 10`) |
+
+## 14. 角色创建应答与失败文案(2026-10-10 取证)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| CMD 5 应答 case | 0x40FB43–0x40FC85(`sub_40F290`) | 反汇 | 首字节非 0 = 成功:串 680『新建角色成功』经 `sub_799EF0(聊天/消息对象, 0x23, 文本)` 显示 + 打 `CHARACTER_CREATED` 日志;首字节 0 = 失败:再读 1B 错误码并按表分派(见 `packet-detail-login-character-60cn.md` CMD 5 节) |
+| 失败弹窗槽 | IAT/数据槽 `0xB55570`(`ds:nullsub_403_0`) | 反汇 | 错误码 2/0x13/0x17/0x18/0x5F 经该槽调用,槽初值为 `0x8CE440`(仅 `retn`)——本客户端构建里是**空桩**,故这些码不产生任何提示;真实实现由外部 DLL 填入 |
+| 可见消息通道 | `sub_799EF0(obj, 0x23, text)` | 反汇 | 错误码 4 与 0x12 走 `loc_41739C` → 该函数;与成功提示同通道,真机可见 |
+
+## 13. 本地调试/GM 命令层与物品弹窗构建(2026-10-10 取证)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| `//` 命令处理器 | `sub_846BA0`(0x846BA0–0x849272) | 反汇 | 函数头即 `strstr(输入, "//") == 输入` 判定:聊天输入以 `//` 开头才进入调试/GM 命令分派;命令关键字用 `sub_476E10(输入, 关键字)` 做包含匹配 |
+| 调试命令发送 | 28 处 `sub_8B2650(sock, 65)`(0x84705C…0x84868F) | 反汇 | 全部落到 **CMD 65 `ENUM_CMDPACKET_DEBUG_COMMAND`**;本服未实现该命令,故需服务器应答的命令(等级/加物品/清怪/GM 开关等)现在只会静默 |
+| GM 命令应答 case | CMD 65 case 0x414EA4–0x415060(`sub_40F290`) | 反汇 | 读结果字节 0..6,按值在聊天窗(`dword_B5DCE8+0x60`)打串表 812–818(`开始运行GM模式`/`GM模式 : 完成提升Lv`…`完成添加物品`) |
+| 命令清单(字符串池 0x846000–0x849400) | — | 反汇+字符串抽取 | `//hide` `//show` `//kick` `//hell` `//level` `//levelto` `//pvprank` `//grow` `//clear` `//skill` `//itemlist` `//list item\|monster\|passiveobject\|skill` `//add` `//creatureavatar` `//exp` `//fillexp` `//evolution` `//allkill` `//kill` `//no` `//quest` `//style` `//technic` `//attacked` `//upgrade` `//setgm` `//mail` `//random` `//revive` `//warroomtime` `//ting` `//minimap` `//compound` `//coke` `//lottery` `//newnpcdialog` `//tutorial` `//megaphone` `//echophone` `//pvpTimeOut` `//heartbeat` `//comicCutWindow` `//mid` `//log_DEBUG` `OpenConsole`/`CloseConsole` `//ehdgusrlwn`(疑似隐藏口令) |
+| `//list` 系列(纯本地) | `sub_846BA0` 内 0x8477E0–0x8478B0 | 反汇 | 检查输入含 `list` 后再看含 `item`/`monster`/`passiveobject`/`skill`,各自 `sub_7189E0(表, 文件名)` 落盘:`ItemName.lst`、`MonsterName.lst`、`PassiveObjectName.lst`、`%s%d.lst`(SkillName 等);**不经服务器**,当前即可用 |
+| 物品弹窗构建 | `sub_7E5C00`(0x7E5C00–0x7E9846),调用点 0x7E9967 / 0x7E9B47 | 反汇 | 逐行 `sub_7DFB70(行号, 文本)` 组装:分类名(串 1040/1046/1049)、装备属性(取值 `sub_45C060` + 串 20020/20021)等;函数与两个调用方内**未发现 GM/调试标志判断,也无物品 ID 行** |
+| 未解问题 | — | — | "开启 GM 模式后物品/材料/装备名字后显示物品编码 ID"在本客户端未定位到实现:物品弹窗路径无该分支;`%s[%d]`(0x9998BD,52 处指针命中)、`[%s %d]`(0x998AAC,使用者为列表行渲染 `sub_7FCB20`)、`%s(%d)`(0x998C34,使用者为错误弹窗 `sub_40AEE0`)均非该用途;候选:①对照整合包的第三方插件(d3d8/dinput8 + qol 面板,本客户端目录无该插件,RS.dll 在两边都只是通用钩子辅助且无相关字符串);②另一处弹窗(物品信息窗 `CNRDItemInfoWindow`);③`//` 命令翻转的开关。见 PENDING P-44 |
+
+## 12. 字体系统(2026-10-10,弹窗文字字体取证)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| 引擎字体创建 | 0x40BA5C / 0x40BAA2(`sub_40B630` 内) | 反汇 | 启动时创建两套文字字体:`call [字体系统 vtable+8]` 参数为 `(索引 0, "SimSun", 字号 12, 1.0f, 1.0f)` 与 `(0, "SimSun", 字号 18, 1.0f, 1.0f)`;字体名与字号为硬编码,字体系统对象存 `dword_B5B384`(12)/`dword_B5B388`(18),`dword_CF2E10` 另存 12 号对象 |
+| 字体系统类 | RTTI `.?AVCNFontSystemBitmap@nengine@@` / `CNFontGDI` / `CNFontTrueType` / `CNFont@nengine@@` / `IFontSystem` / `CND3DImageTextureFont16` | 引用 | 引擎同时具备位图、GDI、TrueType 三种字体实现;`CND3DImageTextureFont16` 为 16 px 纹理字体 |
+| 字体文件加载器 | 0x8E01B0 | 反汇 | 签名 `(this, 字体文件路径, 字体族名, 字号)`(`retn 14h`):路径非空时 `AddFontResourceA(path)` 注册并把路径存入 `this+3C`、族名存入 `this+58`,随后用 `CreateFontA` 按 `-字号` 高度与 `dword_BF1CEC`/`dword_A8EC10` 字符集表创建字体;字号要求 ≥ 10。无直接调用点(经字体系统虚表进入),客户端启动期不注册任何字体文件 |
+| GDI 字体导入 | `AddFontResourceA` @0x998078 / `CreateFontA` @0x99807C / `TextOutA` @0x9980A8 / `RemoveFontResourceA` @0x998098 | 引用 | 调用点集中在 0x8E02xx(加载器)与 0x8DF5xx/0x8F04xx;二进制内无 `fonts/` 路径字面量,客户端目录的 `fonts/*.ttf` 默认无人加载 |
+| IJL15 补丁:本地字体注册 | 模块 `font_resources` | 反汇+自测 | 启动期按 exe 目录解析 `[Fonts] LocalFontFile`(默认 `fonts/simsun.ttc`),`AddFontResourceExA(路径, FR_PRIVATE, 0)` 私有注册;注册成功后把引擎族名操作数改写为 `[Fonts] LocalFontFamily`(默认 `XPSimSun`,即客户端 `fonts/simsun.ttc` 首字面的英文族名;该文件另有 `XPSimSunNS`/`XPSimSunPUA` 两面),使 GDI 按该族名取到本地文件。作用面由 `[Fonts] LocalFontFamilyTarget` 选择:`large`(默认,只改 `0x40BAB7` 即 18 号字体)/`small`(只改 `0x40BA71` 即 12 号字体)/`both`;两处操作数原值均为 `0x00998C6C`(串 "SimSun")。开关 `[Features] RegisterLocalFonts`;文件缺失/注册失败/族名留空/目标未知/字节不匹配时保持系统字体(见 PENDING P-42) |
+| 文字字体两号的消费面 | 12 号 `dword_B5B384`(引用 236 处)/ 18 号 `dword_B5B388`(引用 8 处) | 反汇 | 12 号是常规 UI 默认字体(`dword_CF2E10` 另存同对象);18 号**只有一个消费者**——窗口组件构造 `sub_815B20`(窗口构造 `sub_7C7C70`,vtable `0xA7FFF4`,其唯一创建点 `sub_7BDC60+14C9`),该构造内四处把 18 号字体交给文本对象(`sub_8F3270(textObj, font)` 两处 + 两处结构体字段),即 NPC 对话弹窗一类多行大字窗。故"只改弹窗"= 只重定向 18 号那处族名 |
+| GDI 取字实测(2026-10-10,`tools/diagnostics/gdi_font_probe.py`) | — | 动态实测 | ① 私有注册 `fonts\simsun.ttc`(返回 6)后按 "SimSun" 渲染,像素与系统字体**逐字节相同** → 同族名重复时 GDI 仍选系统字体,仅注册不生效;② 注册 `fonts\FZHTJW.TTF`(返回 2)并按真实族名 `FZHei-B01S` 取字,`GetTextFace` 回报"方正黑体简体"且像素与宋体基线不同 → 改族名后本地字体生效;③ `fonts\simsun_lma1.ttc`(族名 `LMA1SimSun`)被 GDI 拒绝(`AddFontResourceEx` 返回 0),该文件不可用 |
+
+## 15. 仓库窗口「升级」按钮与点券商城本地跳转(2026-10-10 取证)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| 仓库窗口类 | vtable `0xA81E74`(RTTI `.?AVCNRDStorageWindow@@`) | 反编+RTTI | 构造 `sub_825A70`;UI 装配 `sub_825780`——滚动条 27、两列表 28/29(合成视图 `sub_7A40D0`)、按钮序列三枚(命中处理见下行)。窗口等级名走字符串 1160..1163 与 5570;"升级"/"MAX" 在字符串表内无对应文案,为 `sprite.NPK` 内 `Storage.img` 的图片帧 |
+| 帧函数 `sub_823C80` 按钮命中 | 0x823D39..0x823D99 | 反汇+字节校验 | 三道守卫:`[frame+0xF24]`(商城对象)状态须为 0(`75 5A` @0x823D42)、升级按钮 `+0x121` 按下态、点击控件 id == 按钮 `+0xC`(`75 3D` @0x823D5F);另有 `cmp eax, 7` @0x823D7C(`74 1D`)为"阶段 7(满仓)不响应"。命中后 `0x823D8B → sub_864B60(1)`(打开商城)、`0x823D99 → sub_8659E0`(选中升级工具)。同窗口第二枚按钮(整理)在 `0x824117` 经 `sub_45FF70` 发 CMD 20(space=2),第一枚为关窗 |
+| 商城对象槽 `[frame+0xF24]` | 构造 `sub_79B740` @0x79C223(`sub_7A2630`,0x34C4 字节) | 反编 | 游戏启动期创建并挂载;初始化函数 `sub_865C30` 末尾调 `sub_864B60(this, 0)`(0x866FA4)把状态置 0,故"商城窗口未打开"守卫在启动后即成立 |
+| `sub_864B60(this, state)` | 0x864B60 | 反编 | `CNRDCashShop::setState`:1=打开商城窗口、0=关闭;写状态到 `this+0x10`,打开分支打 `SERA_SHOP` 音效 |
+| `sub_8659E0(shop)` | 0x8659E0 | 反编 | 升级按钮专属:切页签 2(道具/物品栏)→在商品表(`this+0x19C`,记录 88B)倒序找 `sub_8615C0==1 && sub_85E7C0==1` 的条目→选中并进购买流程(`sub_85F100`);全二进制唯一调用点即 `0x823D99`,全程无发送 |
+| `sub_85E7C0(entry)` | 0x85E7C0 | 反编 | 金库升级工具判定:itemId ∈ {4,5,6,7,50,57,58,59,60,61,62},与服务端 `CharacterWarehouseProgression.TryGetItemTargetCapacity` 同表 |
+| `sub_85E840(shop)` / `sub_85E8A0(shop, &out)` | 0x85E840 / 0x85E8A0 | 反编 | 阶段→道具 id(50/57/58/59/60/61/62)、阶段→商品号(100063..100069);阶段 7 → -1(无可跳) |
+| 阶段来源(容量→阶段) | NOTI 13 case 13 @0x41D01C;`0x41D071 → sub_8256B0` | 反汇 | `listType==2` 时读 u16 **绝对容量**,在 `0xBEE68C..0xBEE72C` 的 8 条记录(容量 8/24/40/56/72/88/104/120)中查匹配项,将下标(阶段 0..7)写入全局字段 `j`(`0xBEE728`)。容量不在这 8 档内则匹配不到——阶段、按钮态(升级/MAX)与选中档位随之不对 |
+| IJL15 补丁:升级按钮矩形与点击 | 入口钩子 `0x823C80`(6 字节 `55 8B EC 83 EC 38`) | 字节校验+自测 | 开关 `[Features] UnblockStorageUpgradeButton`(默认 1):每帧把升级按钮控件(`按钮数组 + 2×0x88`)的矩形锚定到「整理」左侧(相对偏移 `18-223`,y 取「整理」的 y,宽高取自身贴图尺寸),位置变化时调客户端 `sub_8F69A0` 迁移(按钮由客户端自身贴图绘制);点击由模块自判(鼠标取 `sub_8FC710`/`sub_8FC720`,左键边沿取 `GetAsyncKeyState`),命中且商城状态为 0 且阶段 < 7 时调 `sub_864B60(shop, 1)` + `sub_8659E0(shop)`。阶段经 `sub_402030(0xBEE728)` 读取。`StorageUpgradeButtonRect` 可显式覆盖矩形。2026-10-10 真机验证:锚定后按钮可见位置与点击区重合,点击即弹出点券商城并在「物品栏」页选中本阶段升级工具(锚定所得矩形 `38,104 79×20`,与「整理」`243,104` 同排;临时诊断探针已随校准完成移除);状态类判据见 PENDING P-49 |

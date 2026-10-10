@@ -15,15 +15,24 @@ internal static class InventoryParsers
         uint RequestedCount);
 
 
-    internal static bool TryReadSortItem(byte[] body, out byte itemSpace)
+    internal static bool TryReadSortItem(
+        byte[] body,
+        out byte itemSpace,
+        out byte sortSection)
     {
         itemSpace = 0;
+        sortSection = CharacterInventorySorter.SortAllSections;
         if (body.Length < 3)
         {
             return false;
         }
 
         itemSpace = body[2];
+        if (body.Length >= 4)
+        {
+            sortSection = body[3];
+        }
+
         return true;
     }
 

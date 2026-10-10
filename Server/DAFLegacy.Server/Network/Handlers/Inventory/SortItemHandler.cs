@@ -24,7 +24,8 @@ public sealed class SortItemHandler(IGameStore store,
         var session = context.State;
         var parsedSort = InventoryParsers.TryReadSortItem(
             request.Body,
-            out var itemSpace);
+            out var itemSpace,
+            out var sortSection);
         if (session.Character.Active is null
             || !parsedSort
             || itemSpace is not (0 or 2 or 7))
@@ -41,7 +42,10 @@ public sealed class SortItemHandler(IGameStore store,
         }
 
         var arrangedMain = itemSpace == 0
-            ? CharacterInventorySorter.SortMain(session.Inventory.Main, itemCatalog)
+            ? CharacterInventorySorter.SortMain(
+                session.Inventory.Main,
+                itemCatalog,
+                sortSection)
             : session.Inventory.Main;
         var arrangedWarehouse = itemSpace == 2
             ? CharacterInventorySorter.SortWarehouse(
@@ -50,7 +54,9 @@ public sealed class SortItemHandler(IGameStore store,
                 session.Inventory.WarehouseCapacity)
             : session.Inventory.Warehouse;
         var arrangedCreature = itemSpace == 7
-            ? CharacterCreatureInventorySorter.Sort(session.Inventory.Creature)
+            ? CharacterCreatureInventorySorter.Sort(
+                session.Inventory.Creature,
+                sortSection)
             : session.Inventory.Creature;
         var savedSort = await store.SaveCharacterItemSpacesAsync(
             session.Login.AccountName,
@@ -106,8 +112,9 @@ public sealed class SortItemHandler(IGameStore store,
         }
 
         RuntimeLogger.Info(
-            "Sorted item space {ItemSpace} for character {CharacterId}.",
+            "Sorted item space {ItemSpace} section {SortSection} for character {CharacterId}.",
             itemSpace,
+            sortSection,
             session.Character.Active.Id);
     }
 }

@@ -210,6 +210,30 @@ bool TestMailboxArchiveRefreshPatchConfiguration()
     return dfl::ijl15_config::Get().FixMailboxArchiveRefresh;
 }
 
+bool TestInventoryTabKeepPatchConfiguration()
+{
+    return dfl::ijl15_config::Get().KeepInventoryTabOnListRefresh;
+}
+
+bool TestInventorySortTabPatchConfiguration()
+{
+    return dfl::ijl15_config::Get().SendInventorySortTab;
+}
+
+bool TestStorageUpgradeButtonPatchConfiguration()
+{
+    return dfl::ijl15_config::Get().UnblockStorageUpgradeButton;
+}
+
+bool TestLocalFontRegistrationConfiguration()
+{
+    const auto& settings = dfl::ijl15_config::Get();
+    return settings.RegisterLocalFonts
+        && std::strcmp(settings.LocalFontFile.data(), "fonts\\simsun.ttc") == 0
+        && std::strcmp(settings.LocalFontFamily.data(), "XPSimSun") == 0
+        && std::strcmp(settings.LocalFontFamilyTarget.data(), "large") == 0;
+}
+
 bool TestRelativeOutputPathConfiguration()
 {
     return !dfl::ijl15_config::Get().RedirectClientOutputPaths;
@@ -357,6 +381,22 @@ int main()
     if (!TestMailboxArchiveRefreshPatchConfiguration())
     {
         return Fail("mailbox archive refresh patch is disabled");
+    }
+    if (!TestInventoryTabKeepPatchConfiguration())
+    {
+        return Fail("inventory tab keep patch is disabled");
+    }
+    if (!TestInventorySortTabPatchConfiguration())
+    {
+        return Fail("inventory sort tab patch is disabled");
+    }
+    if (!TestStorageUpgradeButtonPatchConfiguration())
+    {
+        return Fail("storage upgrade button patch is disabled");
+    }
+    if (!TestLocalFontRegistrationConfiguration())
+    {
+        return Fail("local font registration configuration failed");
     }
     if (!TestCeraPurchaseGatePolicy())
     {

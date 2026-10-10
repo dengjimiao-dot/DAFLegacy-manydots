@@ -45,6 +45,10 @@ namespace
         true, // RemoveCustomPopupAnnouncementTitle
         true, // UseExternalDnfStringTable
         true, // FixMailboxArchiveRefresh
+        true, // KeepInventoryTabOnListRefresh
+        true, // SendInventorySortTab
+        true, // UnblockStorageUpgradeButton
+        { "" }, // StorageUpgradeButtonRect
         true, // BypassCeraPurchaseRestrictions
         { true, // LegacySaleWindow
           true, // PerCharacterLimit
@@ -57,6 +61,10 @@ namespace
         true, // ForcePlainTextLogs
         true, // DisableType16ChatMessageSound
         false, // RedirectClientOutputPaths
+        true, // RegisterLocalFonts
+        { "fonts\\simsun.ttc" }, // LocalFontFile
+        { "XPSimSun" }, // LocalFontFamily
+        { "large" }, // LocalFontFamilyTarget
     };
 
     dfl::ijl15_config::Settings CurrentSettings = DefaultSettings;
@@ -283,6 +291,28 @@ namespace dfl::ijl15_config
                 "Features",
                 "FixMailboxArchiveRefresh",
                 DefaultSettings.FixMailboxArchiveRefresh);
+            CurrentSettings.KeepInventoryTabOnListRefresh = ReadBoolean(
+                path,
+                "Features",
+                "KeepInventoryTabOnListRefresh",
+                DefaultSettings.KeepInventoryTabOnListRefresh);
+            CurrentSettings.SendInventorySortTab = ReadBoolean(
+                path,
+                "Features",
+                "SendInventorySortTab",
+                DefaultSettings.SendInventorySortTab);
+            CurrentSettings.UnblockStorageUpgradeButton = ReadBoolean(
+                path,
+                "Features",
+                "UnblockStorageUpgradeButton",
+                DefaultSettings.UnblockStorageUpgradeButton);
+            GetPrivateProfileStringA(
+                "Features",
+                "StorageUpgradeButtonRect",
+                DefaultSettings.StorageUpgradeButtonRect.data(),
+                CurrentSettings.StorageUpgradeButtonRect.data(),
+                static_cast<DWORD>(CurrentSettings.StorageUpgradeButtonRect.size()),
+                path);
             CurrentSettings.BypassCeraPurchaseRestrictions = ReadBoolean(
                 path,
                 "Features",
@@ -313,6 +343,43 @@ namespace dfl::ijl15_config
                 "Features",
                 "RedirectClientOutputPaths",
                 DefaultSettings.RedirectClientOutputPaths);
+            CurrentSettings.RegisterLocalFonts = ReadBoolean(
+                path,
+                "Features",
+                "RegisterLocalFonts",
+                DefaultSettings.RegisterLocalFonts);
+            GetPrivateProfileStringA(
+                "Fonts",
+                "LocalFontFile",
+                DefaultSettings.LocalFontFile.data(),
+                CurrentSettings.LocalFontFile.data(),
+                static_cast<DWORD>(CurrentSettings.LocalFontFile.size()),
+                path);
+            // Accept both separators for the font path; the registration API
+            // and the identity checks below work on the backslash form.
+            for (char* cursor = CurrentSettings.LocalFontFile.data();
+                *cursor != '\0';
+                ++cursor)
+            {
+                if (*cursor == '/')
+                {
+                    *cursor = '\\';
+                }
+            }
+            GetPrivateProfileStringA(
+                "Fonts",
+                "LocalFontFamily",
+                DefaultSettings.LocalFontFamily.data(),
+                CurrentSettings.LocalFontFamily.data(),
+                static_cast<DWORD>(CurrentSettings.LocalFontFamily.size()),
+                path);
+            GetPrivateProfileStringA(
+                "Fonts",
+                "LocalFontFamilyTarget",
+                DefaultSettings.LocalFontFamilyTarget.data(),
+                CurrentSettings.LocalFontFamilyTarget.data(),
+                static_cast<DWORD>(CurrentSettings.LocalFontFamilyTarget.size()),
+                path);
             CurrentSettings.ScaleFilter = ReadScaleFilter(
                 path,
                 DefaultSettings.ScaleFilter);

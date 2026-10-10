@@ -23,6 +23,8 @@ add_library(ijl15 SHARED
     src/dnf_patches.h
     src/external_string_table.cpp
     src/external_string_table.h
+    src/font_resources.cpp
+    src/font_resources.h
     src/ijl15_config.cpp
     src/ijl15_config.h
     src/ijl15.cpp
@@ -51,6 +53,7 @@ target_compile_options(ijl15 PRIVATE
     /EHsc)
 target_include_directories(ijl15 PUBLIC include)
 target_link_libraries(ijl15 PRIVATE
+    gdi32
     ole32
     psapi
     shlwapi
@@ -70,6 +73,8 @@ if(BUILD_TESTING)
     add_executable(ijl15_tests
         src/external_string_table.cpp
         src/external_string_table.h
+        src/font_resources.cpp
+        src/font_resources.h
         src/ijl15_config.cpp
         src/ijl15_config.h
         src/memory_patch.cpp

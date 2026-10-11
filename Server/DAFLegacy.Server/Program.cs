@@ -662,6 +662,122 @@ app.MapPut("/api/admin/characters/{characterId:guid}/dungeons/{dungeonId:int}", 
     });
 });
 
+// 任务权限：把等级区间覆盖当前等级的全部任务标记为完成并按迁移结算语义
+// 发放奖励（直接入包、溢出转邮件），用于跳过当前等级段任务链直达后续内容。
+app.MapPost("/api/admin/characters/{characterId:guid}/quests/complete-by-level", async (
+    Guid characterId,
+    IGameStore store,
+    QuestCatalog quests,
+    DungeonCatalog dungeons,
+    ItemCatalog items,
+    CharacterExperienceCatalog experienceCatalog,
+    CharacterSpCatalog spCatalog,
+    CharacterSessionRegistry sessions,
+    CancellationToken token) =>
+{
+    var character = (await store.GetAccountsAsync(token))
+        .SelectMany(account => account.Characters)
+        .FirstOrDefault(candidate => candidate.Id == characterId);
+    if (character is null)
+    {
+        return Results.NotFound(new { error = "Character does not exist." });
+    }
+
+    var questIds = QuestBulkCompletionPlanner.SelectLevelEligibleQuestIds(
+        character,
+        quests);
+    var knownUnlockedDungeons = (character.UnlockedDungeonIds ?? []).ToHashSet();
+    var unlockedDungeonIds = questIds
+        .SelectMany(questId =>
+        {
+            quests.TryGetDefinition(questId, out var definition);
+            return HiddenDungeonUnlockCatalog.ResolveQuestDungeonUnlockIds(
+                questId,
+                definition,
+                dungeons);
+        })
+        .Where(dungeonId => !knownUnlockedDungeons.Contains(dungeonId))
+        .Distinct()
+        .OrderBy(dungeonId => dungeonId)
+        .ToArray();
+    if (questIds.Count == 0)
+    {
+        return Results.Ok(new
+        {
+            characterId,
+            character.Level,
+            CompletedQuestIds = Array.Empty<ushort>(),
+            SkippedRewardQuestIds = Array.Empty<ushort>(),
+            UnlockedDungeonIds = Array.Empty<ushort>(),
+            AppendedMailCount = 0,
+            DroppedMailCount = 0,
+            NotifiedOnlineCharacter = false
+        });
+    }
+
+    var settlement = QuestBulkCompletionPlanner.PlanRewardSettlement(
+        character,
+        questIds,
+        quests,
+        items,
+        experienceCatalog,
+        spCatalog);
+    var result = await store.CompleteCharacterQuestsByLevelAsync(
+        characterId,
+        questIds,
+        unlockedDungeonIds,
+        settlement.Level,
+        settlement.Experience,
+        settlement.SkillPoints,
+        settlement.Gold,
+        settlement.Inventory,
+        settlement.WarehouseCapacity,
+        settlement.Mails,
+        token);
+    if (result is null)
+    {
+        return Results.NotFound(new { error = "Character does not exist." });
+    }
+
+    var notifiedOnlineCharacter = sessions.NotifyCharacterProgressReplaced(
+        characterId,
+        result.Character);
+    foreach (var dungeonId in unlockedDungeonIds)
+    {
+        _ = sessions.NotifyDungeonPermission(characterId, dungeonId, 0);
+    }
+
+    if (result.AppendedMailCount > 0)
+    {
+        _ = sessions.NotifyMailReceived(characterId);
+    }
+
+    RuntimeLogger.Info(
+        "Admin completed {Count} level-eligible quests for character {CharacterId} (level {OldLevel}->{Level}, gold {Gold}, sp {Sp}); reward mail appended {AppendedMails}, dropped {DroppedMails}; skipped rewards: {Skipped}; newly unlocked dungeons: {DungeonIds}.",
+        result.CompletedQuestIds.Count,
+        characterId,
+        character.Level,
+        result.Character.Level,
+        result.Character.Gold,
+        result.Character.Sp,
+        result.AppendedMailCount,
+        result.DroppedMailCount,
+        settlement.SkippedRewardQuestIds.Count == 0
+            ? "none"
+            : string.Join(',', settlement.SkippedRewardQuestIds),
+        unlockedDungeonIds.Length == 0 ? "none" : string.Join(',', unlockedDungeonIds));
+    return Results.Ok(new
+    {
+        characterId,
+        result.Character.Level,
+        result.CompletedQuestIds,
+        settlement.SkippedRewardQuestIds,
+        UnlockedDungeonIds = unlockedDungeonIds,
+        result.AppendedMailCount,
+        result.DroppedMailCount,
+        NotifiedOnlineCharacter = notifiedOnlineCharacter
+    });
+});
 // These client-pay mutations are intentionally on the loopback admin listener;
 // the embedded IE page uses the same origin and does not carry a separate login.
 app.MapPost("/api/client-pay/cera", async (

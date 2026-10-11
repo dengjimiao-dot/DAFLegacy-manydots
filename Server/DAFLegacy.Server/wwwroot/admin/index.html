@@ -21,6 +21,7 @@
         <button class="nav-item" type="button" data-view="direct">单人通知</button>
         <button class="nav-item" type="button" data-view="broadcast">广播通知</button>
         <button class="nav-item" type="button" data-view="dungeon">副本权限</button>
+        <button class="nav-item" type="button" data-view="quest">任务权限</button>
       </nav>
       <div class="sidebar-foot">
         <span id="onlineCount">0 名角色在线</span>
@@ -206,6 +207,22 @@
           </fieldset>
           <div class="form-actions">
             <button class="primary-button" type="submit">保存副本权限</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="view" data-view-panel="quest">
+        <form id="questForm" class="surface form-layout compact-form">
+          <div class="section-heading">
+            <h2>完成等级内任务</h2>
+            <p>把等级区间覆盖当前等级的全部任务一次性标记为完成并结算奖励：奖励直接放入背包，放不下的溢出部分转系统邮件，同时解锁任务关联的副本。转职与觉醒任务在角色未到达对应成长阶段时保留。</p>
+          </div>
+          <label class="field">
+            <span>角色</span>
+            <select class="character-select" name="characterId" required></select>
+          </label>
+          <div class="form-actions">
+            <button class="primary-button" type="submit">完成任务</button>
           </div>
         </form>
       </section>

@@ -279,6 +279,17 @@ public interface IGameStore
         IEnumerable<CharacterQuestRecord> quests,
         IEnumerable<ushort> completedQuestIds,
         CancellationToken cancellationToken = default);
+    Task<CharacterQuestBulkCompletionResult?> CompleteCharacterQuestsByLevelAsync(
+        Guid characterId,
+        IReadOnlyCollection<ushort> questIds,
+        IReadOnlyCollection<ushort> unlockedDungeonIds,
+        int level,
+        uint experience,
+        int skillPoints,
+        int gold,
+        IEnumerable<CharacterItemRecord> inventory,
+        ushort warehouseCapacity,
+        IEnumerable<CreateCharacterMailRequest>? generatedMails,
     Task<CharacterRecord?> CompleteCharacterTutorialAsync(
         string userName,
         Guid characterId,

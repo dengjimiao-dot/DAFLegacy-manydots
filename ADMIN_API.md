@@ -72,6 +72,7 @@ Invoke-RestMethod `
 | `POST` | `/api/accounts/{userName}/password/reset` | 使用 QQ 恢复信息重置密码 |
 | `POST` | `/api/accounts/{userName}/characters` | 创建角色 |
 | `PUT` | `/api/characters/{characterId}/fatigue` | 修改角色当天已消耗疲劳 |
+| `POST` | `/api/admin/characters/{characterId}/quests/complete-by-level` | 批量完成等级区间覆盖当前等级的任务并结算奖励 |
 | `GET` | `/api/characters/{characterId}/mail` | 查询角色有效邮件 |
 | `POST` | `/api/characters/{characterId}/mail` | 给角色发送邮件 |
 | `POST` | `/api/characters/{characterId}/message` | 给在线角色发送聊天栏通知 |
@@ -355,6 +356,66 @@ $character.id
 
 成功返回 `200` 和更新后的角色；角色不存在返回 `404`；超过 188 返回 `400`。该接口
 只持久化数据，没有主动向已在线客户端推送疲劳刷新包，联调时应重新登录或触发完整状态同步。
+
+### 4.7 `POST /api/admin/characters/{characterId}/quests/complete-by-level`
+
+无请求体。把"等级区间覆盖当前角色等级"的全部任务一次性标记为完成，并按启动期
+遗留奖励迁移的同款语义结算奖励，用于跳过当前等级段任务链直达后续内容。成功返回
+`200`：
+
+```json
+{
+  "characterId": "角色 GUID",
+  "level": 60,
+  "completedQuestIds": [4, 5, 6],
+  "skippedRewardQuestIds": [7],
+  "unlockedDungeonIds": [9],
+  "appendedMailCount": 2,
+  "droppedMailCount": 0,
+  "notifiedOnlineCharacter": true
+}
+```
+
+- `completedQuestIds` 是本次新完成的任务编号（已在完成集合中的任务不会重复出现）；
+  没有可完成的任务时返回空数组，仍为 `200`。
+- `skippedRewardQuestIds` 是完成任务但未结算奖励的任务编号（可自选奖励、物品缺失
+  或金币溢出，见下文）。
+- `appendedMailCount` / `droppedMailCount` 是奖励溢出邮件的入箱与丢弃数量（邮箱
+  255 封上限装不下的部分丢弃）。
+- 角色不存在返回 `404`。
+
+入选规则（`QuestBulkCompletionPlanner`，全部满足才标记完成）：
+
+- 等级区间覆盖：任务 `[level]` 下限 ≤ 角色等级 ≤ 上限。不做历史等级段的回溯补记，
+  等级段已过的任务保持未完成。
+- 职业匹配：`[job]` 标签为空、`all` 或与角色职业一致。
+- 成长阶段一致：
+  - 带职业限定（`[grow type]`）的普通任务只在与角色主成长类型一致时入选；
+  - 转职最终任务（奖励 `grow type`）与觉醒最终任务（奖励 `awakening type`）只在角色
+    已到达对应转职/觉醒阶段时补记；
+  - 转职链、觉醒链的中间任务分别在角色已转职、已觉醒时补记；
+    未到达对应成长阶段时整条链保留给玩家自行完成；
+  - 新手引导完成任务（1016）由引导流程单独管辖，不参与批量补记。
+
+奖励结算语义（`PlanRewardSettlement`，与 `MigrateLegacyQuestRewardsAsync` 一致）：
+
+- 逐任务结算：任务经验（满级角色为 0，可重复任务不计）与升级 SP 顺序累计；任务
+  金币直接入账；固定奖励物品先尝试放入背包（权重上限放开），放不下的溢出部分逐件
+  转系统邮件（每封一件附件，30 天有效期）。
+- 需要玩家自选奖励（存在 `[reward selection int data]` 可选项）、任务奖励物品不在
+  物品表或金币会溢出的任务：完成状态照常落盘，奖励跳过并计入
+  `skippedRewardQuestIds`。任务物品上交类消耗（收集品、金币）不扣减——补完成豁免
+  上交物。
+- 全部完成任务同时并入 `RewardedQuestIds`（奖励按"已结清"处理，防止下次启动的
+  遗留奖励迁移重复补发）。
+
+在线同步：角色在线时会话内存状态（任务、背包、金币、SP、技能、邮箱、副本进度）
+采纳持久层结果，并推送背包整包刷新、升级时的技能与权威属性同步、可接任务列表
+（NOTI 21）与新增解锁副本的权限包；有溢出邮件时推送新邮件提醒。客户端任务日志
+（EP 页）完整刷新发生在下次选角。
+
+后台页面 `/admin/index.html` 的「任务权限」页签即调用本接口：提交前有确认弹窗，成功后
+提示完成数量、奖励去向与新增解锁副本。
 
 ## 5. 邮件接口
 

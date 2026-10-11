@@ -274,6 +274,27 @@ public sealed partial class ChannelSessionSenders
         await context.Queue.SendAsync(acceptable, "QUEST_LIST", cancellationToken);
     }
 
+    /// <summary>
+    /// Cross-session push path (admin quest mutations): same payload as
+    /// SendAcceptableQuestListAsync, swallowing disconnect races.
+    /// </summary>
+    public async Task SendAcceptableQuestListSafeAsync(ConnectionContext context)
+    {
+        try
+        {
+            await SendAcceptableQuestListAsync(context, context.Disconnecting);
+        }
+        catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            RuntimeLogger.Warn(
+                "Could not push the acceptable quest list to a cross-session recipient: {Error}",
+                exception.Message);
+        }
+    }
+
     public async Task CompleteClearQuestTriggersAsync(
     ConnectionContext context,
     string source,

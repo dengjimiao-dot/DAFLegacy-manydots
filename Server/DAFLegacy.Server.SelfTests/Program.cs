@@ -29,6 +29,7 @@ RegisterSelfTest("equipment-reinforcement", () =>
     return Task.CompletedTask;
 });
 RegisterSelfTest("hidden-dungeon-quest", () => HiddenDungeonQuestSmokeTests.RunAsync(Check));
+RegisterSelfTest("quest-bulk-completion", () => QuestBulkCompletionSmokeTests.RunAsync(Check));
 RegisterSelfTest("quest-map", () =>
 {
     QuestMapSmokeTests.Run(Check);

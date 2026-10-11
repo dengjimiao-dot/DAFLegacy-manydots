@@ -13,7 +13,8 @@ const viewCopy = {
   mail: ["邮件", "发送系统邮件和游戏物品"],
   direct: ["单人通知", "向指定在线角色发送弹框或消息"],
   broadcast: ["广播通知", "向全部在线角色发送弹框或消息"],
-  dungeon: ["副本权限", "设置角色可进入的 DGN 难度"]
+  dungeon: ["副本权限", "设置角色可进入的 DGN 难度"],
+  quest: ["任务权限", "批量完成符合角色当前等级的任务"]
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -165,7 +166,7 @@ function switchView(view) {
   $$(".view").forEach(panel => {
     panel.classList.toggle("active", panel.dataset.viewPanel === view);
   });
-  const copy = viewCopy[view];
+  const copy = viewCopy[view] || ["DAFLegacy 后台", ""];
   $("#pageTitle").textContent = copy[0];
   $("#pageSubtitle").textContent = copy[1];
 }
@@ -388,6 +389,39 @@ function bindForms() {
       };
     });
   });
+
+  $("#questForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const characterId = new FormData(event.currentTarget).get("characterId");
+    const character = state.characters.find(candidate => candidate.id === characterId);
+    if (!character) {
+      showToast("请选择一个有效的角色。", true);
+      return;
+    }
+    if (!window.confirm(
+      `确认把 ${character.name}（Lv.${character.level}）当前等级可接的全部任务标记为完成？该操作不发放任务奖励，且不会重复生效。`)) {
+      return;
+    }
+    runForm(event.currentTarget, async () => {
+      const result = await api(
+        `/api/admin/characters/${characterId}/quests/complete-by-level`,
+        { method: "POST", body: JSON.stringify({}) });
+      const parts = [
+        `${character.name}（Lv.${result.level}）已完成 ${result.completedQuestIds.length} 个任务`
+      ];
+      if (result.appendedMailCount > 0) {
+        parts.push(`奖励入包，溢出 ${result.appendedMailCount} 件已转邮件`);
+      }
+      if (result.skippedRewardQuestIds?.length > 0) {
+        parts.push(`${result.skippedRewardQuestIds.length} 个任务的奖励需自选或无法结算，已跳过`);
+      }
+      if (result.unlockedDungeonIds?.length > 0) {
+        parts.push(`解锁副本 ${result.unlockedDungeonIds.join("、")}`);
+      }
+      return { message: parts.join("；") };
+    });
+  });
+
 }
 
 function initialize() {

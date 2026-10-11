@@ -187,6 +187,9 @@ public sealed class QuestCatalog
 
     public IReadOnlyDictionary<ushort, int> CompletionMapping => _completionMapping.Value;
 
+    /// <summary>PVF 全量任务定义（按 quest.lst 登记顺序）。</summary>
+    public IReadOnlyList<QuestDefinition> Definitions => _definitions.Value;
+
     private IReadOnlyDictionary<ushort, int> LoadCompletionMapping()
     {
         const string path = "quest/questmappingtable.tbl";
@@ -357,7 +360,7 @@ public sealed class QuestCatalog
             && itemDefinition.CreatureSubType != 1
             && itemDefinition.CreatureSpecies == definition.CreatureKind);
 
-    private static bool MatchesJob(string questJob, int characterJob)
+    public static bool MatchesJob(string questJob, int characterJob)
     {
         var normalized = NormalizeTag(questJob);
         if (normalized.Length == 0 || normalized == "all")

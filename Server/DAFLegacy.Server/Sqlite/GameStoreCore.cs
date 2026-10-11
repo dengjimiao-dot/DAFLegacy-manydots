@@ -40,6 +40,13 @@ public sealed record CharacterQuestRecord(
     ushort QuestId,
     uint Trigger = 0);
 
+/// <summary>后台批量完成任务的落盘结果：更新后的角色、本次新完成的任务编号与溢出邮件去向。</summary>
+public sealed record CharacterQuestBulkCompletionResult(
+    CharacterRecord Character,
+    IReadOnlyList<ushort> CompletedQuestIds,
+    int AppendedMailCount,
+    int DroppedMailCount);
+
 public sealed record CharacterMailAttachmentRecord(
     ushort ItemId,
     uint CountOrValue,
@@ -4493,6 +4500,117 @@ public abstract class GameStoreCore(
         }
     }
 
+    /// <summary>
+    /// 后台批量完成任务：把指定任务并入已完成与已结清奖励两个集合（后者防止
+    /// 启动期遗留奖励迁移为这批任务集中补发），并从进行中任务移除；随任务
+    /// 关联的副本解锁与调用方已结算的奖励状态（等级、经验、SP、金币、背包、
+    /// 仓库容量）一并落盘。溢出邮件在邮箱余量内逐封追加，超出 255 封上限的
+    /// 部分丢弃并计数返回。
+    /// </summary>
+    public async Task<CharacterQuestBulkCompletionResult?> CompleteCharacterQuestsByLevelAsync(
+        Guid characterId,
+        IReadOnlyCollection<ushort> questIds,
+        IReadOnlyCollection<ushort> unlockedDungeonIds,
+        int level,
+        uint experience,
+        int skillPoints,
+        int gold,
+        IEnumerable<CharacterItemRecord> inventory,
+        ushort warehouseCapacity,
+        IEnumerable<CreateCharacterMailRequest>? generatedMails,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(questIds);
+        ArgumentNullException.ThrowIfNull(unlockedDungeonIds);
+        ArgumentNullException.ThrowIfNull(inventory);
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            foreach (var account in _accounts)
+            {
+                var index = account.Characters.FindIndex(character =>
+                    character.Id == characterId);
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                var character = account.Characters[index];
+                var mailbox = character.Mailbox;
+                var appendedMailCount = 0;
+                var droppedMailCount = 0;
+                foreach (var request in generatedMails ?? [])
+                {
+                    if (TryAppendGeneratedMailsLocked(
+                            character with { Mailbox = mailbox },
+                            [request],
+                            out var appendedMailbox,
+                            out var createdMailCount,
+                            out var mailWarehouseCapacity))
+                    {
+                        mailbox = appendedMailbox;
+                        appendedMailCount += createdMailCount;
+                        warehouseCapacity = (ushort)Math.Max(
+                            warehouseCapacity,
+                            mailWarehouseCapacity);
+                    }
+                    else
+                    {
+                        droppedMailCount++;
+                    }
+                }
+
+                var updated = character with
+                {
+                    Level = Math.Clamp(level, 1, CharacterExperienceCatalog.MaximumLevel),
+                    Experience = experience,
+                    Sp = Math.Max(0, skillPoints),
+                    Gold = Math.Max(0, gold),
+                    Inventory = inventory.OrderBy(item => item.Slot).ToList(),
+                    WarehouseCapacity = CharacterWarehouseProgression.Normalize(
+                        (ushort)Math.Max(warehouseCapacity, character.WarehouseCapacity)),
+                    Quests = (character.Quests ?? [])
+                        .Where(quest => quest.QuestId != ushort.MaxValue
+                            && !questIds.Contains(quest.QuestId))
+                        .DistinctBy(quest => quest.QuestId)
+                        .Take(3)
+                        .ToList(),
+                    CompletedQuestIds = (character.CompletedQuestIds ?? [])
+                        .Concat(questIds)
+                        .Distinct()
+                        .OrderBy(questId => questId)
+                        .ToList(),
+                    RewardedQuestIds = (character.RewardedQuestIds ?? [])
+                        .Concat(questIds)
+                        .Distinct()
+                        .OrderBy(questId => questId)
+                        .ToList(),
+                    Mailbox = mailbox
+                };
+                if (unlockedDungeonIds.Count > 0)
+                {
+                    updated = HiddenDungeonUnlockCatalog.ApplyUnlocks(updated, unlockedDungeonIds);
+                }
+
+                updated = SettleWarehouseUpgradeItems(updated);
+                account.Characters[index] = updated;
+                await SaveLockedAsync(cancellationToken);
+                LogGeneratedMails(characterId, appendedMailCount);
+                return new CharacterQuestBulkCompletionResult(
+                    updated,
+                    questIds.ToArray(),
+                    appendedMailCount,
+                    droppedMailCount);
+            }
+
+            return null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
     public async Task<CharacterRecord?> CompleteCharacterTutorialAsync(
         string userName,
         Guid characterId,

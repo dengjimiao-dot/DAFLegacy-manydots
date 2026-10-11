@@ -142,6 +142,55 @@ public sealed partial class SelectCharacterHandler(
                         .ToList()
                 };
                 _ = SendDungeonPermissionsSafeAsync(context);
+            },
+            characterAfter =>
+            {
+                if (session.Character.Active is null)
+                {
+                    return;
+                }
+
+                // 后台批量完成（含奖励结算）后的窄合并：只采纳与本次改写相关的
+                // 字段，位置、PvP、疲劳等会话现场字段保持不动。
+                var leveledUp = characterAfter.Level > session.Character.Active.Level;
+                var warehouseCapacity = CharacterWarehouseProgression.Normalize(
+                    characterAfter.WarehouseCapacity);
+                var warehouseCapacityChanged = warehouseCapacity
+                    != session.Inventory.WarehouseCapacity;
+                session.Character.Active = session.Character.Active with
+                {
+                    Level = characterAfter.Level,
+                    Experience = characterAfter.Experience,
+                    Sp = Math.Max(0, characterAfter.Sp),
+                    Gold = characterAfter.Gold,
+                    Inventory = characterAfter.Inventory,
+                    WarehouseCapacity = warehouseCapacity,
+                    Skills = characterAfter.Skills,
+                    Quests = characterAfter.Quests,
+                    CompletedQuestIds = characterAfter.CompletedQuestIds,
+                    RewardedQuestIds = characterAfter.RewardedQuestIds,
+                    UnlockedDungeonIds = characterAfter.UnlockedDungeonIds,
+                    DungeonProgress = characterAfter.DungeonProgress,
+                    Mailbox = characterAfter.Mailbox
+                };
+                session.Quest.Current = (characterAfter.Quests ?? [])
+                    .Where(quest => quest.QuestId != ushort.MaxValue)
+                    .DistinctBy(quest => quest.QuestId)
+                    .ToList();
+                session.Quest.CompletedIds = (characterAfter.CompletedQuestIds ?? []).ToHashSet();
+                session.Currency.Gold = characterAfter.Gold;
+                session.Skill.CurrentSp = Math.Max(0, characterAfter.Sp);
+                session.Inventory.Main = (characterAfter.Inventory ?? [])
+                    .ToDictionary(item => item.Slot);
+                session.Inventory.WarehouseCapacity = warehouseCapacity;
+                session.Skill.Current = (characterAfter.Skills ?? [])
+                    .Where(skill => skill.Level > 0)
+                    .OrderBy(skill => skill.Slot)
+                    .ToList();
+                _ = AdoptAdminCharacterProgressSafeAsync(
+                    context,
+                    leveledUp,
+                    warehouseCapacityChanged);
             });
 
         // Claim the wire identity for this session.

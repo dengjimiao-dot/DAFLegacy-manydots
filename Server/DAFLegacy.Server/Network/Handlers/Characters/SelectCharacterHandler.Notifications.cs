@@ -36,4 +36,59 @@ public sealed partial class SelectCharacterHandler
 
     private Task SendDungeonPermissionsSafeAsync(ConnectionContext context) =>
         senders.SendDungeonPermissionsSafeAsync(context);
+
+    private Task SendAcceptableQuestListSafeAsync(ConnectionContext context) =>
+        senders.SendAcceptableQuestListSafeAsync(context);
+
+    /// <summary>
+    /// 后台批量完成（含奖励结算）采纳后的在线刷新：背包整包、仓库容量、
+    /// 升级时的技能与权威属性、可接任务列表。跨会话推送，吞掉断线竞态。
+    /// </summary>
+    private async Task AdoptAdminCharacterProgressSafeAsync(
+        ConnectionContext context,
+        bool leveledUp,
+        bool warehouseCapacityChanged)
+    {
+        try
+        {
+            var session = context.State;
+            if (session.Character.Active is null)
+            {
+                return;
+            }
+
+            var inventoryRefresh = builders.CreateMainInventoryPacket(
+                session.Currency.Gold,
+                session.Currency.VictoryPoints,
+                session.Inventory.Main.Values);
+            await context.Queue.SendAsync(
+                inventoryRefresh,
+                "ADMIN_QUEST_REWARD",
+                context.Disconnecting);
+            if (warehouseCapacityChanged)
+            {
+                await senders.SendWarehouseStateAsync(context, context.Disconnecting);
+            }
+
+            if (leveledUp)
+            {
+                await senders.SendCurrentSkillInfoAsync(context, context.Disconnecting);
+                await senders.ValidateAndCorrectCharacterStatsAsync(
+                    context,
+                    "admin quest reward settlement",
+                    context.Disconnecting);
+            }
+
+            await senders.SendAcceptableQuestListAsync(context, context.Disconnecting);
+        }
+        catch (OperationCanceledException) when (context.Disconnecting.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            RuntimeLogger.Warn(
+                "Could not push the admin quest reward settlement to the online character: {Error}",
+                exception.Message);
+        }
+    }
 }

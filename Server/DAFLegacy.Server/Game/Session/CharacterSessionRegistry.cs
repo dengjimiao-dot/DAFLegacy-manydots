@@ -86,7 +86,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
         Action<GameMessageType, byte, ushort, byte[], byte[]>? megaphoneNotification = null,
         Action<byte[]>? popupNotification = null,
         Action<byte>? weaknessRecovery = null,
-        Action<ushort, byte>? dungeonPermission = null) =>
+        Action<ushort, byte>? dungeonPermission = null,
+        Action<CharacterRecord>? characterProgressReplaced = null) =>
         ClaimCoreAsync(
             CharacterSessionKey.ForStorageId(characterId),
             characterId,
@@ -102,7 +103,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
             megaphoneNotification,
             popupNotification,
             weaknessRecovery,
-            dungeonPermission);
+            dungeonPermission,
+            characterProgressReplaced);
 
     public Task<CharacterSessionLease> ClaimAsync(
         uint characterNo,
@@ -117,7 +119,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
         Action<GameMessageType, byte, ushort, byte[], byte[]>? megaphoneNotification = null,
         Action<byte[]>? popupNotification = null,
         Action<byte>? weaknessRecovery = null,
-        Action<ushort, byte>? dungeonPermission = null)
+        Action<ushort, byte>? dungeonPermission = null,
+        Action<CharacterRecord>? characterProgressReplaced = null)
         => ClaimAsync(
             characterNo,
             storageId: Guid.Empty,
@@ -132,7 +135,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
             megaphoneNotification,
             popupNotification,
             weaknessRecovery,
-            dungeonPermission);
+            dungeonPermission,
+            characterProgressReplaced);
 
     public Task<CharacterSessionLease> ClaimAsync(
         uint characterNo,
@@ -148,7 +152,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
         Action<GameMessageType, byte, ushort, byte[], byte[]>? megaphoneNotification = null,
         Action<byte[]>? popupNotification = null,
         Action<byte>? weaknessRecovery = null,
-        Action<ushort, byte>? dungeonPermission = null)
+        Action<ushort, byte>? dungeonPermission = null,
+        Action<CharacterRecord>? characterProgressReplaced = null)
     {
         if (characterNo == 0)
         {
@@ -170,7 +175,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
             megaphoneNotification,
             popupNotification,
             weaknessRecovery,
-            dungeonPermission);
+            dungeonPermission,
+            characterProgressReplaced);
     }
 
     private async Task<CharacterSessionLease> ClaimCoreAsync(
@@ -188,7 +194,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
         Action<GameMessageType, byte, ushort, byte[], byte[]>? megaphoneNotification,
         Action<byte[]>? popupNotification,
         Action<byte>? weaknessRecovery,
-        Action<ushort, byte>? dungeonPermission)
+        Action<ushort, byte>? dungeonPermission,
+        Action<CharacterRecord>? characterProgressReplaced)
     {
         var candidate = new CharacterSessionLease(
             key,
@@ -204,7 +211,8 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
             megaphoneNotification,
             popupNotification,
             weaknessRecovery,
-            dungeonPermission);
+            dungeonPermission,
+            characterProgressReplaced);
         while (true)
         {
             if (_activeCharacters.TryAdd(key, candidate))
@@ -452,6 +460,24 @@ public sealed class CharacterSessionRegistry(ILogger<CharacterSessionRegistry> l
         return true;
     }
 
+    /// <summary>
+    /// 后台改写角色进度（批量完成任务并结算奖励）后，把持久层结果交给在线
+    /// 会话采纳：会话侧更新任务、背包、成长与邮箱等内存状态并推送刷新包，
+    /// 防止会话以旧状态回写覆盖。角色离线时返回 false。
+    /// </summary>
+    public bool NotifyCharacterProgressReplaced(Guid characterId, CharacterRecord character)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+        var lease = FindByCharacterId(characterId);
+        if (lease is null)
+        {
+            return false;
+        }
+
+        lease.NotifyCharacterProgressReplaced(character);
+        return true;
+    }
+
     public int NotifyMessageAll(
         GameMessageType messageType,
         ushort targetAreaUserId,
@@ -546,6 +572,7 @@ public sealed class CharacterSessionLease
     private readonly Action<byte[]>? _popupNotification;
     private readonly Action<byte>? _weaknessRecovery;
     private readonly Action<ushort, byte>? _dungeonPermission;
+    private readonly Action<CharacterRecord>? _characterProgressReplaced;
     private readonly TaskCompletionSource _released =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _kickIssued;
@@ -564,7 +591,8 @@ public sealed class CharacterSessionLease
         Action<GameMessageType, byte, ushort, byte[], byte[]>? megaphoneNotification,
         Action<byte[]>? popupNotification,
         Action<byte>? weaknessRecovery,
-        Action<ushort, byte>? dungeonPermission)
+        Action<ushort, byte>? dungeonPermission,
+        Action<CharacterRecord>? characterProgressReplaced)
     {
         Key = key;
         CharacterId = characterId;
@@ -580,6 +608,7 @@ public sealed class CharacterSessionLease
         _popupNotification = popupNotification;
         _weaknessRecovery = weaknessRecovery;
         _dungeonPermission = dungeonPermission;
+        _characterProgressReplaced = characterProgressReplaced;
     }
 
     public Guid CharacterId { get; }
@@ -646,4 +675,7 @@ public sealed class CharacterSessionLease
 
     internal void NotifyDungeonPermission(ushort dungeonId, byte maximumDifficulty) =>
         _dungeonPermission?.Invoke(dungeonId, maximumDifficulty);
+
+    internal void NotifyCharacterProgressReplaced(CharacterRecord character) =>
+        _characterProgressReplaced?.Invoke(character);
 }

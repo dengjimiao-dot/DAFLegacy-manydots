@@ -66,6 +66,13 @@ namespace dfl::ijl15_config
         bool ForcePlainTextLogs;
         bool DisableType16ChatMessageSound;
         bool RedirectClientOutputPaths;
+        // Dungeon instant kill: with the switch on, the module re-runs the
+        // client's native "//kill" loop once per frame - scene-type gated to
+        // the map types that command accepts - so the monsters of the current
+        // dungeon room die on entry through the client's own kill dispatcher
+        // and the normal death reporting flow. With the switch off nothing is
+        // touched.
+        bool EnableDungeonKillerMode;
 
         // Local font registration: with the switch enabled the module
         // registers LocalFontFile (relative to the game executable) as a

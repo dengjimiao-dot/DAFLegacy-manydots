@@ -11,6 +11,7 @@
 
 #include "dnf_patches.h"
 #include "d3d8_scaler.h"
+#include "dungeon_killer_mode.h"
 #include "external_string_table.h"
 #include "font_resources.h"
 #include "ijl15_config.h"
@@ -1847,6 +1848,16 @@ namespace dfl::dnf_patches
         {
             OutputDebugStringA(
                 "DAFLegacy.Ijl15: mouse-wheel scroll hook was not installed.\n");
+        }
+
+        // Non-fatal as well: without the pump hook the stock frame pump runs
+        // untouched and the killer-mode flag simply keeps its native
+        // behaviour (the //allkill toggle still works).
+        if (dfl::ijl15_config::Get().EnableDungeonKillerMode
+            && !dfl::dungeon_killer_mode::InstallHook())
+        {
+            OutputDebugStringA(
+                "DAFLegacy.Ijl15: dungeon killer-mode sync was not installed.\n");
         }
 
         // Installed after every fatal check and write: a failure here leaves

@@ -61,6 +61,7 @@ namespace
         true, // ForcePlainTextLogs
         true, // DisableType16ChatMessageSound
         false, // RedirectClientOutputPaths
+        false, // EnableDungeonKillerMode
         true, // RegisterLocalFonts
         { "fonts\\simsun.ttc" }, // LocalFontFile
         { "XPSimSun" }, // LocalFontFamily
@@ -343,6 +344,11 @@ namespace dfl::ijl15_config
                 "Features",
                 "RedirectClientOutputPaths",
                 DefaultSettings.RedirectClientOutputPaths);
+            CurrentSettings.EnableDungeonKillerMode = ReadBoolean(
+                path,
+                "Features",
+                "EnableDungeonKillerMode",
+                DefaultSettings.EnableDungeonKillerMode);
             CurrentSettings.RegisterLocalFonts = ReadBoolean(
                 path,
                 "Features",

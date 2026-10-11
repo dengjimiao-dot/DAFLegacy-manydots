@@ -100,6 +100,7 @@
     <ClInclude Include="include\ijl15.h" />
     <ClInclude Include="src\d3d8_scaler.h" />
     <ClInclude Include="src\dnf_patches.h" />
+    <ClInclude Include="src\dungeon_killer_mode.h" />
     <ClInclude Include="src\external_string_table.h" />
     <ClInclude Include="src\ijl15_config.h" />
     <ClInclude Include="src\memory_patch.h" />
@@ -112,6 +113,7 @@
   <ItemGroup>
     <ClCompile Include="src\d3d8_scaler.cpp" />
     <ClCompile Include="src\dnf_patches.cpp" />
+    <ClCompile Include="src\dungeon_killer_mode.cpp" />
     <ClCompile Include="src\external_string_table.cpp" />
     <ClCompile Include="src\ijl15_config.cpp" />
     <ClCompile Include="src\ijl15.cpp" />

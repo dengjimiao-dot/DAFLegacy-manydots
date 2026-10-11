@@ -181,7 +181,7 @@
 | 槽 0x8C 转发桩 | 0x407480 | 反汇 | `mov eax,[ecx]; push 2; call dword ptr [eax+80h]` → 命中路径的目标判定等价 `目标->vtbl[0x80](2) > 0` |
 | NOTI 38 客户端 case | 0x4217CE..0x421EA7 | 反汇 | 死亡掉落处理;时间线对象取 `[[dword_B5DCE8]+0x54]+0x5C4`(0x421D7D 清空 / 0x421D9A 压 0 段),与缩放控制器无关 |
 | `sub_4AB300`(CMD 160 发送器) | 0x4AB300 | 反编 | 伤害记录批量上报(0x4AB344 发 CMD 160):条数 u8 + 逐条(u32 长度 + 记录体),记录 644B 步长;调用点 0x47F464 / 0x4ABBA3 / 0xD45820 |
-| `sub_843AC0`(CMD 42 发送器) | 0x843AC0 | 反编 | 击杀上报(0x843B39 发 CMD 42):怪物 id u16 + 本机玩家 id u16 + 0 u32×2 + 受保护整数 u32×2 + u8 |
+| `sub_843AC0`(击杀分派器) | 0x843AC0 | 反编 | `__cdecl(怪物对象)`,按状态分派击杀(2026-10-11 复核):场景类型(游戏主对象 +0x10 保护读)=7 且 `[怪物+0x1A0]`(416)∈{3010,3011} → 不处理;全局字节 `byte_AFD540` 非 0(观战类模式)→ `怪物->vtbl+0x198(0,0,1)`;`[怪物+0x2150]`(8528)字节非 0 → **发 CMD 42**(0x843B39):怪物 id u16(vtbl+56)+ 本机玩家 id u16(tm_min vtbl+56)+ 0 u32×2 + 受保护整数(`sub_402030(怪物+0x1868)`)u32 + 受保护整数(`sub_402030(vtbl+0x494() 结果 +100)`)u32 + 尾 u8=0,经 `sub_8B2650/8B2450/8B24C0` 组包;否则 → **本地击杀** `怪物->vtbl+0x13C(1)` |
 | 全 NOTI case 缩放特征扫描 | 跳转表 0x42A081(152 case) | 反汇 | 逐 case 匹配「调用 5 个缩放入口 / 访问控制器字段 +0x8D4..+0x8F4 / 引用输出全局 0xB0EF38」,命中 0 处(无包触发) |
 | 缩放参数立即数(补丁点,**草案**) | 0x4E8CE0(倍率 2.0f)/ 0x4E8CF0(放大 300)/ 0x4E8CFA(保持 1000);HP 路径同形:0x4E5DDD(1.2f)/ 0x4E5DED(100)/ 0x4E5DF7(150);连击抬升常量 1000:0x4E8C77 / 0x4E8C7E / 0x4E8CA4 / 0x4E8CB6 | 反汇 | IJL15 参数可配置方案的补丁点,详见 [client-camera-zoom-60cn.md](client-camera-zoom-60cn.md) §9(草案,未实现)与 §10(主路径伪代码) |
 
@@ -244,7 +244,7 @@
 | 函数/数据 | 地址 | 取证 | 功能 |
 |---|---|---|---|
 | `//` 命令处理器 | `sub_846BA0`(0x846BA0–0x849272) | 反汇 | 函数头即 `strstr(输入, "//") == 输入` 判定:聊天输入以 `//` 开头才进入调试/GM 命令分派;命令关键字用 `sub_476E10(输入, 关键字)` 做包含匹配 |
-| 调试命令发送 | 28 处 `sub_8B2650(sock, 65)`(0x84705C…0x84868F) | 反汇 | 全部落到 **CMD 65 `ENUM_CMDPACKET_DEBUG_COMMAND`**;本服未实现该命令,故需服务器应答的命令(等级/加物品/清怪/GM 开关等)现在只会静默 |
+| 调试命令发送 | 28 处 `sub_8B2650(sock, 65)`(0x84705C…0x84868F) | 反汇 | 全部落到 **CMD 65 `ENUM_CMDPACKET_DEBUG_COMMAND`**;本服未实现该命令,故需服务器应答的命令(等级/加物品/GM 开关等)现在只会静默。例外:`//allkill` 与 `//kill` 为纯本地实现、不发 CMD 65(见 §17) |
 | GM 命令应答 case | CMD 65 case 0x414EA4–0x415060(`sub_40F290`) | 反汇 | 读结果字节 0..6,按值在聊天窗(`dword_B5DCE8+0x60`)打串表 812–818(`开始运行GM模式`/`GM模式 : 完成提升Lv`…`完成添加物品`) |
 | 命令清单(字符串池 0x846000–0x849400) | — | 反汇+字符串抽取 | `//hide` `//show` `//kick` `//hell` `//level` `//levelto` `//pvprank` `//grow` `//clear` `//skill` `//itemlist` `//list item\|monster\|passiveobject\|skill` `//add` `//creatureavatar` `//exp` `//fillexp` `//evolution` `//allkill` `//kill` `//no` `//quest` `//style` `//technic` `//attacked` `//upgrade` `//setgm` `//mail` `//random` `//revive` `//warroomtime` `//ting` `//minimap` `//compound` `//coke` `//lottery` `//newnpcdialog` `//tutorial` `//megaphone` `//echophone` `//pvpTimeOut` `//heartbeat` `//comicCutWindow` `//mid` `//log_DEBUG` `OpenConsole`/`CloseConsole` `//ehdgusrlwn`(疑似隐藏口令) |
 | `//list` 系列(纯本地) | `sub_846BA0` 内 0x8477E0–0x8478B0 | 反汇 | 检查输入含 `list` 后再看含 `item`/`monster`/`passiveobject`/`skill`,各自 `sub_7189E0(表, 文件名)` 落盘:`ItemName.lst`、`MonsterName.lst`、`PassiveObjectName.lst`、`%s%d.lst`(SkillName 等);**不经服务器**,当前即可用 |
@@ -286,3 +286,14 @@
 | CMD 83 失败分支(首字节 0) | 0x416438..0x416556 | 反编 | 读 1B 错误码(@0x416438)后分派:4→串 1658、7→串 20000、10→串 1660、13→串 1654、17→串 1652、22→串 1661、99→`sub_8AA5A0(30005)` 组包弹窗、其余→串 1662 带错误码格式化 |
 | 强化结果窗(类型 0x44) | 构造 `sub_7C2570`(对象 0x4C,窗 id 113,虚表 `0xA7EDE4`);参数处理=虚表+12 `sub_7F20C0` | 反编 | 按 resultCode 分派文案与事件(`sub_433890` 按名派发,`sub_8AA5A0` 取串后经 `sub_7B0750` 上屏,dword_B5DCE8+0xAC 消息对象):0→`STRENGTHEN_SUCCESS`+串 1669;1/2→`STRENGTHEN_FAIL`+串 1670(物品强化等级为 0 时 `STRENGTHEN_ZERO`+串 1671);3→`EQUIP_BROKEN`+串 1672(「装备已被破坏」,2026-10-11 真机复现)。四个事件名全库仅此一处引用,无其他静态监听方;resultCode=3 时不携带物品指针,补偿物品入包由应答分支静默完成,无逐条提示 |
 
+## 17. killer mode 与副本判定(2026-10-11 取证,IJL15 副本秒杀开关依据)
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| `//allkill` 分支 | `sub_846BA0` 0x8481E3..0x848248 | 反汇 | `sub_476E10(输入, "//allkill")` 命中后:读保护开关 `dword_B5F418`(`sub_404A60`)→写回翻转值(`sub_4375D0`)→按新值打聊天:非 0=`killer mode`、0=`no killer mode`。**纯本地翻转,不发任何包,分支内无 GM 身份判定**;开关非 0 即 killer mode(命中即杀)开 |
+| killer mode 开关 | `dword_B5F418` | 反汇 | 保护变量描述符:保护模式(门控字节 `byte_CFD44C`≠0)下该 dword 存描述符指针,读写必须经 `sub_404A60`/`sub_4375D0`(内部分别转调校验读取原语 `sub_402030` 与双表异或写原语);非保护模式下原值直读直写。除 `//allkill` 翻转外的引用仅 0x992150/0x99215D(数据段,保护变量登记表)——消费方在保护/混淆代码区,静态不可见。**2026-10-11 真机验证:经原语把开关置 1 后命中伤害无变化,"killer mode=命中即杀"的推测在该客户端不成立**(部署/构建均核对新版,取证见 PENDING P-55);消费语义(是否需 GM 模式等)未定,机制弃用 |
+| `//kill` 分支 | `sub_846BA0` 0x84824D..0x8483C4 | 反汇 | 门 1:`sub_42E750(this)`(游戏主对象 +0x128 保护布尔);门 2:地图类型 `sub_402030(dword_B5D6F0+0x10) ∈ {3,6,7}`;过门后遍历 `[[dword_B5DCE0] vtbl+0x80] +0xB0` 对象列表(计数 `sub_4048A0`、取元素 `sub_405830(i)`):满足 `vtbl+0x2C(0x211)` 的逐只调 `sub_843AC0`(CMD 42 击杀上报,见 §9);满足 `vtbl+0x2C(0x21)` 且 `[obj+0x488]==1` 的走 `sub_475AD0(tm_min,…)`. **纯本地,不发 CMD 65** |
+| 游戏主对象 | `dword_B5D6F0` | 反汇 | 客户端游戏主对象指针(全库 1029 处引用;`sub_401030` 返回它);+0x10 为保护整数=当前地图类型:`//kill` 门取 {3,6,7}(可杀怪地图),`//quest`/`//warroomtime` 门取 1(城镇类),`//style`/`//technic`/`//attacked` 门取 3 |
+| 每帧主泵 | `sub_433B00` | 反编 | 全局每帧泵:临界区→世界管理器 tick(`dword_B5DCE0` vtbl+124)→UDP NAT 状态机(`sub_78C9E0`)→背包窗口(`sub_79CE00`)→热键→`sub_433660`(帧计时)→`sub_792A70`;登录期即运行 |
+| 帧计时 tick(挂点) | `sub_433660`,唯一调用点 0x433C0D | 反编+反汇 | `timeGetTime` 帧计数;**IJL15 副本秒杀挂点**:0x433C0D 处 `call sub_433660`(原字节 `E8 4E FA FF FF`)重定向到插件桩,桩内 `pushad`→同步→`popad`→重建原调用→返回(返回值经 eax 保留);调用点返回值在该处为死值,标志字不消费 |
+| IJL15 副本秒杀同步 | `Client/DAFLegacy.Ijl15/src/dungeon_killer_mode.cpp` | — | `EnableDungeonKillerMode=1` 时的秒杀为**加载门控 + 进房派发窗口 + 容器内派发**:①挂点——每帧主泵 `sub_433B00` 帧计时调用点 0x433C0D(唯一调用点,原字节 `E8 4E FA FF FF`)执行扫描;CMD 40 发送点(0x89B711/0x8A2EB5)与 NOTI 29 房间查表点(0x41F98B→`sub_405750`)挂钩**只记/清加载时刻标志不发包**;②加载门——完成包+3000ms 或房间推送+8000ms 兜底后放行(派发进加载中的房间卡死客户端);③进房派发窗口——门开时重置跟踪表并开 1500ms 窗口,窗口内扫描 `[[dword_B5DCE0] vtbl+0x80] +0xB0` 容器(`sub_4048A0`/`sub_405830` 取对象,`vtbl+0x2C(0x211)` 低字节判怪物,**首见即派发 `sub_843AC0`**——存活查询 `vtbl+0x8C` 对多数怪(含活怪)恒为 0 不可作门控,(指针,id) 跟踪防重复);**窗口关闭后新出现的实体只跟踪不派发**(多场次 Boss 假身/换阶段等战斗编排实体曾被逐个秒杀、每次结算一轮掉落——「Boss 每攻击几次掉落一次」教训),「死→活」只更新状态不派发。**派发对象一律取自容器现场,永不使用早先记录的指针——等待期间被玩家打死的怪对象可能已释放,派发悬空指针会卡死客户端**(真机教训)。临时诊断日志 `Logs\DAFLegacy.Ijl15.killer.log`（客户端目录下）记录派发决策供复盘。真机判据见 PENDING P-55 |

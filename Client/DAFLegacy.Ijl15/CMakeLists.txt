@@ -21,6 +21,8 @@ add_library(ijl15 SHARED
     src/d3d8_scaler.h
     src/dnf_patches.cpp
     src/dnf_patches.h
+    src/dungeon_killer_mode.cpp
+    src/dungeon_killer_mode.h
     src/external_string_table.cpp
     src/external_string_table.h
     src/font_resources.cpp

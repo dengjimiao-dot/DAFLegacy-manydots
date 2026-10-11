@@ -290,6 +290,10 @@ public interface IGameStore
         IEnumerable<CharacterItemRecord> inventory,
         ushort warehouseCapacity,
         IEnumerable<CreateCharacterMailRequest>? generatedMails,
+        CancellationToken cancellationToken = default);
+    Task<CharacterMailboxClearResult?> ClearCharacterMailboxAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default);
     Task<CharacterRecord?> CompleteCharacterTutorialAsync(
         string userName,
         Guid characterId,

@@ -100,6 +100,20 @@
             <button class="primary-button" type="submit">发送邮件</button>
           </div>
         </form>
+
+        <form id="mailClearForm" class="surface form-layout danger-surface">
+          <div class="section-heading">
+            <h2>清空邮件</h2>
+            <p>删除该角色邮箱中的全部邮件（含保管箱与未领取附件），不可恢复；在线角色的邮箱窗口在下次打开时刷新为空。</p>
+          </div>
+          <label class="field">
+            <span>角色</span>
+            <select class="character-select" name="characterId" required></select>
+          </label>
+          <div class="form-actions">
+            <button class="danger-button" type="submit">清空全部邮件</button>
+          </div>
+        </form>
       </section>
 
       <section class="view" data-view-panel="direct">

@@ -422,6 +422,25 @@ function bindForms() {
     });
   });
 
+  $("#mailClearForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const characterId = new FormData(event.currentTarget).get("characterId");
+    const character = state.characters.find(candidate => candidate.id === characterId);
+    if (!character) {
+      showToast("请选择一个有效的角色。", true);
+      return;
+    }
+    if (!window.confirm(
+      `确认清空 ${character.name} 的全部邮件？未领取的附件将一并删除，不可恢复。`)) {
+      return;
+    }
+    runForm(event.currentTarget, async () => {
+      const result = await api(`/api/admin/characters/${characterId}/mail`, {
+        method: "DELETE"
+      });
+      return { message: `已清空 ${character.name} 的 ${result.removedMailCount} 封邮件` };
+    });
+  });
 }
 
 function initialize() {

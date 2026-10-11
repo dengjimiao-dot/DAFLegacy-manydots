@@ -778,6 +778,31 @@ app.MapPost("/api/admin/characters/{characterId:guid}/quests/complete-by-level",
         NotifiedOnlineCharacter = notifiedOnlineCharacter
     });
 });
+
+// 清空角色邮箱：删除全部邮件（含保管箱与未领取附件），不可恢复；在线角色
+// 下次打开邮箱（CMD 99）时客户端按服务端快照重建为空箱。
+app.MapDelete("/api/admin/characters/{characterId:guid}/mail", async (
+    Guid characterId,
+    IGameStore store,
+    CancellationToken token) =>
+{
+    var result = await store.ClearCharacterMailboxAsync(characterId, token);
+    if (result is null)
+    {
+        return Results.NotFound(new { error = "Character does not exist." });
+    }
+
+    RuntimeLogger.Info(
+        "Admin cleared {Count} mail(s) for character {CharacterId}.",
+        result.RemovedMailCount,
+        characterId);
+    return Results.Ok(new
+    {
+        characterId,
+        result.RemovedMailCount
+    });
+});
+
 // These client-pay mutations are intentionally on the loopback admin listener;
 // the embedded IE page uses the same origin and does not carry a separate login.
 app.MapPost("/api/client-pay/cera", async (

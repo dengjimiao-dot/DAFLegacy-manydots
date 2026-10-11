@@ -73,6 +73,7 @@ Invoke-RestMethod `
 | `POST` | `/api/accounts/{userName}/characters` | 创建角色 |
 | `PUT` | `/api/characters/{characterId}/fatigue` | 修改角色当天已消耗疲劳 |
 | `POST` | `/api/admin/characters/{characterId}/quests/complete-by-level` | 批量完成等级区间覆盖当前等级的任务并结算奖励 |
+| `DELETE` | `/api/admin/characters/{characterId}/mail` | 清空角色全部邮件 |
 | `GET` | `/api/characters/{characterId}/mail` | 查询角色有效邮件 |
 | `POST` | `/api/characters/{characterId}/mail` | 给角色发送邮件 |
 | `POST` | `/api/characters/{characterId}/message` | 给在线角色发送聊天栏通知 |
@@ -698,8 +699,9 @@ Invoke-RestMethod `
 
 #### 5.2.6 邮件功能边界
 
-当前 HTTP 后台只提供查询和创建邮件，不提供后台领取、归档、删除或修改邮件接口。领取、
-状态 2/3 切换和删除由在线客户端对应的游戏协议处理。
+当前 HTTP 后台提供查询、创建邮件与整体清空（§5.3），不提供单封邮件的后台领取、
+归档、删除或修改接口。单封邮件的领取、状态 2/3 切换和删除由在线客户端对应的游戏
+协议处理。
 
 #### 5.2.7 后台邮件表单的附带点券
 
@@ -719,6 +721,27 @@ DF2008 邮件协议的发送（CMD 97）、邮件记录（NOTI 97）与领取（
   失败：…”，点券保留、邮件不落库，需要人工决定是否重发邮件。
 - 点券发放要求目标角色有对应账号，`/api/admin/characters` 返回的每项都带 `userName` 字段，
   页面即以此为 `account` 参数调用 §6.1。
+
+### 5.3 清空邮件
+
+```http
+DELETE /api/admin/characters/{characterId}/mail
+```
+
+无请求体。删除目标角色邮箱中的全部邮件——包括收件箱、状态 2/3 邮件、保管箱
+（state=3）与未领取的金币、附件，不可恢复。成功返回 `200`：
+
+```json
+{
+  "characterId": "角色 GUID",
+  "removedMailCount": 12
+}
+```
+
+- 角色不存在返回 `404`。
+- 在线角色没有主动推送：客户端邮箱窗口由打开邮箱（CMD 99）时的服务端快照重建，
+  清空后下次打开即呈现空箱；在重建前对已删除邮件的领取请求会被服务端拒绝。
+- 到期未清理的邮件同样随本次清空删除，不触发创建新邮件时的过期清扫。
 
 ## 6. 点券与 Premium
 

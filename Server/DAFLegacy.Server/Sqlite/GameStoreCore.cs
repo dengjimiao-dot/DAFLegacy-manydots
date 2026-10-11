@@ -47,6 +47,11 @@ public sealed record CharacterQuestBulkCompletionResult(
     int AppendedMailCount,
     int DroppedMailCount);
 
+/// <summary>后台清空角色邮箱的结果：更新后的角色与删除的邮件数。</summary>
+public sealed record CharacterMailboxClearResult(
+    CharacterRecord Character,
+    int RemovedMailCount);
+
 public sealed record CharacterMailAttachmentRecord(
     ushort ItemId,
     uint CountOrValue,
@@ -4611,6 +4616,40 @@ public abstract class GameStoreCore(
             _gate.Release();
         }
     }
+
+    /// <summary>后台清空角色邮箱：删除全部邮件（含保管箱与未领取附件），不可恢复。</summary>
+    public async Task<CharacterMailboxClearResult?> ClearCharacterMailboxAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            foreach (var account in _accounts)
+            {
+                var index = account.Characters.FindIndex(character =>
+                    character.Id == characterId);
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                var character = account.Characters[index];
+                var removedMailCount = (character.Mailbox ?? []).Count;
+                var updated = character with { Mailbox = [] };
+                account.Characters[index] = updated;
+                await SaveLockedAsync(cancellationToken);
+                return new CharacterMailboxClearResult(updated, removedMailCount);
+            }
+
+            return null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<CharacterRecord?> CompleteCharacterTutorialAsync(
         string userName,
         Guid characterId,

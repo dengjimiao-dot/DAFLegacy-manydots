@@ -364,6 +364,12 @@ h1 {
   align-items: start;
 }
 
+/* 视图内堆叠的多张卡片（如邮件页的发送与清空）：同宽满行，留出与
+   split-layout 一致的行距。 */
+.view > .surface + .surface {
+  margin-top: 18px;
+}
+
 .danger-surface {
   border-top: 3px solid #b85b4e;
 }

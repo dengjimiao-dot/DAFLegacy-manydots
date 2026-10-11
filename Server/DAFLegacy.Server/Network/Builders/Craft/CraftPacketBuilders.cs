@@ -148,7 +148,8 @@ internal static class CraftPacketBuilders
         uint materialRemaining,
         byte resultCode,
         byte newLevel,
-        ushort targetSlot)
+        ushort targetSlot,
+        IReadOnlyList<GameUpgradeItemDestroyReward>? destroyRewards = null)
     {
         using var payload = new MemoryStream();
         using var writer = new BinaryWriter(payload);
@@ -160,7 +161,17 @@ internal static class CraftPacketBuilders
         writer.Write(targetSlot);
         if (resultCode > 2)
         {
-            writer.Write((byte)0);
+            // 60CN 客户端在结果码 >2 时读取补偿条目数与
+            // {slot u16, itemId u16, count u32} × N（sub_40F290 case 0x53
+            // @0x4162eb..0x4163b3），先于快照随应答放入背包。
+            var rewards = destroyRewards ?? [];
+            writer.Write(checked((byte)Math.Min(rewards.Count, byte.MaxValue)));
+            foreach (var reward in rewards.Take(byte.MaxValue))
+            {
+                writer.Write(reward.Slot);
+                writer.Write(reward.ItemId);
+                writer.Write(reward.Count);
+            }
         }
 
         return new GameServerPacket(

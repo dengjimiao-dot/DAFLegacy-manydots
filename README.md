@@ -131,6 +131,8 @@ dotnet publish .\Client\DAFLegacy.Launcher\DAFLegacy.Launcher.csproj -c Release 
 | `Drop.RatePercent` | 普通掉落倍率百分比，`100` 使用 PVF 原始概率。 |
 | `Drop.EconomicRate` | 金币倍率，默认 `1.0`。 |
 | `Drop.ForceDrops` | 强制掉落测试开关，正常体验应保持 `false`。 |
+| `Reinforcement.Enabled` | 强化系统总开关（当前作用于毁坏补偿），默认 `true`；置 `false` 时毁坏补偿整体关闭，`DestroyBonus` 节点与 PVF `[disjoint]` 段一并失效。 |
+| `Reinforcement.DestroyBonus` | 强化毁坏补偿覆写（模板已启用：物品 3037 无色小晶块、等级基准 10、五品级权重 1，即 +11 毁坏补 1 个、+12 补 4 个，按（目标等级−基准）²×权重增长）。`ItemId` 置 `0` 或删除本节点即回落 PVF `etc/upgrade.etc` 的 `[disjoint]` 段（60CN 自带数据无该段=不补偿）；补偿物品必须是物品表存在的 id，否则拒绝启动。字段语义与校验规则见 `docs/design/02-portability-contracts.md` R5。 |
 | `Experience.MonsterMultiplier` | 逐只怪物经验倍率，默认 `1.0`。 |
 | `Experience.ClearMultiplier` | 通关基础经验及评分奖励倍率，默认 `1.0`。 |
 | `EnablePacketTracing` | 协议包跟踪开关，用于排查客户端交互问题。 |

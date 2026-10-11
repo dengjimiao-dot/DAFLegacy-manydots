@@ -46,6 +46,7 @@ public sealed class UpgradeItemHandler(IGameStore store,
                 upgradeCommand.TargetSlot,
                 upgradeCommand.TargetItemId,
                 upgradeCommand.MaterialSlot,
+                senders.GetInventoryWeightLimit(context, session.Character.Active),
                 itemCatalog,
                 reinforcementCatalog,
                 GameRandomSource.Shared,
@@ -92,29 +93,54 @@ public sealed class UpgradeItemHandler(IGameStore store,
             await senders.SendWarehouseStateAsync(context, cancellationToken);
         }
 
-        // DF2008 refreshes a bag target before consuming the
-        // CMD83 acknowledgement. Worn targets are updated by
-        // the acknowledgement itself.
-        if (reinforcementPlan.TargetListType == 0)
-        {
-            var inventoryRefresh = builders.CreateMainInventoryPacket(
-                session.Currency.Gold,
-                session.Currency.VictoryPoints,
-                session.Inventory.Main.Values,
-                preferredLastSlot: reinforcementPlan.TargetSlot);
-            await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
-        }
-
         var reinforcementReply =
             CraftPacketBuilders.CreateUpgradeItemReply(
                 reinforcementPlan.MaterialSlot,
                 reinforcementPlan.MaterialRemaining,
                 reinforcementPlan.ResultCode,
                 reinforcementPlan.NewLevel,
-                reinforcementPlan.TargetSlot);
-        await context.Queue.SendAsync(reinforcementReply, Name, cancellationToken);
+                reinforcementPlan.TargetSlot,
+                reinforcementPlan.DestroyRewards
+                    .Select(reward => new GameUpgradeItemDestroyReward(
+                        reward.Slot,
+                        reward.ItemId,
+                        reward.Count))
+                    .ToArray());
+        if (reinforcementPlan.Destroyed)
+        {
+            // 60CN 客户端消费损坏应答时要求目标物品仍在槽上（sub_40F290
+            // case 0x53 @0x41624a 查不到即报 1658「缺少物品」）：由应答自身
+            // 移除目标、弹出损坏提示并写入补偿物品，快照随后对账金币与
+            // 材料余量。
+            await context.Queue.SendAsync(reinforcementReply, Name, cancellationToken);
+            if (reinforcementPlan.TargetListType == 0)
+            {
+                var destroyedInventoryRefresh = builders.CreateMainInventoryPacket(
+                    session.Currency.Gold,
+                    session.Currency.VictoryPoints,
+                    session.Inventory.Main.Values);
+                await context.Queue.SendAsync(destroyedInventoryRefresh, Name, cancellationToken);
+            }
+        }
+        else
+        {
+            // DF2008 refreshes a bag target before consuming the
+            // CMD83 acknowledgement. Worn targets are updated by
+            // the acknowledgement itself.
+            if (reinforcementPlan.TargetListType == 0)
+            {
+                var inventoryRefresh = builders.CreateMainInventoryPacket(
+                    session.Currency.Gold,
+                    session.Currency.VictoryPoints,
+                    session.Inventory.Main.Values,
+                    preferredLastSlot: reinforcementPlan.TargetSlot);
+                await context.Queue.SendAsync(inventoryRefresh, Name, cancellationToken);
+            }
+
+            await context.Queue.SendAsync(reinforcementReply, Name, cancellationToken);
+        }
         RuntimeLogger.Info(
-            "Reinforced item {ItemId} at {ListType}:{Slot}: level={PreviousLevel}->{NewLevel}, result={ResultCode}, destroyed={Destroyed}, material={MaterialItemId}x{MaterialCount}, goldCost={GoldCost}, gold={Gold}, roll={Roll}/{RollUpperBound}.",
+            "Reinforced item {ItemId} at {ListType}:{Slot}: level={PreviousLevel}->{NewLevel}, result={ResultCode}, destroyed={Destroyed}, material={MaterialItemId}x{MaterialCount}, goldCost={GoldCost}, gold={Gold}, roll={Roll}/{RollUpperBound}, destroyRewards={DestroyRewards}.",
             reinforcementPlan.TargetItemId,
             reinforcementPlan.TargetListType,
             reinforcementPlan.TargetSlot,
@@ -127,6 +153,12 @@ public sealed class UpgradeItemHandler(IGameStore store,
             reinforcementPlan.Cost.Gold,
             session.Currency.Gold,
             reinforcementPlan.FailureRoll,
-            EquipmentReinforcementCatalog.FailureRollUpperBound);
+            EquipmentReinforcementCatalog.FailureRollUpperBound,
+            reinforcementPlan.DestroyRewards.Count != 0
+                ? string.Join(
+                    "+",
+                    reinforcementPlan.DestroyRewards.Select(reward =>
+                        $"{reward.ItemId}x{reward.Count}@{reward.Slot}"))
+                : "none");
     }
 }

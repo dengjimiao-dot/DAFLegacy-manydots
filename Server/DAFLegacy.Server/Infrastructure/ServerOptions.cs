@@ -25,10 +25,42 @@ public sealed class ServerOptions
     public string SkillScriptPath { get; set; } = "";
     public string OriginalSkillScriptPath { get; set; } = "";
     public ChannelOptions Channel { get; set; } = new();
+
+    // 强化毁坏补偿覆写（docs/design/02 R5）：节点缺省或 ItemId=0 时循 PVF
+    // etc/upgrade.etc 的可选 [disjoint] 段；ItemId>0 时整体取代该段。
+    public ReinforcementOptions Reinforcement { get; set; } = new();
+
     public int MaximumPacketLength { get; set; } = 4 * 1024 * 1024;
     public bool RejectBadCrc32 { get; set; } = false;
     public bool EnablePacketTracing { get; set; } = false;
     public int HexDumpLimit { get; set; } = 64;
+}
+
+/// <summary>
+/// 强化系统配置。当前仅承载毁坏补偿（CMD 83 resultCode=3 随应答下发的补偿物品，
+/// 语义循 PVF [disjoint] 段，见 docs/design/02 R5）。<see cref="Enabled"/> 为总开关：
+/// false 时毁坏补偿整体关闭，DestroyBonus 节点与 PVF [disjoint] 段一并失效。
+/// </summary>
+public sealed class ReinforcementOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    public DestroyBonusOptions DestroyBonus { get; set; } = new();
+}
+
+/// <summary>
+/// 毁坏补偿覆写参数。ItemId=0 表示不覆写（循 PVF）。数量 =（目标强化等级 −
+/// BonusCountLevelBase)² × 品级权重（向下取整）；EquipLevelConst 为按品级修正后的
+/// 装备等级门槛（0 = 不设门槛）。键限定 common/uncommon/rare/unique/epic，
+/// 由 ServerOptionsValidator 在启动期校验。
+/// </summary>
+public sealed class DestroyBonusOptions
+{
+    public int ItemId { get; set; }
+    public int EquipLevelConst { get; set; }
+    public int BonusCountLevelBase { get; set; }
+    public Dictionary<string, double> BonusWeightByRarity { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> CorrectionGradeByRarity { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class GameplayDatagramOptions

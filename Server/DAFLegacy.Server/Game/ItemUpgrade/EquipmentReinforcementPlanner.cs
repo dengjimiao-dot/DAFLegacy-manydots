@@ -6,8 +6,15 @@ public enum EquipmentReinforcementFailure : byte
     InvalidTarget = 4,
     InsufficientGold = 10,
     RuleUnavailable = 13,
-    InsufficientMaterial = 22
+    InsufficientMaterial = 22,
+    InsufficientSpace = 21
 }
+
+/// <summary>CMD 83 毁坏应答随附的补偿条目（槽内为该槽最终数量）。</summary>
+public sealed record EquipmentReinforcementDestroyReward(
+    ushort Slot,
+    ushort ItemId,
+    uint Count);
 
 public sealed record EquipmentReinforcementPlan(
     IReadOnlyDictionary<ushort, CharacterItemRecord> MainInventory,
@@ -24,7 +31,8 @@ public sealed record EquipmentReinforcementPlan(
     bool Failed,
     bool Destroyed,
     int FailureRoll,
-    EquipmentReinforcementCost Cost);
+    EquipmentReinforcementCost Cost,
+    IReadOnlyList<EquipmentReinforcementDestroyReward> DestroyRewards);
 
 public static class EquipmentReinforcementPlanner
 {
@@ -35,6 +43,7 @@ public static class EquipmentReinforcementPlanner
         ushort requestedTargetSlot,
         ushort expectedTargetItemId,
         ushort materialSlot,
+        uint rewardWeightLimit,
         ItemCatalog itemCatalog,
         EquipmentReinforcementCatalog reinforcementCatalog,
         IDropRandomSource random,
@@ -148,6 +157,53 @@ public static class EquipmentReinforcementPlanner
             };
         }
 
+        var destroyRewards = new List<EquipmentReinforcementDestroyReward>();
+        CharacterInventoryPlacementPlan? rewardPlacement = null;
+        ushort destroyBonusItemId = 0;
+        if (destroyed
+            && reinforcementCatalog.TryGetDestroyBonus(
+                definition,
+                cost.TargetLevel,
+                out destroyBonusItemId,
+                out var bonusCount))
+        {
+            if (!CharacterInventoryPlanner.TryPlace(
+                    plannedMain,
+                    new CharacterMailAttachmentRecord(
+                        destroyBonusItemId,
+                        checked((uint)bonusCount)),
+                    itemCatalog,
+                    rewardWeightLimit,
+                    out var placement,
+                    out _))
+            {
+                failure = EquipmentReinforcementFailure.InsufficientSpace;
+                return false;
+            }
+
+            rewardPlacement = placement;
+        }
+        if (rewardPlacement is not null)
+        {
+            // 客户端对奖励条目 count 的语义是「在槽内同 id 物品现有数量上累加」
+            // （物品 vtable+0x38 @0x461AC0：add 现有值+入参；槽内无物品时按该值
+            // 新建），须下发增量而非槽内最终数量。
+            var beforePlacement = plannedMain;
+            plannedMain = rewardPlacement.Inventory;
+            foreach (var rewardSlot in rewardPlacement.ChangedSlots)
+            {
+                var previousCount = beforePlacement.TryGetValue(
+                    rewardSlot,
+                    out var previousItem)
+                    ? previousItem.CountOrValue
+                    : 0;
+                destroyRewards.Add(new EquipmentReinforcementDestroyReward(
+                    rewardSlot,
+                    destroyBonusItemId,
+                    plannedMain[rewardSlot].CountOrValue - previousCount));
+            }
+        }
+
         plan = new EquipmentReinforcementPlan(
             plannedMain,
             plannedEquipment,
@@ -163,7 +219,8 @@ public static class EquipmentReinforcementPlanner
             reinforcementFailed,
             destroyed,
             failureRoll,
-            cost);
+            cost,
+            destroyRewards);
         failure = EquipmentReinforcementFailure.None;
         return true;
     }

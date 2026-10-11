@@ -26,7 +26,13 @@ internal static class EquipmentReinforcementSmokeTests
                 scripts,
                 NullLogger<ItemCatalog>.Instance);
             items.Initialize();
+            var fixtureOptions = new ServerOptions
+            {
+                ScriptPvfPath = string.Empty,
+                SkillScriptPath = fixtureRoot
+            };
             var catalog = new EquipmentReinforcementCatalog(
+                fixtureOptions,
                 scripts,
                 NullLogger<EquipmentReinforcementCatalog>.Instance);
             catalog.Initialize();
@@ -43,6 +49,67 @@ internal static class EquipmentReinforcementSmokeTests
                         0,
                         1),
                 "reinforcement catalog reads material, gold and chance rows from upgrade.etc");
+
+            // server.json 覆写为整节点语义：同夹具下仅权重不同即应生效。
+            var overrideOptions = new ServerOptions
+            {
+                ScriptPvfPath = string.Empty,
+                SkillScriptPath = fixtureRoot,
+                Reinforcement = new ReinforcementOptions
+                {
+                    DestroyBonus = new DestroyBonusOptions
+                    {
+                        ItemId = 3037,
+                        BonusCountLevelBase = 3,
+                        BonusWeightByRarity = new Dictionary<string, double>(
+                            StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["COMMON"] = 3
+                        }
+                    }
+                }
+            };
+            var overrideCatalog = new EquipmentReinforcementCatalog(
+                overrideOptions,
+                scripts,
+                NullLogger<EquipmentReinforcementCatalog>.Instance);
+            overrideCatalog.Initialize();
+            check(items.TryGetDefinition(1_000, out var overrideEquipment)
+                    && catalog.TryGetDestroyBonus(overrideEquipment, 4, out _, out var fixtureBonusCount)
+                    && fixtureBonusCount == 2
+                    && overrideCatalog.TryGetDestroyBonus(overrideEquipment, 4, out var overrideBonusItemId, out var overrideBonusCount)
+                    && overrideBonusItemId == 3037
+                    && overrideBonusCount == 3,
+                "destroy bonus reads the PVF disjoint section and a server.json node overrides it wholesale");
+
+            var disabledOptions = new ServerOptions
+            {
+                ScriptPvfPath = string.Empty,
+                SkillScriptPath = fixtureRoot,
+                Reinforcement = new ReinforcementOptions
+                {
+                    Enabled = false,
+                    DestroyBonus = new DestroyBonusOptions
+                    {
+                        ItemId = 3037,
+                        BonusCountLevelBase = 3,
+                        BonusWeightByRarity = new Dictionary<string, double>(
+                            StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["COMMON"] = 3
+                        }
+                    }
+                }
+            };
+            var disabledCatalog = new EquipmentReinforcementCatalog(
+                disabledOptions,
+                scripts,
+                NullLogger<EquipmentReinforcementCatalog>.Instance);
+            disabledCatalog.Initialize();
+            check(items.TryGetDefinition(1_000, out var disabledEquipment)
+                    && !disabledCatalog.TryGetDestroyBonus(disabledEquipment, 4, out _, out _),
+                "the reinforcement master switch off disables destroy bonus despite the PVF section and override node");
+
             CheckPlans(check, items, catalog);
             CheckInstanceMoves(check, items);
         }
@@ -82,10 +149,12 @@ internal static class EquipmentReinforcementSmokeTests
 
     public static void CheckRealPvf(
         Action<bool, string> check,
+        ServerOptions options,
         ScriptFileSystem scripts,
         ItemCatalog items)
     {
         var catalog = new EquipmentReinforcementCatalog(
+            options,
             scripts,
             NullLogger<EquipmentReinforcementCatalog>.Instance);
         catalog.Initialize();
@@ -133,6 +202,13 @@ internal static class EquipmentReinforcementSmokeTests
             3,
             12,
             17);
+        var destroyedWithReward = CraftPacketBuilders.CreateUpgradeItemReply(
+            73,
+            896,
+            3,
+            12,
+            17,
+            [new GameUpgradeItemDestroyReward(73, 3037, 2)]);
         check(success.Type == GameProtocolConstants.CommandPacketType
                 && success.ProtocolId == (byte)CmdPacketType.UPGRADE_ITEM
                 && success.Payload.SequenceEqual(
@@ -140,7 +216,9 @@ internal static class EquipmentReinforcementSmokeTests
                 && downgrade.Payload.SequenceEqual(
                     Convert.FromHexString("0149008D03000002021100"))
                 && destroyed.Payload.SequenceEqual(
-                    Convert.FromHexString("01490080030000030C110000")),
+                    Convert.FromHexString("01490080030000030C110000"))
+                && destroyedWithReward.Payload.SequenceEqual(
+                    Convert.FromHexString("01490080030000030C1100014900DD0B02000000")),
             "CMD83 success, downgrade and destruction replies match the target-client vectors");
     }
 
@@ -157,6 +235,7 @@ internal static class EquipmentReinforcementSmokeTests
                     requestedTargetSlot: 9,
                     expectedTargetItemId: 1_000,
                     materialSlot: 49,
+                    rewardWeightLimit: uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(99_999),
@@ -181,6 +260,7 @@ internal static class EquipmentReinforcementSmokeTests
                     9,
                     1_000,
                     49,
+                    uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(99_999),
@@ -196,6 +276,7 @@ internal static class EquipmentReinforcementSmokeTests
             "penalty type two consumes costs and lowers reinforcement by one level");
 
         var destroyMain = CreateMainInventory(level: 3, materialCount: 10);
+        destroyMain[73] = new CharacterItemRecord(73, 3_037, 40);
         check(EquipmentReinforcementPlanner.TryCreate(
                     destroyMain,
                     new Dictionary<ushort, CharacterItemRecord>(),
@@ -203,6 +284,7 @@ internal static class EquipmentReinforcementSmokeTests
                     9,
                     1_000,
                     49,
+                    uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(99_999),
@@ -213,8 +295,45 @@ internal static class EquipmentReinforcementSmokeTests
                 && destroyed.ResultCode == 3
                 && destroyed.NewLevel == 3
                 && destroyed.MaterialRemaining == 6
-                && !destroyed.MainInventory.ContainsKey(9),
-            "penalty type three destroys the target while retaining its old level in the reply");
+                && !destroyed.MainInventory.ContainsKey(9)
+                && destroyed.DestroyRewards.Count == 1
+                && destroyed.DestroyRewards[0] == new EquipmentReinforcementDestroyReward(73, 3037, 2)
+                && destroyed.MainInventory[73].ItemId == 3037
+                && destroyed.MainInventory[73].CountOrValue == 42,
+            "penalty type three destroys the target, replies its old level and reports the disjoint bonus as an increment onto the existing stack");
+
+        var packedMain = new Dictionary<ushort, CharacterItemRecord>
+        {
+            [20] = new(20, 1_000, 1, State: 3, Durability: 35),
+            [49] = new(49, 3_171, 10)
+        };
+        for (var slot = CharacterInventoryLayout.MaterialSlotStart;
+             slot < CharacterInventoryLayout.MaterialSlotEnd;
+             slot++)
+        {
+            packedMain[slot] = new CharacterItemRecord(slot, 3_037, 1_000);
+        }
+        for (var slot = CharacterInventoryLayout.QuickSlotStart;
+             slot < CharacterInventoryLayout.QuickSlotEnd;
+             slot++)
+        {
+            packedMain[slot] = new CharacterItemRecord(slot, 3_037, 1_000);
+        }
+        check(!EquipmentReinforcementPlanner.TryCreate(
+                    packedMain,
+                    new Dictionary<ushort, CharacterItemRecord>(),
+                    1_000,
+                    20,
+                    1_000,
+                    49,
+                    uint.MaxValue,
+                    items,
+                    catalog,
+                    new FixedDropRandomSource(99_999),
+                    out _,
+                    out var spaceFailure)
+                && spaceFailure == EquipmentReinforcementFailure.InsufficientSpace,
+            "destruction refuses to plan when the disjoint bonus cannot enter the bag");
 
         var equipped = new Dictionary<ushort, CharacterItemRecord>
         {
@@ -231,6 +350,7 @@ internal static class EquipmentReinforcementSmokeTests
                     requestedTargetSlot: 7,
                     expectedTargetItemId: 1_000,
                     materialSlot: 49,
+                    rewardWeightLimit: uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(99_999),
@@ -248,6 +368,7 @@ internal static class EquipmentReinforcementSmokeTests
                     9,
                     1_000,
                     49,
+                    uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(0),
@@ -262,6 +383,7 @@ internal static class EquipmentReinforcementSmokeTests
                     9,
                     1_000,
                     49,
+                    uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(0),
@@ -277,6 +399,7 @@ internal static class EquipmentReinforcementSmokeTests
                     9,
                     1_000,
                     49,
+                    uint.MaxValue,
                     items,
                     catalog,
                     new FixedDropRandomSource(0),
@@ -337,11 +460,18 @@ internal static class EquipmentReinforcementSmokeTests
             + "[durability] 35\n");
         File.WriteAllText(
             Path.Combine(root, "stackable", "stackable.lst"),
-            "3171 `material/cokes.stk`\n");
+            "3171 `material/cokes.stk`\n"
+            + "3037 `material/cube.stk`\n");
         File.WriteAllText(
             Path.Combine(stackableDirectory, "cokes.stk"),
             "[name] `Cokes`\n"
-            + "[stackable type] `material`\n"
+            + "[stackable type] `[material]`\n"
+            + "[attach type] `free`\n"
+            + "[stack limit] 1000\n");
+        File.WriteAllText(
+            Path.Combine(stackableDirectory, "cube.stk"),
+            "[name] `Cube`\n"
+            + "[stackable type] `[material]`\n"
             + "[attach type] `free`\n"
             + "[stack limit] 1000\n");
         File.WriteAllText(
@@ -360,7 +490,24 @@ internal static class EquipmentReinforcementSmokeTests
             + "[cost weights by rarity]\n"
             + "1\n1\n1\n1\n1\n"
             + "[type]\n"
-            + "1\n1\n1\n1\n1\n1\n1\n1\n1\n1\n");
+            + "1\n1\n1\n1\n1\n1\n1\n1\n1\n1\n"
+            + "[disjoint]\n"
+            + "[disjoint bonus item]\n"
+            + "3037\n"
+            + "[/disjoint bonus item]\n"
+            + "[equip level const]\n"
+            + "0\n"
+            + "[/equip level const]\n"
+            + "[upgrade failed bonus weight by rarity]\n"
+            + "`common` 2\n"
+            + "[/upgrade failed bonus weight by rarity]\n"
+            + "[upgrade const for bonus item count]\n"
+            + "3\n"
+            + "[/upgrade const for bonus item count]\n"
+            + "[correction grade by rarity]\n"
+            + "`common` 0\n"
+            + "[/correction grade by rarity]\n"
+            + "[/disjoint]\n");
     }
 
     private sealed class FixedDropRandomSource(int value) : IDropRandomSource

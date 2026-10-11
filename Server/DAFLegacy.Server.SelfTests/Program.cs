@@ -6470,7 +6470,9 @@ async Task RunProgramInlineSuite()
             smokeItemCatalog,
             out _,
             out _),
-        "admin mail constructs ordinary stacks, permanent Avatar equipment and sealed Creature eggs while rejecting hatched Creatures");
+        "admin mail constructs ordinary stacks, reinforced equipment, permanent "
+        + "Avatar equipment and sealed Creature eggs while rejecting hatched "
+        + "Creatures, over-range reinforcement and reinforcement on non-equipment");
     Check(smokeItemCatalog.TryGetDefinition(50_001, out var artifactDefinition)
         && artifactDefinition.CreatureMinimumLevel == 3
         && artifactDefinition.CreatureExperienceAmountRate == 10m,
@@ -7715,11 +7717,12 @@ async Task RunProgramInlineSuite()
             && realChannelInfo.AsSpan().StartsWith("[dungeon]"u8),
             "DAFLegacy channel script is plain null-free text for protocol 10");
 
-        var pvfScripts = CreateScripts(new ServerOptions
+        var pvfScriptOptions = new ServerOptions
         {
             ScriptPvfPath = realPvfPath,
             SkillScriptPath = ""
-        });
+        };
+        var pvfScripts = CreateScripts(pvfScriptOptions);
         Check(pvfScripts.IsPvf, "DAFLegacy Script.pvf is selected instead of a directory");
         Check(pvfScripts.FileCount >= 48_341,
             "DAFLegacy Script.pvf indexes the complete baseline archive and local additions");
@@ -8802,6 +8805,7 @@ async Task RunProgramInlineSuite()
         pvfItemCatalog.Initialize();
         EquipmentReinforcementSmokeTests.CheckRealPvf(
             Check,
+            pvfScriptOptions,
             pvfScripts,
             pvfItemCatalog);
         AvatarCompoundSmokeTests.CheckRealPvf(

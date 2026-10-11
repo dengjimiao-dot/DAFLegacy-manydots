@@ -153,6 +153,27 @@ Server/DAFLegacy.Server/WorldMapCatalog.cs
 
 **判定**：`DAFLEGACY_HOME=/tmp/daflegacy-linux dotnet DAFLegacy.Server.dll` 时，配置从 `/tmp/daflegacy-linux/server.json` 读取、`state.json` 写入 `/tmp/daflegacy-linux/data/`。
 
+#### 强化毁坏补偿覆写（`server.json` → `Reinforcement.DestroyBonus`，2026-10-11）
+
+强化毁坏补偿的语义与数量公式循 PVF `etc/upgrade.etc` 的可选 `[disjoint]` 段（见
+`docs/protocol/packet-detail-compound-upgrade-60cn.md` CMD 83）；60CN 自带数据无该段，
+故补偿缺省关闭。`server.json` 的 `Reinforcement.DestroyBonus` 节提供**整节点覆写**：
+
+- `Enabled` 为总开关（默认 `true`）：置 `false` 时毁坏补偿整体关闭，
+  `DestroyBonus` 节点与 PVF `[disjoint]` 段一并失效，且节点取值不再校验（惰性配置
+  不阻塞启动）。
+- `ItemId > 0` 时整体取代 PVF `[disjoint]` 段（不是逐字段合并），补偿物品/参数全部以
+  配置为准；`ItemId = 0` 或节点缺省 → 回落 PVF 段（有则用之，无则不补偿）。
+- 字段：`ItemId`（0..65535）、`EquipLevelConst`（≥0，0=不做装备等级门槛）、
+  `BonusCountLevelBase`（≥0）、`BonusWeightByRarity` / `CorrectionGradeByRarity`
+  （键限定 `common`/`uncommon`/`rare`/`unique`/`epic`，键序无关、缺失即 0）。
+  数量 =（目标强化等级 − `BonusCountLevelBase`）² × 品级权重，向下取整，≤0 不补偿。
+- 校验（`ServerOptionsValidator.ValidateReinforcementDestroyBonus`，启动期，违例即
+  退出码 2）：键名白名单外报错；权重须有限且 ≥0、修正与两个常量 ≥0；`ItemId > 0`
+  时至少一个品级权重 > 0（防呆配置）。组合根在目录初始化后另校验 `ItemId` 存在于
+  物品表（强化可用为前提，缺失同样拒绝启动）——指向不存在物品的配置会让每次毁坏
+  都落入「背包不足」错误，必须在启动期拦下。
+
 ---
 
 ## R6 · 网络绑定

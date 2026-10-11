@@ -43,16 +43,22 @@ var moduleLogger = LoggerFactory.Create(logging => logging.AddSimpleConsole(cons
 // 缺失、越界、非 IP 字面量主机名或同一主机同一传输上的重复占用一律拒绝启动，
 // 避免以隐式端口监听或静默丢弃一条监听。
 var endpointErrors = ServerOptionsValidator.ValidateListenerEndpoints(options);
-if (endpointErrors.Count > 0)
+var destroyBonusErrors = ServerOptionsValidator.ValidateReinforcementDestroyBonus(options);
+if (endpointErrors.Count > 0 || destroyBonusErrors.Count > 0)
 {
     foreach (var endpointError in endpointErrors)
     {
         moduleLogger.LogError("{EndpointConfigurationError}", endpointError);
     }
 
+    foreach (var destroyBonusError in destroyBonusErrors)
+    {
+        moduleLogger.LogError("{DestroyBonusConfigurationError}", destroyBonusError);
+    }
+
     moduleLogger.LogError(
-        "Refusing to start: {ErrorCount} listener endpoint configuration error(s) in server.json.",
-        endpointErrors.Count);
+        "Refusing to start: {ErrorCount} configuration error(s) in server.json.",
+        endpointErrors.Count + destroyBonusErrors.Count);
     Environment.ExitCode = 2;
     return;
 }
@@ -214,6 +220,20 @@ avatarCompoundCatalog.Initialize();
 var reinforcementCatalog =
     app.Services.GetRequiredService<EquipmentReinforcementCatalog>();
 reinforcementCatalog.Initialize();
+if (reinforcementCatalog.IsAvailable
+    && options.Reinforcement.Enabled
+    && options.Reinforcement.DestroyBonus.ItemId > 0
+    && !itemCatalog.TryGetDefinition(
+        (ushort)options.Reinforcement.DestroyBonus.ItemId,
+        out _))
+{
+    app.Logger.LogError(
+        "Reinforcement.DestroyBonus.ItemId {DestroyBonusItemId} does not exist in the item catalog; "
+        + "granted destroy bonuses would always fail. Fix the id or remove the node in server.json.",
+        options.Reinforcement.DestroyBonus.ItemId);
+    Environment.ExitCode = 2;
+    return;
+}
 var resealCatalog = app.Services.GetRequiredService<ResealCatalog>();
 resealCatalog.Initialize();
 var characterSpCatalog = app.Services.GetRequiredService<CharacterSpCatalog>();

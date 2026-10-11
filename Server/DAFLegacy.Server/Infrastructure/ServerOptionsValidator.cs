@@ -137,6 +137,104 @@ public static class ServerOptionsValidator
         return false;
     }
 
+    /// <summary>
+    /// 强化毁坏补偿覆写（docs/design/02 R5）启动期校验：键名白名单、取值范围与
+    /// 「启用即至少一个品级权重为正」的防呆规则。返回空列表表示配置可用。
+    /// </summary>
+    public static IReadOnlyList<string> ValidateReinforcementDestroyBonus(
+        ServerOptions options)
+    {
+        var errors = new List<string>();
+        if (!options.Reinforcement.Enabled)
+        {
+            // 总开关关闭时节点整体不生效，不校验取值，避免惰性配置阻塞启动。
+            return errors;
+        }
+
+        var bonus = options.Reinforcement.DestroyBonus;
+        if (bonus.ItemId < 0 || bonus.ItemId > ushort.MaxValue)
+        {
+            errors.Add(
+                $"Reinforcement.DestroyBonus.ItemId must stay within 0..{ushort.MaxValue} "
+                + $"(0 disables the override and falls back to the PVF [disjoint] section); got {bonus.ItemId}.");
+        }
+
+        if (bonus.EquipLevelConst < 0)
+        {
+            errors.Add(
+                $"Reinforcement.DestroyBonus.EquipLevelConst must not be negative; got {bonus.EquipLevelConst}.");
+        }
+
+        if (bonus.BonusCountLevelBase < 0)
+        {
+            errors.Add(
+                $"Reinforcement.DestroyBonus.BonusCountLevelBase must not be negative; got {bonus.BonusCountLevelBase}.");
+        }
+
+        var positiveWeight = false;
+        foreach (var pair in bonus.BonusWeightByRarity)
+        {
+            if (!IsKnownRarity(pair.Key, "BonusWeightByRarity", errors))
+            {
+                continue;
+            }
+
+            if (double.IsNaN(pair.Value) || double.IsInfinity(pair.Value))
+            {
+                errors.Add(
+                    $"Reinforcement.DestroyBonus.BonusWeightByRarity.{pair.Key} must be a finite number; got {pair.Value}.");
+                continue;
+            }
+
+            if (pair.Value < 0)
+            {
+                errors.Add(
+                    $"Reinforcement.DestroyBonus.BonusWeightByRarity.{pair.Key} must not be negative; got {pair.Value}.");
+                continue;
+            }
+
+            positiveWeight |= pair.Value > 0;
+        }
+
+        foreach (var pair in bonus.CorrectionGradeByRarity)
+        {
+            if (IsKnownRarity(pair.Key, "CorrectionGradeByRarity", errors)
+                && pair.Value < 0)
+            {
+                errors.Add(
+                    $"Reinforcement.DestroyBonus.CorrectionGradeByRarity.{pair.Key} must not be negative; got {pair.Value}.");
+            }
+        }
+
+        if (bonus.ItemId > 0 && !positiveWeight)
+        {
+            errors.Add(
+                "Reinforcement.DestroyBonus is enabled (ItemId > 0) but every rarity weight is zero; "
+                + "set at least one positive BonusWeightByRarity value or remove the node to fall back "
+                + "to the PVF [disjoint] section.");
+        }
+
+        return errors;
+    }
+
+    private static bool IsKnownRarity(
+        string key,
+        string nodeName,
+        List<string> errors)
+    {
+        if (ReinforcementDisjointConfig.RarityNames.Contains(
+                key,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        errors.Add(
+            $"{nodeName} key \"{key}\" is not a rarity name; expected one of: "
+            + string.Join(", ", ReinforcementDisjointConfig.RarityNames) + ".");
+        return false;
+    }
+
     private static bool ValidatePortRange(string key, int port, List<string> errors)
     {
         if (port is >= MinimumPort and <= MaximumPort)

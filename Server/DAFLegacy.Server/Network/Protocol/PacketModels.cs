@@ -159,6 +159,10 @@ public readonly record struct GameUpgradeItemCommand(
     ushort TargetSlot,
     ushort TargetItemId,
     ushort MaterialSlot);
+public readonly record struct GameUpgradeItemDestroyReward(
+    ushort Slot,
+    ushort ItemId,
+    uint Count);
 public readonly record struct GameResetItemAttributeCommand(
     ushort TargetSlot,
     ushort TargetItemId,

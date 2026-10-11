@@ -21,6 +21,28 @@
     "DatabasePath": "Data/game.sqlite",
     "ScriptPvfPath": "../Script.pvf",
     "SkillScriptPath": "",
+    "Reinforcement": {
+      "Enabled": true,
+      "DestroyBonus": {
+        "ItemId": 3037,
+        "EquipLevelConst": 0,
+        "BonusCountLevelBase": 10,
+        "BonusWeightByRarity": {
+          "common": 1,
+          "uncommon": 1,
+          "rare": 1,
+          "unique": 1,
+          "epic": 1
+        },
+        "CorrectionGradeByRarity": {
+          "common": 0,
+          "uncommon": 0,
+          "rare": 0,
+          "unique": 0,
+          "epic": 0
+        }
+      }
+    },
     "Channel": {
       "Host": "127.0.0.1",
       "PortBase": 10000,

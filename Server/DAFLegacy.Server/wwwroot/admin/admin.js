@@ -190,9 +190,34 @@ function updateAttachmentFields() {
   $("#selectedItemId").value = "";
   $("#itemResults").replaceChildren();
   $("#itemMeta").textContent = hasAttachment ? "尚未选择物品" : "无附件";
+  updateReinforcementField();
   if (hasAttachment && $("#itemSearch").value.trim()) {
     searchItems();
   }
+}
+
+function isEquipmentAttachment(item) {
+  return item !== null
+    && Number($("#attachmentKind").value) === 1
+    && item.scriptKind === "Equipment"
+    && item.inventoryCategory === "Equipment";
+}
+
+function updateReinforcementField() {
+  const applicable = isEquipmentAttachment(state.selectedItem);
+  $("#reinforcementField").classList.toggle("hidden", !applicable);
+  if (!applicable) {
+    $("#reinforcementLevel").value = "0";
+  }
+}
+
+function renderReinforcementOptions() {
+  const select = $("#reinforcementLevel");
+  select.replaceChildren();
+  for (let level = 0; level <= 31; level += 1) {
+    select.append(option(String(level), String(level)));
+  }
+  select.value = "0";
 }
 
 function describeItem(item) {
@@ -243,6 +268,7 @@ function selectItem() {
   } else if (Number($("#attachmentKind").value) === 1) {
     quantity.disabled = false;
   }
+  updateReinforcementField();
 }
 
 async function resolveSelectedItem() {
@@ -290,7 +316,10 @@ function bindForms() {
         attachmentKind: Number(data.get("attachmentKind")),
         itemId: item?.id ?? null,
         quantity: item && item.scriptKind !== "Stackable" ? 1 : Number(data.get("quantity") || 1),
-        avatarAbilityIndex: Number(data.get("avatarAbilityIndex") || 0)
+        avatarAbilityIndex: Number(data.get("avatarAbilityIndex") || 0),
+        reinforcement: isEquipmentAttachment(item)
+          ? Number($("#reinforcementLevel").value)
+          : 0
       };
       try {
         await api(`/api/admin/characters/${data.get("characterId")}/mail`, {
@@ -457,6 +486,7 @@ function initialize() {
     }
   });
   $("#itemResults").addEventListener("change", selectItem);
+  renderReinforcementOptions();
   bindForms();
   updateAttachmentFields();
   refreshData();

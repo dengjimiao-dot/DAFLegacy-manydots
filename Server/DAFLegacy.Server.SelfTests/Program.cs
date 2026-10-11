@@ -6462,6 +6462,37 @@ async Task RunProgramInlineSuite()
             CountOrValue: 1,
             SealState: 1
         }
+        && AdminMailComposer.TryCompose(
+            new AdminSendMailRequest(
+                "DAFLegacy",
+                "equipment",
+                AttachmentKind: AdminMailAttachmentKind.Item,
+                ItemId: 10_000,
+                Reinforcement: 12),
+            smokeItemCatalog,
+            out var adminEquipmentMail,
+            out _)
+        && adminEquipmentMail.Attachment is { ItemId: 10_000, State: 12 }
+        && !AdminMailComposer.TryCompose(
+            new AdminSendMailRequest(
+                "DAFLegacy",
+                "over-reinforced equipment",
+                AttachmentKind: AdminMailAttachmentKind.Item,
+                ItemId: 10_000,
+                Reinforcement: 32),
+            smokeItemCatalog,
+            out _,
+            out _)
+        && !AdminMailComposer.TryCompose(
+            new AdminSendMailRequest(
+                "DAFLegacy",
+                "reinforced avatar",
+                AttachmentKind: AdminMailAttachmentKind.Avatar,
+                ItemId: 39_000,
+                Reinforcement: 5),
+            smokeItemCatalog,
+            out _,
+            out _)
         && !AdminMailComposer.TryCompose(
             new AdminSendMailRequest(
                 "DAFLegacy",

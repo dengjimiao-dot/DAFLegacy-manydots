@@ -17,7 +17,8 @@ public sealed record AdminSendMailRequest(
     AdminMailAttachmentKind AttachmentKind = AdminMailAttachmentKind.None,
     ushort? ItemId = null,
     uint Quantity = 1,
-    ushort AvatarAbilityIndex = 0);
+    ushort AvatarAbilityIndex = 0,
+    byte Reinforcement = 0);
 
 public sealed record AdminBroadcastMessageRequest(
     string Message,
@@ -98,6 +99,24 @@ public static class AdminMailComposer
             return false;
         }
 
+        if (request.Reinforcement > EquipmentReinforcementCatalog.MaximumLevel)
+        {
+            error = "Attachment reinforcement level must be "
+                + $"0-{EquipmentReinforcementCatalog.MaximumLevel}.";
+            return false;
+        }
+
+        // Ordinary equipment only: Avatar and Creature items read State as
+        // their own sub-type data, so a reinforcement value on them is a
+        // request error rather than a silent no-op.
+        var isOrdinaryEquipment =
+            definition.InventoryCategory == ItemInventoryCategory.Equipment;
+        if (request.Reinforcement != 0 && !isOrdinaryEquipment)
+        {
+            error = $"Item {itemId} does not accept a reinforcement level.";
+            return false;
+        }
+
         if (request.Quantity == 0)
         {
             error = "Attachment quantity must be greater than zero.";
@@ -114,6 +133,9 @@ public static class AdminMailComposer
             new CharacterMailAttachmentRecord(
                 itemId,
                 request.Quantity,
+                // Ordinary equipment carries the reinforcement level in the
+                // low five bits of State; the reseal bits stay zero.
+                State: isOrdinaryEquipment ? request.Reinforcement : (byte)0,
                 Durability: definition.InventoryCategory == ItemInventoryCategory.Equipment
                     ? catalog.GetInitialDurability(itemId)
                     : (ushort)0,

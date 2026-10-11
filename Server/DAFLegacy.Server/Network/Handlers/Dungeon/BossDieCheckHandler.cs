@@ -41,6 +41,10 @@ public sealed class BossDieCheckHandler() : IGameCommandHandler
             session.Dungeon.ReportedBossDeaths.Add(bossDieCheck.BossId);
             var allBossesReported = bossIds.All(
                 session.Dungeon.ReportedBossDeaths.Contains);
+            // 多场次副本（[dummy appear count] > 0，当前仅 51 号）：紧邻死亡上报的
+            // BOSS_DIE_CHECK 是真死标记；无该校验的 Boss 死亡为假死（客户端屏幕上
+            // Boss 仍存活，continue fighting）。真机抓包记录见 docs/design/15 §2.4。
+            session.Dungeon.PendingBossDeathCheckId = bossDieCheck.BossId;
             if (allBossesReported)
             {
                 session.Dungeon.BossCascadeDeaths.UnionWith(

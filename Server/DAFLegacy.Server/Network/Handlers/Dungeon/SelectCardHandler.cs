@@ -7,7 +7,8 @@ namespace DAFLegacy.Server;
 /// SELECT_CARD (CMD 74): clear-card pick with the free/gold reward grant (07 §5 group 13).
 /// </summary>
 public sealed class SelectCardHandler(
-    ChannelSessionSenders senders) : IGameCommandHandler
+    ChannelSessionSenders senders,
+    DungeonCatalog dungeonCatalog) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.SELECT_CARD;
 
@@ -102,6 +103,7 @@ public sealed class SelectCardHandler(
                 session.Character.LocalUserId,
                 selectionAccepted,
                 selectedRewardItemId);
+            await TryAdvanceDummyPhaseAsync(context, cancellationToken);
         }
         else
         {
@@ -109,5 +111,65 @@ public sealed class SelectCardHandler(
                 "Ignored dungeon card selection before card rights for user {UserId}",
                 session.Character.LocalUserId);
         }
+    }
+
+    /// <summary>多场次副本（[dummy appear count] &gt; 0，当前仅 51 号）：每场皮特击杀都
+    /// 走完整结算流程（真机行为：打完皮特弹结算窗、门不开）；翻牌收尾后若击杀数未达
+    /// 「1 + 假身出现次数」，把同一房间重建为 [type] [dummy] 假人场（假身皮特登场）
+    /// 继续下一场。第 3 场击杀后不再重建，流程按终局收尾（docs/design/15 §4.1）。</summary>
+    private async Task TryAdvanceDummyPhaseAsync(
+        ConnectionContext context,
+        CancellationToken cancellationToken)
+    {
+        var session = context.State;
+        if (!dungeonCatalog.TryGetDefinition(
+                session.Dungeon.CurrentDungeonId,
+                out var definition)
+            || definition.DummyAppearCount <= 0
+            || session.Dungeon.BossPhaseKills >= 1 + definition.DummyAppearCount
+            || session.Dungeon.Layout is null
+            || !dungeonCatalog.TryCreateDummyRoom(
+                session.Dungeon.Layout,
+                session.Dungeon.RoomX,
+                session.Dungeon.RoomY,
+                session.Dungeon.Difficulty,
+                out var dummyRoom))
+        {
+            return;
+        }
+
+        session.Dungeon.ClearEnabled = false;
+        session.Dungeon.ResultSent = false;
+        session.Dungeon.CardLayoutSent = false;
+        session.Dungeon.CardRightsSent = false;
+        session.Dungeon.CardSelectionDeadline = null;
+        session.Dungeon.ClearReward = null;
+        session.Dungeon.ClearExperience = null;
+        session.Dungeon.FreeCardIndex = null;
+        session.Dungeon.GoldCardIndex = null;
+        session.Dungeon.ReportedBossDeaths.Clear();
+        session.Dungeon.BossCascadeDeaths.Clear();
+        session.Dungeon.Room = dummyRoom;
+        session.Dungeon.AliveMonsters.Clear();
+        session.Dungeon.AliveMonsters.UnionWith(
+            dummyRoom.Monsters.Select(monster => monster.UniqueId));
+        var dummyStartMap = DungeonPacketBuilders.CreateStartMap(
+            session.Dungeon.RoomX,
+            session.Dungeon.RoomY,
+            dummyRoom.MapId,
+            dummyRoom.Monsters,
+            passiveObjectDrops: [],
+            randomSeed: dummyRoom.ClientRandomSeed,
+            roomStateFlag: session.Dungeon.Run.RoomStateFlag,
+            hellPartyMode: session.Dungeon.Run.CurrentHellPartyMode);
+        await context.Queue.SendAsync(dummyStartMap, Name, cancellationToken);
+        RuntimeLogger.Info(
+            "Dungeon {DungeonId} dummy phase advanced after {BossPhaseKills} piper kills: rebuilt room ({RoomX},{RoomY}) with dummy map {MapId}, monsters={MonsterCount}.",
+            session.Dungeon.CurrentDungeonId,
+            session.Dungeon.BossPhaseKills,
+            session.Dungeon.RoomX,
+            session.Dungeon.RoomY,
+            dummyRoom.MapId,
+            dummyRoom.Monsters.Length);
     }
 }

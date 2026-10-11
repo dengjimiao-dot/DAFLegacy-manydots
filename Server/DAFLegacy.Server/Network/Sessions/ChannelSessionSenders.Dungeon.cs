@@ -273,6 +273,8 @@ public sealed partial class ChannelSessionSenders
         context.State.Dungeon.SelectionWorldMap = null;
         context.State.Dungeon.AliveMonsters.Clear();
         context.State.Dungeon.ReportedBossDeaths.Clear();
+        context.State.Dungeon.BossPhaseKills = 0;
+        context.State.Dungeon.PendingBossDeathCheckId = null;
         context.State.Dungeon.BossCascadeDeaths.Clear();
         context.State.Dungeon.DestroyedPassiveObjects.Clear();
         context.State.Dungeon.GroundItems.ResetDungeon();

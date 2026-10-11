@@ -511,7 +511,7 @@ public sealed class DungeonCatalog
 
         var topology = hasTopology
             ? parsedTopology
-            : '\0';
+            : ' ';
         random ??= GameRandomSource.Shared;
         var mapId = ResolveMapId(state, definition, layout, roomX, roomY, random);
         if (mapId == 0 || !state.Maps.TryGetValue(mapId, out var map))
@@ -559,6 +559,87 @@ public sealed class DungeonCatalog
             random ?? GameRandomSource.Shared,
             isHellRoom: true,
             out room);
+    }
+
+    /// <summary>假人场房间：为指定位置装载 [type] [dummy] 图（51 号副本即含假身皮特
+    /// 1078 的 d6418/d6420/d6424），供假结算收尾后重建房间继续下一场使用。
+    /// 优先取含 Boss 类怪物的假身图，按地图 id 升序取第一张。</summary>
+    public bool TryCreateDummyRoom(
+        DungeonLayout layout,
+        byte roomX,
+        byte roomY,
+        byte dungeonDifficulty,
+        out DungeonRoomDefinition room,
+        IDropRandomSource? random = null)
+    {
+        room = null!;
+        var state = _state.Value;
+        if (!state.Definitions.TryGetValue(layout.DungeonId, out var definition))
+        {
+            return false;
+        }
+
+        MapDefinition? selected = null;
+        foreach (var map in state.Maps.Values
+            .Where(candidate => candidate.DungeonIds.Contains(layout.DungeonId)
+                && candidate.MapType == DungeonMapType.Dummy)
+            .OrderBy(candidate => candidate.MapId))
+        {
+            if (map.Monsters.Any(monster =>
+                    monster.Type == GameDungeonMonsterTypes.Boss))
+            {
+                selected = map;
+                break;
+            }
+
+            selected ??= map;
+        }
+
+        if (selected is null)
+        {
+            return false;
+        }
+
+        var topology = TryGetRoomTopology(definition, roomX, roomY, out var parsed)
+            ? parsed
+            : '\0';
+        return TryBuildRoom(
+            state,
+            definition,
+            selected,
+            topology,
+            dungeonDifficulty,
+            random ?? GameRandomSource.Shared,
+            isHellRoom: false,
+            out room);
+    }
+
+    /// <summary>假身怪索引：该副本 [type] [dummy] 图中带 [boss] 标记的怪物
+    /// （51 号副本即假身皮特 1078），供假死场次的生成通知使用。</summary>
+    public bool TryGetDummyBossMonsterIndex(ushort dungeonId, out ushort monsterIndex)
+    {
+        monsterIndex = 0;
+        var state = _state.Value;
+        foreach (var map in state.Maps.Values)
+        {
+            if (map.MapType != DungeonMapType.Dummy
+                || !map.DungeonIds.Contains(dungeonId))
+            {
+                continue;
+            }
+
+            foreach (var monster in map.Monsters)
+            {
+                if (monster.Type == GameDungeonMonsterTypes.Boss
+                    && monster.MonsterIndex != 0)
+                {
+                    monsterIndex = monster.MonsterIndex;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private bool TryBuildRoom(

@@ -88,6 +88,29 @@ public sealed class DieMonsterHandler(
                 return;
             }
 
+            // 全副本通用：死亡上报紧邻同一 Boss 的 BOSS_DIE_CHECK 时为真死——按常规
+            // 处理、走结算；无该校验的 Boss 死亡为假死——客户端屏幕上 Boss 仍存活，
+            // 保留存活标记、不判清房间，玩家继续战斗直至真死（真机抓包与现象记录见
+            // docs/design/15 §2.4：普通副本与 51 号副本均出现该形态）。
+            if (defeatedMonster.Type == GameDungeonMonsterTypes.Boss)
+            {
+                var isTrueBossDeath =
+                    session.Dungeon.PendingBossDeathCheckId == monsterUniqueId;
+                session.Dungeon.PendingBossDeathCheckId = null;
+                if (isTrueBossDeath)
+                {
+                    session.Dungeon.BossPhaseKills++;
+                }
+                else
+                {
+                    session.Dungeon.AliveMonsters.Add(monsterUniqueId);
+                    RuntimeLogger.Info(
+                        "Dungeon {DungeonId} boss {MonsterId} fake death retained alive; wait for the true kill.",
+                        session.Dungeon.CurrentDungeonId,
+                        monsterUniqueId);
+                }
+            }
+
             session.Dungeon.Run.MarkMonsterDefeated(monsterUniqueId);
 
             var championRewardOrdinal =

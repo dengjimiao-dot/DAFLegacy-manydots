@@ -96,6 +96,8 @@ public sealed class ReturnSelectCharacterHandler(
         session.Dungeon.Difficulty = 0;
         session.Dungeon.AliveMonsters.Clear();
         session.Dungeon.ReportedBossDeaths.Clear();
+        session.Dungeon.BossPhaseKills = 0;
+        session.Dungeon.PendingBossDeathCheckId = null;
         session.Dungeon.BossCascadeDeaths.Clear();
         session.Dungeon.DestroyedPassiveObjects.Clear();
         session.Dungeon.GroundItems.ResetDungeon();

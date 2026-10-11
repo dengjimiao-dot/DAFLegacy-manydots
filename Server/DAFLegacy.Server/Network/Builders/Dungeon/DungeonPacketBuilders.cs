@@ -413,6 +413,34 @@ internal static class DungeonPacketBuilders
             (byte)NotiPacketType.GET_ITEM,
             payload.ToArray());
     }
+    /// <summary>NOTI 91 通用怪物生成通知（客户端 case 0x423BEA 按
+    /// {u8 标志, u16 数量, 数量 × 8B 记录} 逐条生成怪物，战争房波次刷怪同款；
+    /// 记录字段顺序按客户端读取序：u16 怪物索引, u8 等级, u8 类型, u8 x, u8 y, u16 实体 id）。
+    /// 51 号副本假身场次用它把假身皮特生成到当前房间（docs/design/15 §4.1）。</summary>
+    public static GameServerPacket CreateMonsterSpawnNotification(
+        byte flag,
+        IReadOnlyList<(ushort MonsterIndex, byte Level, byte Type, byte X, byte Y, ushort UniqueId)> monsters)
+    {
+        using var payload = new MemoryStream();
+        using var writer = new BinaryWriter(payload);
+        writer.Write(flag);
+        writer.Write((ushort)monsters.Count);
+        foreach (var monster in monsters)
+        {
+            writer.Write(monster.MonsterIndex);
+            writer.Write(monster.Level);
+            writer.Write(monster.Type);
+            writer.Write(monster.X);
+            writer.Write(monster.Y);
+            writer.Write(monster.UniqueId);
+        }
+
+        return new GameServerPacket(
+            GameProtocolConstants.NotificationPacketType,
+            (byte)NotiPacketType.WARROOM_MONSTER_SPAWN,
+            payload.ToArray());
+    }
+
     public static GameServerPacket CreateEnableClearDungeon() =>
         new(GameProtocolConstants.NotificationPacketType, (byte)NotiPacketType.ENABLE_CLEAR_DUNGEON, []);
     public static GameServerPacket CreatePlayResult(

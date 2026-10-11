@@ -113,6 +113,8 @@ public sealed class SelectDungeonHandler(IGameStore store,
             session.Dungeon.AliveMonsters.UnionWith(
                 tutorialMonsters.Select(monster => monster.UniqueId));
             session.Dungeon.ReportedBossDeaths.Clear();
+            session.Dungeon.BossPhaseKills = 0;
+            session.Dungeon.PendingBossDeathCheckId = null;
             session.Dungeon.BossCascadeDeaths.Clear();
             session.Dungeon.DestroyedPassiveObjects.Clear();
             session.Dungeon.GroundItems.ResetDungeon();
@@ -303,6 +305,8 @@ public sealed class SelectDungeonHandler(IGameStore store,
         session.Dungeon.AliveMonsters.UnionWith(
             session.Dungeon.Room.Monsters.Select(monster => monster.UniqueId));
         session.Dungeon.ReportedBossDeaths.Clear();
+        session.Dungeon.BossPhaseKills = 0;
+        session.Dungeon.PendingBossDeathCheckId = null;
         session.Dungeon.BossCascadeDeaths.Clear();
         session.Dungeon.DestroyedPassiveObjects.Clear();
         session.Dungeon.GroundItems.ResetDungeon();

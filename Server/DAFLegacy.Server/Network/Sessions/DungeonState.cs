@@ -31,6 +31,15 @@ public sealed class DungeonState
 
     public HashSet<ushort> ReportedBossDeaths = [];
 
+    /// <summary>多场次副本（[dummy appear count] &gt; 0）已受理、待对应死亡上报的
+    /// BOSS_DIE_CHECK：死亡上报紧邻该校验视为真死（走结算并计入场次），
+    /// 否则为假死（保留存活、不判清房间，战斗继续）。</summary>
+    public ushort? PendingBossDeathCheckId;
+
+    /// <summary>本局已验证的真死场次数：多场次副本用它与「1 + 假身出现次数」比较，
+    /// 决定假结算收尾后是否重建假人场。</summary>
+    public int BossPhaseKills;
+
     public HashSet<ushort> BossCascadeDeaths = [];
 
     public HashSet<byte> DestroyedPassiveObjects = [];

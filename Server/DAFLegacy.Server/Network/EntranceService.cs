@@ -223,7 +223,8 @@ public sealed class EntranceService(
         registry.Register("combat.dungeon", new CardSelectRightStateHandler());
         // 通关翻牌选择 CMD 74 (0x4A) ENUM_CMDPACKET_SELECT_CARD
         registry.Register("combat.dungeon", new SelectCardHandler(
-            senders: _sessionSenders));
+            senders: _sessionSenders,
+            dungeonCatalog: dungeonCatalog));
         // 放弃副本 CMD 45 (0x2D) ENUM_CMDPACKET_GIVEUP_GAME
         registry.Register("combat.dungeon", new GiveupGameHandler(
             store,

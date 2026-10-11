@@ -6,6 +6,52 @@
 
 ---
 
+## 2026-10-11
+
+### ADD-29 IJL15 新增副本秒杀配置开关（复刻客户端 //kill 循环）
+
+- **目标**：用户需求——ijl15 客户端插件增加「秒杀副本房间怪物」能力，配置开启与关闭，且仅在副本内生效。
+- **取证结论**（IDA 逐 case 复核，地址登记 `docs/protocol/client-function-register-60cn.md` §9/§17）：客户端自带纯本地的杀怪通路——聊天命令 `//kill`（`sub_846BA0` 0x84824D 分支）在场景类型 ∈{3,6,7}（游戏主对象 `dword_B5D6F0`+0x10 保护整数，城镇=1 不在内）时，遍历 `[[dword_B5DCE0] vtbl+0x80] +0xB0` 对象列表，把 `vtbl+0x2C(0x211)` 判为怪物的对象逐只交给击杀分派器 `sub_843AC0`——分派器按怪物状态路由到本地死亡例程（`vtbl+0x13C(1)`）或直接 CMD 42 击杀上报，死亡/掉落/经验/通关全部走客户端与服务端既有流程。另证：`//allkill` 切换的 killer mode 开关 `dword_B5F418`（§17）经真机验证不产生命中即杀效果（消费方在保护代码区不可见），该机制弃用、证伪结论已登记。
+- **改动**：`Client/DAFLegacy.Ijl15/src/dungeon_killer_mode.cpp/.h`——`EnableDungeonKillerMode=1` 时的秒杀为**加载门控 + 进房派发窗口 + 容器内派发**：①挂点——每帧主泵 `sub_433B00` 帧计时调用点 0x433C0D（唯一调用点，原字节 `E8 4E FA FF FF`）在主循环执行扫描；客户端每完成地图加载发送的 CMD 40（发送点 0x89B711/0x8A2EB5）与 NOTI 29 房间查表调用点（0x41F98B → `sub_405750`）挂钩，**只记录/清除加载时刻标志，不发任何包**；②加载门——完成包 +3000ms 或房间推送 +8000ms（兜底）后放行，门未开期间整段挂起（派发进加载中的房间会卡死客户端）；③进房派发窗口——门开时重置跟踪表并打开 1500ms 窗口，窗口内扫描房间容器（`[[dword_B5DCE0] vtbl+0x80] +0xB0`，`sub_4048A0`/`sub_405830` 取对象）：`vtbl+0x2C(0x211)` 低字节判怪物、首见即派发 `sub_843AC0`（不做存活查询门控——该查询对 1079 类怪甚至多数活怪返回 ≤0，真机曾致成片漏杀；误派发尸体仅为重复上报，服务端陈旧守卫吸收）、按 (指针,id) 跟踪防重复；**窗口关闭后新出现的实体只跟踪不派发**（多场次 Boss 的假身/换阶段等战斗编排实体曾被逐个秒杀，服务端按有效击杀结算，造成「Boss 每攻击几次掉落一次」——见 PENDING P-55）；「死→活」只更新状态不派发（复活属换阶段编排）。**派发对象一律取自容器现场，永不使用早先记录的指针**（等待期间被玩家打死的怪对象可能已释放，派发悬空指针会卡死客户端）。临时诊断日志 `Logs\DAFLegacy.Ijl15.killer.log`（客户端目录下，记录门开时刻与每次派发/跟踪决策，收尾时移除）。守卫：开关开启、保护模式门、场景类型 ∈{3,6,7}。开关关闭时模块不做任何事。配置项 `[Features] EnableDungeonKillerMode`（默认关）；钩子安装失败为非致命；构建登记同步（CMakeLists.txt / vcxproj / filters）。
+- **验证**：插件 Release Win32 构建 0 警告 0 错误（/W4 /WX），`ijl15_tests` 兼容性测试通过。v1–v8 历次真机判否；v9 真机漏杀（存活查询误判）；v10（首见即派发）真机漏杀修复、但暴露 Boss 假身被逐个秒杀导致每阶段掉落的问题。历次判否的部署核验与抓包取证见 `PENDING.md` P-55。**v11（派发窗口）真机未复测**：判据见 `PENDING.md` P-55。
+- **遗留项**：①开启期间进入房间即清空普通怪物与普通 Boss，属该开关预期行为；②51 号多场次 Boss 每次进房被消费一次击杀（一份掉落）、其余场次手动打完，该体验待真机确认；③若真机显示其他场景类型（如 PvP）误触发，收窄 {3,6,7} 集合后复测。
+
+### ADD-28 后台邮件页支持一键清空角色全部邮件
+
+- **目标**：用户需求——后台增加清空指定角色所有邮件的能力（含保管箱与未领取附件）。
+- **改动**：存储层新增 `ClearCharacterMailboxAsync`：邮箱整体置空并返回删除数量，不触发过期清扫、不区分邮件状态。管理端点 `DELETE /api/admin/characters/{characterId}/mail`（无请求体，返回 `removedMailCount`；角色不存在 404）。后台邮件页新增「清空邮件」危险操作表单（独立角色选择、提交确认、结果提示），卡片与发送邮件卡片同宽满行、以 18px 行距堆叠（`.view > .surface + .surface` 间距规则，`compact-form` 不再用于该卡片）；在线角色无主动推送——客户端邮箱窗口由打开邮箱（CMD 99）时的服务端快照重建，清空后下次打开即呈现空箱，重建前对已删除邮件的领取请求被服务端拒绝。`ADMIN_API.md` §2 总览、§5.2.6 边界表述与新增 §5.3 登记。自测 `quest-bulk-completion` 套件附带清空断言（清空后邮箱为空、未知角色 404）。
+- **验证**：服务端与自测工程构建 0 警告 0 错误；含清空断言的 `quest-bulk-completion` 套件全部断言通过（套件行清理期的既有 SQLite 临时库文件锁 IOException 见 `PENDING.md` P-40 注意，与本项无关）。**真机未复测**：判据见 `PENDING.md` P-54。
+- **遗留项**：部署副本 `admin/index.html` 与 `admin.js` 需随服务端发布更新（部署副本按约定由用户自行维护）；清空不可恢复，页面侧以确认弹窗拦截误操作。
+
+### ADD-27 后台「任务权限」：一键完成等级区间覆盖当前等级的任务并结算奖励
+
+- **目标**：用户需求——后台增加任务操作能力，把等级区间覆盖当前角色等级的任务一次性标记为完成并**带奖励结算**，推进当前等级段任务链并解锁任务关联的隐藏副本（任务侧的"权限"数据面）；按用户后续澄清，不做历史等级段的回溯补记。
+- **改动**：新增 `Game/Quest/QuestBulkCompletionPlanner`。入选规则：PVF `[level]` 下限 ≤ 角色等级 ≤ 上限（上限不在区间内的任务保持未完成）；`[job]` 匹配（`QuestCatalog.MatchesJob` 改公开、新增 `Definitions` 只读入口）；成长阶段一致——带 `[grow type]` 限定的普通任务须与角色主成长类型一致，转职/觉醒最终任务（奖励 `grow type`/`awakening type`）与两链中间任务（`[job change quest]`）仅在角色已到达对应转职/觉醒阶段时补记，未到达时整条成长链保留给玩家；新手引导完成任务（1016）不参与。奖励结算 `PlanRewardSettlement` 与启动期遗留奖励迁移（`MigrateLegacyQuestRewardsAsync`）同款语义：任务经验（满级为 0、可重复任务不计）与升级 SP 顺序累计，任务金币直接入账，固定奖励物品先入背包（权重上限放开）、放不下的溢出部分逐件转系统邮件；需自选奖励（`[reward selection int data]`）、物品缺失或金币溢出的任务跳过奖励并回显。存储层 `CompleteCharacterQuestsByLevelAsync`：并入 `CompletedQuestIds` 与 `RewardedQuestIds`（奖励按已结清处理，防止下次启动遗留奖励迁移重复补发），从进行中任务移除，采纳结算后的等级/经验/SP/金币/背包/仓库容量，追加任务关联副本解锁（`HiddenDungeonUnlockCatalog`），溢出邮件在 255 封邮箱上限内逐封追加、超出部分丢弃计数返回。在线会话：`CharacterSessionRegistry` 会话租约新增 `characterProgressReplaced` 回调（`SelectCharacterHandler` 登记时接线），端点落盘后把持久层结果交会话窄合并采纳（任务/背包/金币/SP/技能/邮箱/副本进度；位置、PvP、疲劳等现场字段不动）并推送背包整包、升级时的技能与权威属性同步、可接任务列表（新增 `SendAcceptableQuestListSafeAsync` 跨会话封装）与新增副本权限包，有溢出邮件时推送新邮件提醒；客户端任务日志（EP 页）完整刷新在下次选角。管理端点 `POST /api/admin/characters/{characterId}/quests/complete-by-level`（无请求体，返回新完成任务、跳过奖励任务、溢出邮件去向、新增解锁副本与在线通知结果），后台页「任务权限」页签（提交确认＋结果提示）；`switchView` 对未知页签做文案兜底（旧版 `admin.js` 配新版 `index.html` 时不再抛 `Cannot read properties of undefined`）。`ADMIN_API.md` §2 总览与 §4.7 登记。自测新增 `quest-bulk-completion` 套件（合成 PVF：四种角色形态与等级区间的规划断言、奖励结算断言、落盘合并/解锁/重载断言、邮箱清空断言）。
+- **验证**：服务端与自测工程构建 0 警告 0 错误；`quest-bulk-completion` 全部断言通过，`quest-map`、`quest-pvp-rank`、`server-options-validation`、`protocol-golden`、`equipment-reinforcement`、`item-sealing` 套件通过。`quest-bulk-completion` 与既有 `hidden-dungeon-quest` 的套件行在清理期报既有 SQLite 临时库文件锁 IOException（断言 0 失败，未改动 HEAD 工作树复现一致，登记见 `PENDING.md` P-40 注意），与本项无因果关系。**真机未复测**：判据见 `PENDING.md` P-53。
+- **遗留项**：部署副本 `admin/index.html` 与 `admin.js` 必须一起更新并强刷浏览器缓存——旧版 `admin.js` 缺少「任务权限」页签的文案与表单绑定，是页面报 `Cannot read properties of undefined (reading '0')` 与"点击完成任务回到邮件页"的直接原因；如需"历史任务全补记"或"可自选奖励指定选项"另行立项。
+
+### ADD-26 强化毁坏补偿支持 server.json 覆写（`Reinforcement.DestroyBonus`）
+
+- **目标**（设计落点 `docs/design/02-portability-contracts.md` R5）：60CN 自带 `upgrade.etc` 无 `[disjoint]` 段，毁坏补偿缺省关闭（见 FIX-14）；提供 `server.json` → `DAFLegacy.Reinforcement.DestroyBonus` 节点，运维不改 PVF 即可启用/调整补偿。
+- **改动**：`ServerOptions` 新增 `Reinforcement` 节点——`Enabled` 总开关（默认 `true`；`false` 时毁坏补偿整体关闭，`DestroyBonus` 节点与 PVF `[disjoint]` 段一并失效，节点取值不再校验）与 `DestroyBonus`（`ItemId`/`EquipLevelConst`/`BonusCountLevelBase`/`BonusWeightByRarity`/`CorrectionGradeByRarity`）；**整节点覆写语义**——`ItemId > 0` 时整体取代 PVF `[disjoint]` 段（不逐字段合并），`ItemId = 0` 或节点缺省回落 PVF 段，两者皆无则不补偿。`EquipmentReinforcementCatalog` 注入 `ServerOptions` 并在加载期合并（启动日志打印 `destroyBonus=<id> (source=server.json|etc/upgrade.etc|none)`）。`ServerOptionsValidator` 新增 `ValidateReinforcementDestroyBonus`：`ItemId` 0..65535、两个常量 ≥0、品级键白名单（common/uncommon/rare/unique/epic，键序无关）、权重有限非负、启用即至少一个权重为正——违例与其他配置错误同样启动期拒绝（退出码 2）；组合根在目录初始化后另校验 `ItemId` 存在于物品表（强化可用为前提），指向不存在物品即拒绝启动。`server.json` 模板启用示例配置（3037 无色小晶块、等级基准 10、五品级权重 1：+11 毁坏补 1 个、+12 补 4 个，按（目标等级−基准）²×权重增长）；`README.md` 配置表补行。自测：`server-options-validation` 新增八条路径（缺省节点、启用无权重、完整配置、键序无关、越界物品 id、负常量、未知品级键、负权重/负修正、开关关闭时节点惰性），`equipment-reinforcement` 新增「PVF 段生效 + server.json 整节点覆写」对照断言。
+- **验证**：服务端与自测构建 0 警告 0 错误；`server-options-validation`、`equipment-reinforcement`、`protocol-golden` 套件通过（全量 SelfTests 偶发受本机既有 SQLite 临时库文件锁问题影响，登记见 PENDING.md P-40）。**真机未复测**：判据并入 PENDING.md P-52 判据 ③——部署副本 `server.json` 加入模板节点（或沿用其值）重启，+11/+12 毁坏后背包出现对应数量 3037，服务端日志 `destroyRewards=...` 与 `destroyBonus=3037 (source=server.json)`。
+- **遗留项**：部署副本 `server.json` 由用户维护，需自行并入该节点；补偿数值（权重/基准/物品）按运营意图调整，改后重启生效。
+
+### FIX-14 强化毁坏（CMD 83 resultCode=3）被客户端弹「缺少物品」：应答时序违背客户端目标槽守卫，毁坏补偿列表未实现
+
+- **现象**：强化 +10→+11 服务端掷中毁坏（`result=3, destroyed=True`，物品 27098@0:13、材料 3171×12、金币 311040 均正确扣减），客户端却弹「缺少物品」，毁坏装备消失但无任何毁坏提示与补偿。
+- **根因**（IDA 复核，`sub_40F290` case 0x53，登记见 `docs/protocol/client-function-register-60cn.md` §16）：客户端消费 CMD 83 成功形态应答时，在写入补偿物品**之前**先查目标槽物品（`sub_4048C0` @0x41623d），查不到直接报串 1658「缺少物品」（@0x41624a）并终止。服务端在毁坏路径沿用了非毁坏路径的「背包快照→应答」顺序，快照已把被毁装备从客户端背包移除，应答处理时目标槽为空即触发 1658。毁坏分支的正确次序在客户端自身：移除目标槽物品（`sub_45E210` @0x4162cc）→弹毁坏结果窗（`sub_799EF0(..., 0x44, 0, resultCode, 0)` @0x4162e2）→读补偿条目数 u8 并逐条应用 `{slot u16, itemId u16, count u32}`（@0x416307..0x4163a7；count 为**增量**：物品 vtable+0x38 `sub_461AC0` 在槽内同 id 物品现有数量上累加，槽内无物品则按该数量新建）——此前应答只写补偿条目数=0 且服务端从不发放补偿。
+- **改动**：`CreateUpgradeItemReply` 在 resultCode>2 时写补偿条目数与条目列表（空列表与原 12B 逐字节一致）；`EquipmentReinforcementCatalog` 解析 `etc/upgrade.etc` 可选 `[disjoint]` 段（`disjoint bonus item`/`equip level const`/`upgrade failed bonus weight by rarity`/`upgrade const for bonus item count`/`correction grade by rarity`，名称键可带反引号）并按参考工程同式计算毁坏补偿：品级经按稀有度修正后须达 `equip level const` 门槛、目标强化等级须高于计数基准，数量 =（目标等级 − 基准）² × 品级权重（稀有度名 common/uncommon/rare/unique/epic 对应 0..4）；`EquipmentReinforcementPlanner` 毁坏时把补偿物品经 `CharacterInventoryPlanner.TryPlace` 放入主背包（携带重量上限，放不进即整体拒绝并报错误码 21），随计划输出补偿条目——条目 count 为**本次发放增量**（与客户端累加语义及参考工程 `ItemUpgradeAckBuilder` 的 `GrantedCount` 一致；初版误发槽内最终数量，2026-10-11 真机复测发现后按 IDA `sub_461AC0` 增量证据修正）；`UpgradeItemHandler` 毁坏时改为**应答先行、背包快照随后**（快照对账金币/材料/补偿；与 CMD 27「应答后跟权威快照」先例一致），非毁坏路径维持 DF2008 实测的「快照→应答」顺序。A21 参考服 `upgrade.etc` 已入库 `Server/DAFLegacy.Server/upgrade.etc`（与 `channel_info.etc` 同级，作 `[disjoint]` 段式样参考）。
+- **验证**：客户端解析面以 IDA 反编逐分支取证（字段序、两道槽守卫、失败码映射 4→1658/7→20000/10→1660/13→1654/17→1652/22→1661/99→30005/其余→1662 带码；毁坏呈现链 `sub_7C2570`/`sub_7F20C0`——resultCode=3 发 `EQUIP_BROKEN` 事件并显示串 1672，地址均登记 §16）；服务端与自测构建 0 警告 0 错误，`equipment-reinforcement` 套件通过（新增含补偿条目的应答字节向量、毁坏补偿放置断言与背包放不下整体拒绝断言；全量 SelfTests 受本机既有 SQLite 临时库文件锁问题阻塞，失败集合与本机基线一致，既有登记见 PENDING.md P-40，与本项无因果关系）。60CN 自带 `upgrade.etc` 无 `[disjoint]` 段，当前部署形态下补偿条目数为 0、行为为「装备消失 + 毁坏提示」。**真机复测（2026-10-11）通过**：+10→+11 毁坏时客户端弹「装备已被破坏」、装备从槽上消失、无「缺少物品」，材料/金币扣减正确（判据 ①②④⑤，见 PENDING.md P-52）；判据 ③（`[disjoint]` 段配置后的补偿物品发放）待配置后复测。
+- **遗留项**：①毁坏补偿内容已可经 `server.json` 覆写启用（见同日 ADD-26，模板已含 3037 示例），或部署副本 `Script.pvf` 的 `etc/upgrade.etc` 追加 `[disjoint]` 段；注意 A21 参考值的补偿物品 3243（强烈之痕迹）在 60CN 物品表中不存在，60CN 化配置应改用本版物品（如 3037 无色小晶块，取值式样见入库的 A21 参考 `upgrade.etc` §disjoint）。②毁坏补偿启用后的真机验证并入 PENDING.md P-52 判据 ③。③强化消耗金币在穿戴位目标（listType 3）路径应答后无快照对账，金币显示滞后（既有行为，本次未动），如需处理另行立项。
+
+### ADD-25 后台邮件表单支持为装备附件指定强化等级（0～31）
+
+- **现象**：后台邮件表单只能发放未强化的装备附件，无法直接发放带强化等级的装备。
+- **改动**：`AdminSendMailRequest` 新增 `Reinforcement` 字节字段；`AdminMailComposer` 在附件为普通装备（物品栏分类 Equipment）时把该值写入邮件附件 `State` 的低 5 位（再封装高 3 位保持 0，随领取进入物品栏实例，语义同 ADMIN_API.md §5.2.3 的 `state` 复合字节），取值上限复用 `EquipmentReinforcementCatalog.MaximumLevel`（31）；越界取值，以及 Avatar、Creature 物品与堆叠物携带非零强化值，一律报错而非静默忽略。后台页面（`Server/DAFLegacy.Server/wwwroot/admin/`）在附件类型为「普通道具 / 装备」且选中物品确为普通装备时显示「强化等级」0～31 下拉框，其余情形隐藏并按 0 提交。SelfTests 的 admin mail 组装断言扩展装备强化写入、越界拒绝与非装备拒绝三条路径；`ADMIN_API.md` 新增 §5.2.8 登记表单行为。
+- **验证**：服务端与自测工程构建 0 警告 0 错误；含新断言的 `server-options-validation` 套件通过。全量 `--selftest-all` 在本机受既有 SQLite 连接池临时库文件锁问题阻塞（失败集合在未改动的 HEAD 工作树上复现一致，既有登记见 `PENDING.md` 本机 SelfTests 临时数据库文件被占用条目），与本项无因果关系。**真机未复测**：判据为后台页面按物品类型显隐「强化等级」、发放后在线邮箱领取的装备在客户端显示对应强化等级。
+- **遗留项**：真机复测待做；`admin/index.html` 与 `admin.js` 的部署副本需随服务端发布更新（部署副本按约定由用户自行维护）。
+
 ## 2026-10-08
 
 ### CHANGE 端口定义按参考工程对齐：入口 7001、频道 10000+号、数据面 12311/12312，取消遗留频道端口

@@ -151,7 +151,7 @@ public static class QuestBulkCompletionPlanner
             };
             mails.AddRange(CharacterPacketBuilders.CreateOverflowMailRequests(
                 rewardPlan.MailedItems,
-                "Quest reward"));
+                SystemItemMailReason.QuestReward));
             rewarded.Add(questId);
         }
 

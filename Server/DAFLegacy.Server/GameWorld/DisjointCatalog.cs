@@ -51,6 +51,7 @@ public sealed class DisjointCatalog
         if (!state.IsAvailable
             || source.ScriptKind != ItemScriptKind.Equipment
             || source.InventoryCategory != ItemInventoryCategory.Equipment
+                && !CharacterCreatureInventoryLayout.IsArtifact(source)
             || source.Rarity is not int rarity
             || rarity < 0
             || rarity >= state.Rarities.Count

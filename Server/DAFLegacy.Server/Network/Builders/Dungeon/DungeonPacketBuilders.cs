@@ -9,6 +9,14 @@ namespace DAFLegacy.Server;
 /// </summary>
 internal static class DungeonPacketBuilders
 {
+    // DF2008 在 0x410A3C 读取错误码 17 与队伍槽位字节，随后以所选副本的
+    // 入场道具与数量格式化 2100 号字符串。
+    public static GameServerPacket CreateSelectDungeonMissingRequiredItemReply(
+        byte partyMemberIndex = 0) =>
+        new(
+            GameProtocolConstants.CommandPacketType,
+            (byte)CmdPacketType.SELECT_DUNGEON,
+            [0, GameProtocolConstants.SelectDungeonMissingRequiredItemError, partyMemberIndex]);
     public static GameServerPacket CreateUseSkillReply() =>
         new(
             GameProtocolConstants.CommandPacketType,

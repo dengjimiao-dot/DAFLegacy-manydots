@@ -104,7 +104,7 @@ public sealed class CeraShopBuyHandler(IGameStore store,
             }
 
             if (!product.UsesMainInventory
-                && requestedProduct.AttributeValue
+                && requestedProduct.PeriodCode
                     != product.AttributeValue)
             {
                 purchaseValid = false;
@@ -305,19 +305,16 @@ public sealed class CeraShopBuyHandler(IGameStore store,
                 continue;
             }
 
-            var purchasedItem = CharacterItemIdentity.Ensure(
-                new CharacterMailAttachmentRecord(
-                product.ItemId,
-                product.Quantity,
-                Durability: itemDefinition.InventoryCategory
-                    == ItemInventoryCategory.Equipment
-                        ? itemCatalog.GetInitialDurability(product.ItemId)
-                        : itemDefinition.IsEquipment
-                            ? (ushort)1_000
-                            : (ushort)0,
-                SealState: CharacterItemSealing.GetInitialSealState(
-                    itemDefinition)),
-                itemDefinition);
+            if (!CeraShopPurchaseItemPlanner.TryCreate(
+                    product,
+                    requestedProduct.AvatarAbilityIndex,
+                    itemCatalog,
+                    out var purchasedItem))
+            {
+                purchaseValid = false;
+                errorProduct = requestedProduct;
+                break;
+            }
             var placementFailure = InventoryPlacementFailure.None;
             if (itemDefinition.InventoryCategory
                     == ItemInventoryCategory.Avatar
@@ -380,7 +377,7 @@ public sealed class CeraShopBuyHandler(IGameStore store,
                 CharacterInventoryPlanner.CreateMailAttachments(
                     purchasedItem,
                     itemCatalog),
-                "Cera shop purchase"));
+                SystemItemMailReason.CeraShopPurchase));
         }
 
         if (purchaseValid && immediateContainerRewards.Count > 0)
@@ -408,7 +405,7 @@ public sealed class CeraShopBuyHandler(IGameStore store,
                 immediateContainerOverflow.Where(item =>
                     !CharacterWarehouseProgression
                         .TryGetItemTargetCapacity(item.ItemId, out _)),
-                "Cera shop container reward");
+                SystemItemMailReason.CeraShopContainerReward);
             immediateContainerMailCount = containerOverflowMails.Length;
             overflowMails.AddRange(containerOverflowMails);
         }
@@ -520,6 +517,15 @@ public sealed class CeraShopBuyHandler(IGameStore store,
             _ = ceraShopCatalog.TryGetProduct(
                 requestedProduct.CommodityNo,
                 out var purchasedProduct);
+            if (purchasedProduct.ClientCategory == 0)
+            {
+                RuntimeLogger.Info(
+                    "Purchased Cera-shop avatar {ItemId}: commodity={CommodityNo}, abilityIndex={AbilityIndex}, periodCode={PeriodCode}.",
+                    purchasedProduct.ItemId,
+                    requestedProduct.CommodityNo,
+                    requestedProduct.AvatarAbilityIndex,
+                    requestedProduct.PeriodCode);
+            }
             var buyReply =
                 ShopPacketBuilders.CreateCeraShopBuyReply(
                     purchasedProduct.ClientCategory,

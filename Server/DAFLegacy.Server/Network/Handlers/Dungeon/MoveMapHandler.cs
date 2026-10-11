@@ -29,7 +29,34 @@ public sealed class MoveMapHandler(
         {
             var targetX = request.Body[2];
             var targetY = request.Body[3];
-            if (targetX == session.Dungeon.RoomX
+            if (session.Dungeon.Run.IsBossRoomEntranceBlocked(targetX, targetY))
+            {
+                var conditionError = ConnectionPacketBuilders.CreateCommandError(
+                    request,
+                    GameProtocolConstants.MoveMapBossEntranceConditionError);
+                await context.Queue.SendAsync(conditionError, Name, cancellationToken);
+                RuntimeLogger.Info(
+                    "Rejected boss entrance for dungeon {DungeonId}: configured entrance condition is not satisfied.",
+                    session.Dungeon.CurrentDungeonId);
+            }
+            else if (session.Dungeon.ClearEnabled
+                || session.Dungeon.Run.IsCleared
+                || session.Dungeon.Run.IsBossClearPending)
+            {
+                // 通关判定已成立（含 Boss 死亡窗口待确认）时，DF2008 的
+                // MOVE_MAP 以错误 0x13 被拒并清除 actor +0x244 移动标记。
+                var completedMoveError = ConnectionPacketBuilders.CreateCommandError(
+                    request,
+                    GameProtocolConstants.MoveMapInvalidStateError);
+                await context.Queue.SendAsync(completedMoveError, Name, cancellationToken);
+                RuntimeLogger.Info(
+                    "Rejected MOVE_MAP after boss completion for dungeon {DungeonId}; cleared={Cleared}, bossClearPending={BossClearPending}, resultSent={ResultSent}.",
+                    session.Dungeon.CurrentDungeonId,
+                    session.Dungeon.ClearEnabled || session.Dungeon.Run.IsCleared,
+                    session.Dungeon.Run.IsBossClearPending,
+                    session.Dungeon.ResultSent);
+            }
+            else if (targetX == session.Dungeon.RoomX
                 && targetY == session.Dungeon.RoomY)
             {
                 var duplicateMoveError =

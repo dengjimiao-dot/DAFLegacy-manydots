@@ -142,7 +142,8 @@ public sealed class EntranceService(
         // 修理装备耐久 CMD 25 (0x19) ENUM_CMDPACKET_REPAIR_EQUIPMENT
         registry.Register("economy.shop", new RepairEquipmentHandler(
             store: store,
-            itemCatalog: itemCatalog));
+            itemCatalog: itemCatalog,
+            builders: _characterPacketBuilders));
         // 交易锁定状态设置 CMD 26 (0x1A) ENUM_CMDPACKET_SET_ITEMTRADE_STATE
         registry.Register("economy.shop", new ItemTradeStateHandler(
             store: store,
@@ -330,6 +331,7 @@ public sealed class EntranceService(
             skillCatalog,
             spCatalog,
             experienceCatalog,
+            _characterPacketBuilders,
             _sessionSenders));
         // 购买技能 CMD 31 (0x1F) ENUM_CMDPACKET_BUY_SKILL
         registry.Register("progression.skill", new BuySkillHandler(

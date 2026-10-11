@@ -11,8 +11,8 @@ public enum AdminMailAttachmentKind : byte
 }
 
 public sealed record AdminSendMailRequest(
-    string Sender,
-    string Text,
+    string Sender = SystemMailTemplates.SenderName,
+    string Text = "",
     int Gold = 0,
     AdminMailAttachmentKind AttachmentKind = AdminMailAttachmentKind.None,
     ushort? ItemId = null,

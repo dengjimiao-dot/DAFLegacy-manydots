@@ -82,7 +82,16 @@ public sealed record GameDungeonMonster(
     byte BoxIndex = 0,
     bool IsHellHidden = false,
     ushort X = 0,
-    ushort Y = 0);
+    ushort Y = 0)
+{
+    // Server-only MAP metadata. DF2008 reads team from its local monster row;
+    // do not add it to the nine-byte START_MAP monster record.
+    public int Team { get; init; } = 100;
+
+    public bool IsEnemy => Team == 100;
+
+    public bool IsBossEntranceMonster { get; init; }
+}
 
 public static class GameDungeonMonsterTypes
 {

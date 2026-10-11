@@ -77,11 +77,11 @@ public interface IGameStore
     Task<(bool Created, PublicAccountRecord? Account, string? Error)> CreateAccountAsync(
         CreateAccountRequest request,
         CancellationToken cancellationToken = default);
-    Task<(bool Created, CharacterRecord? Character, string? Error)> CreateCharacterAsync(
+    Task<CreateCharacterResult> CreateCharacterAsync(
         string userName,
         CreateCharacterRequest request,
         CancellationToken cancellationToken = default);
-    Task<(bool Created, CharacterRecord? Character, string? Error)> CreateCharacterAsync(
+    Task<CreateCharacterResult> CreateCharacterAsync(
         uint accountUid,
         CreateCharacterRequest request,
         CancellationToken cancellationToken = default);

@@ -14,8 +14,21 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
     private readonly Dictionary<DungeonRoomPosition, RoomState> _rooms = [];
     private DungeonLayout? _layout;
     private RoomState? _current;
+    private DungeonBossEntranceCondition _bossEntranceCondition =
+        DungeonBossEntranceCondition.Unrestricted;
+    private readonly Dictionary<DungeonRoomPosition, List<ushort>> _bossMonsterAssignments = [];
+    private readonly Dictionary<ushort, int> _bossEntranceKills = [];
+    private readonly HashSet<DungeonRoomPosition> _clearedRooms = [];
 
     public bool IsActive => _layout is not null && _current is not null;
+
+    public bool IsCleared { get; private set; }
+
+    public bool IsBossClearPending { get; private set; }
+
+    public bool IsCurrentTerminalRoom => IsActive
+        && RoomX == _layout!.BossX && RoomY == _layout!.BossY
+        && _current!.EncounterRoom.MapType == DungeonMapType.Boss;
 
     public ushort DungeonId => _layout?.DungeonId ?? 0;
 
@@ -33,6 +46,21 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
 
     public byte CurrentHellPartyMode =>
         HellMode && !IsCurrentHellRoomCleared ? HellPartyMode : (byte)0;
+
+    public bool IsBossRoomEntranceOpen => _bossEntranceCondition.Kind switch
+    {
+        DungeonBossEntranceConditionKind.HuntMonster => _bossEntranceCondition.Monsters.All(requirement =>
+            GetBossEntranceKillCount(requirement.MonsterId) >= requirement.RequiredKills),
+        DungeonBossEntranceConditionKind.ClearRooms => _bossEntranceCondition.Rooms.All(_clearedRooms.Contains),
+        _ => true
+    };
+
+    public int GetBossEntranceKillCount(ushort monsterId) => _bossEntranceKills.GetValueOrDefault(monsterId);
+
+    public bool HasClearedRoom(byte x, byte y) => _clearedRooms.Contains(new(x, y));
+
+    public bool IsBossRoomEntranceBlocked(byte x, byte y) => _layout is not null
+        && x == _layout.BossX && y == _layout.BossY && !IsBossRoomEntranceOpen;
 
     public bool IsCurrentHellRoom =>
         HellMode
@@ -64,6 +92,12 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
         HellPartyMode = HellMode
             ? dungeonOption >= 2 ? (byte)2 : (byte)1
             : (byte)0;
+        random ??= GameRandomSource.Shared;
+        if (!TryInitializeBossEntrance(random))
+        {
+            Stop();
+            return false;
+        }
         if (!TryEnterRoom(
                 layout.StartX,
                 layout.StartY,
@@ -85,7 +119,9 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
         IDropRandomSource? random = null)
     {
         transition = null!;
-        if (!IsActive || roomX == RoomX && roomY == RoomY)
+        if (!IsActive || IsCleared || IsBossClearPending
+            || roomX == RoomX && roomY == RoomY
+            || IsBossRoomEntranceBlocked(roomX, roomY))
         {
             return false;
         }
@@ -100,8 +136,13 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
 
     public bool MarkMonsterDefeated(ushort uniqueId)
     {
-        if (_current is null
-            || !_current.EncounterRoom.Monsters.Any(monster => monster.UniqueId == uniqueId))
+        if (_current is null)
+        {
+            return false;
+        }
+        var defeatedMonster = _current.EncounterRoom.Monsters.FirstOrDefault(
+            monster => monster.UniqueId == uniqueId);
+        if (defeatedMonster is null)
         {
             return false;
         }
@@ -109,7 +150,32 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
         var first = _current.DefeatedMonsterIds.Add(uniqueId);
         if (first)
         {
+            if (defeatedMonster.IsEnemy
+                && _bossEntranceCondition.Monsters.Any(requirement => requirement.MonsterId == defeatedMonster.MonsterIndex))
+            {
+                _bossEntranceKills[defeatedMonster.MonsterIndex] = Math.Min(int.MaxValue - 1,
+                    GetBossEntranceKillCount(defeatedMonster.MonsterIndex)) + 1;
+            }
+            MarkCurrentRoomCleared();
             TryCompleteCurrentHellRoom();
+            if (IsCurrentTerminalRoom)
+            {
+                var aliveMonsterIds = _current.EncounterRoom.Monsters
+                    .Where(monster => !_current.DefeatedMonsterIds.Contains(monster.UniqueId))
+                    .Select(monster => monster.UniqueId)
+                    .ToHashSet();
+                var decision = DungeonRoomClearRules.Evaluate(
+                    _current.EncounterRoom, defeatedMonster, aliveMonsterIds);
+                if (decision.ShouldEnableClear)
+                {
+                    IsCleared = true;
+                    IsBossClearPending = false;
+                }
+                else if (decision.Reason == DungeonRoomClearReason.LastBossDefeated)
+                {
+                    IsBossClearPending = true;
+                }
+            }
         }
 
         return first;
@@ -117,8 +183,37 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
 
     public bool HasClearedMap(ushort mapId) => mapId != 0
         && _rooms.Values.Any(room => room.EncounterRoom.MapId == mapId
-            && room.EncounterRoom.Monsters.All(monster =>
-                room.DefeatedMonsterIds.Contains(monster.UniqueId)));
+            && (room == _current && IsCleared
+                || room.EncounterRoom.Monsters.Where(monster => monster.IsEnemy).All(monster =>
+                    room.DefeatedMonsterIds.Contains(monster.UniqueId))));
+
+    public bool BeginBossClear()
+    {
+        if (!IsCurrentTerminalRoom || IsCleared || IsBossClearPending
+            || !_current!.EncounterRoom.Monsters.Any(monster =>
+                monster.IsEnemy && monster.Type == GameDungeonMonsterTypes.Boss))
+        {
+            return false;
+        }
+
+        // A valid final BOSS_DIE_CHECK starts the death-animation window.
+        // Do not let MOVE_MAP discard it before the later CMD 42 confirmation.
+        IsBossClearPending = true;
+        return true;
+    }
+
+    public bool TryEnableEmptyBossClear()
+    {
+        if (!IsCurrentTerminalRoom || IsCleared
+            || _current!.EncounterRoom.Monsters.Any(monster => monster.IsEnemy))
+        {
+            return false;
+        }
+
+        IsCleared = true;
+        IsBossClearPending = false;
+        return true;
+    }
 
     public bool MarkPassiveObjectDestroyed(byte objectIndex)
     {
@@ -187,7 +282,13 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
 
     public void Stop()
     {
+        IsCleared = false;
+        IsBossClearPending = false;
         _rooms.Clear();
+        _bossMonsterAssignments.Clear();
+        _bossEntranceKills.Clear();
+        _clearedRooms.Clear();
+        _bossEntranceCondition = DungeonBossEntranceCondition.Unrestricted;
         _layout = null;
         _current = null;
         Difficulty = 0;
@@ -195,6 +296,53 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
         RoomY = 0;
         HellMode = false;
         HellPartyMode = 0;
+    }
+
+    private bool TryInitializeBossEntrance(IDropRandomSource random)
+    {
+        if (_layout is null || !catalog.TryGetDefinition(DungeonId, out var definition))
+        {
+            return false;
+        }
+
+        _bossEntranceCondition = definition.BossEntranceCondition;
+        // 13339 SetGridPath (0x082FFB30) assigns each requested appearance to
+        // an eligible non-start/non-boss grid, with replacement.
+        foreach (var requirement in _bossEntranceCondition.Monsters)
+        {
+            if (requirement.SpawnCount == 0)
+            {
+                continue;
+            }
+
+            var candidates = catalog.GetBossEntranceMonsterCandidates(_layout, requirement.MonsterId, HellMode);
+            if (candidates.Length == 0)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < requirement.SpawnCount; index++)
+            {
+                var position = candidates[random.Next(candidates.Length)];
+                if (!_bossMonsterAssignments.TryGetValue(position, out var assigned))
+                {
+                    assigned = [];
+                    _bossMonsterAssignments.Add(position, assigned);
+                }
+                assigned.Add(requirement.MonsterId);
+            }
+        }
+
+        return true;
+    }
+
+    private void MarkCurrentRoomCleared()
+    {
+        if (_current is not null && _current.EncounterRoom.Monsters.Where(monster => monster.IsEnemy)
+                .All(monster => _current.DefeatedMonsterIds.Contains(monster.UniqueId)))
+        {
+            _clearedRooms.Add(new(RoomX, RoomY));
+        }
     }
 
     private bool TryEnterRoom(
@@ -250,6 +398,22 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
                 return false;
             }
 
+            if (_bossMonsterAssignments.TryGetValue(position, out var assignedMonsters))
+            {
+                var monsters = encounterRoom.Monsters.ToList();
+                foreach (var monsterId in assignedMonsters)
+                {
+                    var template = encounterRoom.BossEntranceMonsterTemplates.FirstOrDefault(monster =>
+                        monster.MonsterIndex == monsterId);
+                    if (template is null || monsters.Count >= byte.MaxValue)
+                    {
+                        return false;
+                    }
+                    monsters.Add(template with { UniqueId = checked((ushort)monsters.Count) });
+                }
+                encounterRoom = encounterRoom with { Monsters = monsters.ToArray() };
+            }
+
             var championTargetCount = catalog.GetChampionTargetCount(
                 _layout,
                 Difficulty,
@@ -278,6 +442,7 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
         RoomY = roomY;
         var enteredState = state!;
         _current = enteredState;
+        MarkCurrentRoomCleared();
         var revisit = enteredState.VisitCount > 0;
         enteredState.VisitCount++;
         transition = new DungeonRoomTransition(
@@ -308,7 +473,7 @@ public sealed class DungeonRunState(DungeonCatalog catalog)
             return;
         }
 
-        if (_current.EncounterRoom.Monsters.All(monster =>
+        if (_current.EncounterRoom.Monsters.Where(monster => monster.IsEnemy).All(monster =>
                 _current.DefeatedMonsterIds.Contains(monster.UniqueId)))
         {
             _current.HellEncounterCleared = true;

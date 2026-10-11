@@ -50,10 +50,6 @@ public sealed class AvatarCompoundCatalog
     private static readonly Regex RateEntryPattern = new(
         @"`(?<part>[^`]+)`\s+(?<rate>[+-]?\d+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
-    private static readonly Regex AvatarSelectAbilityPattern = new(
-        @"\[avatar select ability\]\s*(?<value>.*?)\s*\[/avatar select ability\]",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant |
-        RegexOptions.IgnoreCase | RegexOptions.Singleline);
     private static readonly IReadOnlyDictionary<string, byte> PartsByName =
         new ReadOnlyDictionary<string, byte>(
             new Dictionary<string, byte>(StringComparer.OrdinalIgnoreCase)
@@ -236,20 +232,13 @@ public sealed class AvatarCompoundCatalog
             return AvatarMetadataCacheEntry.NotFound;
         }
 
-        var optionCount = 0;
-        if (_scripts.FileExists(definition.ScriptPath))
-        {
-            optionCount = ReadAvatarOptionCount(
-                _scripts.ReadAllText(definition.ScriptPath, ScriptEncoding));
-        }
-
         return new AvatarMetadataCacheEntry(
             true,
             new AvatarCompoundItemMetadata(
                 job,
                 checked((byte)part),
                 checked((byte)grade),
-                optionCount));
+                definition.AvatarSelectableAbilityCount));
     }
 
     private static bool TryParseDefinition(
@@ -423,20 +412,6 @@ public sealed class AvatarCompoundCatalog
             RegexOptions.Multiline | RegexOptions.Singleline);
         section = match.Success ? match.Groups["value"].Value : string.Empty;
         return match.Success;
-    }
-
-    private static int ReadAvatarOptionCount(string text)
-    {
-        var match = AvatarSelectAbilityPattern.Match(text ?? string.Empty);
-        if (!match.Success)
-        {
-            return 0;
-        }
-
-        return match.Groups["value"].Value
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => StripComment(line).Trim())
-            .Count(line => line.StartsWith("`[", StringComparison.Ordinal));
     }
 
     private static bool TryGetAvatarJob(string scriptPath, out byte job)

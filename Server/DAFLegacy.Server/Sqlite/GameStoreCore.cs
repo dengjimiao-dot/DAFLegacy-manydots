@@ -117,7 +117,8 @@ public enum CharacterMailSendFailure
     SenderNotFound,
     RecipientNotFound,
     RecipientMailboxFull,
-    SenderStateChanged
+    SenderStateChanged,
+    InsufficientGold
 }
 
 public sealed record CharacterMailSendResult(
@@ -132,7 +133,8 @@ public enum IncreaseStatusItemUseFailure
     None,
     InvalidRequest,
     CharacterNotFound,
-    ItemStateChanged
+    ItemStateChanged,
+    BalanceOverflow
 }
 
 public sealed record IncreaseStatusItemUseResult(
@@ -1596,24 +1598,27 @@ public abstract class GameStoreCore(
         _accounts.FirstOrDefault(account =>
             string.Equals(account.UserName, userName, StringComparison.OrdinalIgnoreCase));
 
-    private CharacterRecord? CreateCharacterLocked(
+    private async Task<CreateCharacterResult> CreateCharacterLockedAsync(
         AccountRecord account,
         CreateCharacterRequest request,
-        out string? error)
+        CancellationToken cancellationToken)
     {
-        error = null;
         if (account.Characters.Count >= MaximumTransferRoster.MaximumVisibleCharacters)
         {
-            error = "Character roster is full.";
-            return null;
+            return new(false, null, "Character roster is full.", CharacterCreationFailure.RosterFull);
         }
 
         var name = request.Name.Trim();
+        if (string.Equals(name, "游戏管理员", StringComparison.Ordinal)
+            || string.Equals(name, "GM", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(false, null, "不允许使用该角色名。", CharacterCreationFailure.NameUnavailable);
+        }
+
         if (_accounts.SelectMany(candidate => candidate.Characters).Any(character =>
                 string.Equals(character.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
-            error = "角色名已存在。";
-            return null;
+            return new(false, null, "角色名已存在。", CharacterCreationFailure.NameUnavailable);
         }
 
         var character = new CharacterRecord(
@@ -1632,7 +1637,39 @@ public abstract class GameStoreCore(
             DungeonProgress: [],
             TutorialStarted: false);
         account.Characters.Add(character);
-        return character;
+        try
+        {
+            await SaveLockedAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            account.Characters.Remove(character);
+            logger.LogError(exception,
+                "Failed to persist new character {CharacterNo}; removed the uncommitted roster entry.",
+                character.CharacterNo);
+            return new(false, null, "保存角色数据失败。", CharacterCreationFailure.PersistenceFailed);
+        }
+        catch
+        {
+            account.Characters.Remove(character);
+            throw;
+        }
+
+        return new(true, character);
+    }
+
+    private static CreateCharacterResult? ValidateCharacterCreation(CreateCharacterRequest request)
+    {
+        var name = request.Name?.Trim();
+        if (string.IsNullOrEmpty(name) || name.Length > 20)
+        {
+            return new(false, null, "角色名长度应为 1-20。", CharacterCreationFailure.InvalidName);
+        }
+
+        return request.Level is < 1 or > CharacterExperienceCatalog.MaximumLevel
+            ? new(false, null, $"等级应为 1-{CharacterExperienceCatalog.MaximumLevel}。",
+                CharacterCreationFailure.InvalidRequest)
+            : null;
     }
 
     private static void ReindexCharacterSlotsLocked(AccountRecord account)
@@ -1701,19 +1738,14 @@ public abstract class GameStoreCore(
         }
     }
 
-    public async Task<(bool Created, CharacterRecord? Character, string? Error)> CreateCharacterAsync(
+    public async Task<CreateCharacterResult> CreateCharacterAsync(
         string userName,
         CreateCharacterRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Name)
-            || request.Name.Length > 20
-            || request.Level is < 1 or > CharacterExperienceCatalog.MaximumLevel)
+        if (ValidateCharacterCreation(request) is { } invalid)
         {
-            return (
-                false,
-                null,
-                $"角色名长度应为 1-20，等级应为 1-{CharacterExperienceCatalog.MaximumLevel}。");
+            return invalid;
         }
 
         await _gate.WaitAsync(cancellationToken);
@@ -1722,17 +1754,10 @@ public abstract class GameStoreCore(
             var account = FindAccountLocked(userName);
             if (account is null)
             {
-                return (false, null, "账号不存在。");
+                return new(false, null, "账号不存在。", CharacterCreationFailure.AccountNotFound);
             }
 
-            var character = CreateCharacterLocked(account, request, out var error);
-            if (character is null)
-            {
-                return (false, null, error);
-            }
-
-            await SaveLockedAsync(cancellationToken);
-            return (true, character, null);
+            return await CreateCharacterLockedAsync(account, request, cancellationToken);
         }
         finally
         {
@@ -1740,19 +1765,14 @@ public abstract class GameStoreCore(
         }
     }
 
-    public async Task<(bool Created, CharacterRecord? Character, string? Error)> CreateCharacterAsync(
+    public async Task<CreateCharacterResult> CreateCharacterAsync(
         uint accountUid,
         CreateCharacterRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Name)
-            || request.Name.Length > 20
-            || request.Level is < 1 or > CharacterExperienceCatalog.MaximumLevel)
+        if (ValidateCharacterCreation(request) is { } invalid)
         {
-            return (
-                false,
-                null,
-                $"角色名长度应为 1-20，等级应为 1-{CharacterExperienceCatalog.MaximumLevel}。");
+            return invalid;
         }
 
         await _gate.WaitAsync(cancellationToken);
@@ -1762,17 +1782,10 @@ public abstract class GameStoreCore(
                 candidate.AccountUid == accountUid);
             if (account is null)
             {
-                return (false, null, "账号不存在。");
+                return new(false, null, "账号不存在。", CharacterCreationFailure.AccountNotFound);
             }
 
-            var character = CreateCharacterLocked(account, request, out var error);
-            if (character is null)
-            {
-                return (false, null, error);
-            }
-
-            await SaveLockedAsync(cancellationToken);
-            return (true, character, null);
+            return await CreateCharacterLockedAsync(account, request, cancellationToken);
         }
         finally
         {
@@ -2783,8 +2796,15 @@ public abstract class GameStoreCore(
             }
 
             var sender = senderOwner.Characters[senderIndex];
-            if (request.Gold > sender.Gold
-                || senderGold != sender.Gold - request.Gold)
+            if (!CharacterMailPostage.TryDebit(sender.Gold, request.Gold,
+                    request.Attachment is not null, out var requiredSenderGold))
+            {
+                return new CharacterMailSendResult(false, sender,
+                    recipientOwner.Characters[recipientIndex].Id, null,
+                    CharacterMailSendFailure.InsufficientGold);
+            }
+
+            if (senderGold != requiredSenderGold)
             {
                 return new CharacterMailSendResult(
                     false,
@@ -2843,12 +2863,14 @@ public abstract class GameStoreCore(
 
             await SaveLockedAsync(cancellationToken);
             logger.LogInformation(
-                "Character {SenderCharacterId} sent mail {MailId} to {RecipientCharacterId}: gold={Gold}, item={ItemId}.",
+                "Character {SenderCharacterId} sent mail {MailId} to {RecipientCharacterId}: gold={Gold}, item={ItemId}, postage={Postage}, balance={Balance}.",
                 senderCharacterId,
                 mail.Id,
                 recipientUpdated.Id,
                 mail.Gold,
-                mail.Attachment?.ItemId ?? 0);
+                mail.Attachment?.ItemId ?? 0,
+                CharacterMailPostage.Calculate(request.Gold, request.Attachment is not null),
+                senderGold);
             return new CharacterMailSendResult(
                 true,
                 senderUpdated,
@@ -3621,6 +3643,14 @@ public abstract class GameStoreCore(
                 IncreaseStatusItemUseFailure.InvalidRequest);
         }
 
+        if (effect.Type == IncreaseStatusType.RevivalCoins
+            && (expectedItemId == CharacterInventoryLayout.RevivalCoinItemId
+                || !CharacterInventoryLayout.IsMainItemSlot(sourceSlot)))
+        {
+            return new IncreaseStatusItemUseResult(
+                false, null, 0, IncreaseStatusItemUseFailure.InvalidRequest);
+        }
+
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -3674,6 +3704,30 @@ public abstract class GameStoreCore(
                 {
                     CountOrValue = remainingItemCount
                 };
+            }
+
+            if (effect.Type == IncreaseStatusType.RevivalCoins)
+            {
+                var coins = inventory.Where(CharacterInventoryLayout.IsRevivalCoin)
+                    .Aggregate(0UL, (total, item) => total + item.CountOrValue);
+                if (coins > uint.MaxValue - (uint)effect.Amount)
+                {
+                    return new IncreaseStatusItemUseResult(false, character,
+                        remainingItemCount + 1, IncreaseStatusItemUseFailure.BalanceOverflow);
+                }
+
+                if (inventory.Any(item => item.Slot == CharacterInventoryLayout.RevivalCoinSlot
+                    && !CharacterInventoryLayout.IsRevivalCoin(item)))
+                {
+                    return new IncreaseStatusItemUseResult(false, character,
+                        remainingItemCount + 1, IncreaseStatusItemUseFailure.ItemStateChanged);
+                }
+
+                // Revival coins use a reserved balance slot, not a normal bag slot.
+                // Commit this credit and the voucher decrement together under the store gate.
+                inventory.RemoveAll(CharacterInventoryLayout.IsRevivalCoin);
+                inventory.Add(new CharacterItemRecord(CharacterInventoryLayout.RevivalCoinSlot,
+                    CharacterInventoryLayout.RevivalCoinItemId, checked((uint)coins + (uint)effect.Amount)));
             }
 
             var updated = ApplyIncreaseStatus(character, effect) with
@@ -4357,7 +4411,8 @@ public abstract class GameStoreCore(
         or IncreaseStatusType.Intelligence
         or IncreaseStatusType.Spirit
         or IncreaseStatusType.MovementSpeed
-        or IncreaseStatusType.AllElementResistance;
+        or IncreaseStatusType.AllElementResistance
+        or IncreaseStatusType.RevivalCoins;
 
     private static CharacterRecord ApplyIncreaseStatus(
         CharacterRecord character,
@@ -5556,10 +5611,8 @@ public abstract class GameStoreCore(
                         }
 
                         var migrationMailRequests = rewardPlan.MailedItems
-                            .Select(item => new CreateCharacterMailRequest(
-                                "DAFLegacy",
-                                "Legacy quest reward: delivered because the inventory was full.",
-                                Attachment: item))
+                            .Select(item => SystemMailTemplates.CreateItemReturn(
+                                item, SystemItemMailReason.LegacyQuestReward))
                             .ToArray();
                         if (!TryAppendGeneratedMailsLocked(
                                 character,

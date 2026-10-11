@@ -8,6 +8,76 @@
 
 ## 2026-10-11
 
+### ADD-38 商城装扮购买支持客户端技能选项选择；物品删除与分解扩展生物背包（同步自 DFLegacy 0e07c31）
+
+- **目标**：购买 `[avatar]` 商城商品时客户端首字节为玩家所选技能选项行（ability index）、其后 u16 为时限代号（period code），服务端此前把它误读为「商品类型/属性值」校验；CMD 18（DELETE_ITEM）与 CMD 28（DISJOINT_ITEM）此前不支持生物背包（listType 7）。
+- **依据**（源项目经 IDA + 抓包验证，同步入库）：DF2008 购买请求条目 7 字节为 `{u8 ability row, u16 period, u32 commodity}`（sub_867E80）；`[avatar select ability]` 段的非注释 `` `[ `` 行数为可选项数；时限补丁只改 period 不影响所选行。CMD18 生物背包仅允许红色/蓝色/绿色公告牌袋（artifact bag）内数量为 1 的公告牌整体删除。
+- **改动**：`ItemDefinition` 新增 `AvatarSelectableAbilityCount`（`ItemCatalog` 解析 `[avatar select ability]`）；`AvatarCompoundCatalog` 改用该缓存值，不再重复读脚本；`CeraShopCatalog` 新增 `CeraShopPurchaseItemPlanner`（装扮按所选行写入 `AvatarAbilityIndex`、`AvatarRemainingSeconds=0`），购买请求字段更名 `AvatarAbilityIndex`/`PeriodCode`，装扮购买日志记录所选行与时限代号；新增 `Game/Inventory/ItemDeletionPlanner`（CMD18 listType 0/7 统一校验与扣除，含逐槽累计与 32 条上限）；`DeleteItemHandler` 改用规划器并支持生物背包，请求体不合法时仍按 DF2008 0x00410CEF 语义回 `CreateDeleteItemError(请求体第 3 字节, 0x11)` 解除客户端挂起操作，保存失败同样回错误；`DisjointItemPlanner` 新增生物背包重载（itemSpace 7 只接受公告牌袋槽位与 `IsArtifact` 物品），`DisjointCatalog` 分解资格对公告牌放行装备类限制，`DisjointItemHandler` 落盘采纳生物背包结果。
+- **验证**：服务端与自测构建 0 警告 0 错误；`creature-artifact-disposal`、`full-bag-consumption`、`cera-shop-avatar-purchase` 套件通过（含 DF2008 CMD18 生物背包线格式向量、三色公告牌删除/分解、装扮选项 0-4 全组合经穿戴/JSON 往返/NOTI13 保真、越界选项拒绝）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：无。
+
+### ADD-37 全部修理仅修理穿戴位并回写背包耐久权威行（同步自 DFLegacy de11e8c）
+
+- **目标**：CMD 25「全部修理」（slot=0xFFFF）此前连背包内装备一并计费修理；DF2008 客户端本地会把穿戴位与背包装备全部刷新为满耐久，若服务端只结穿戴位，背包显示会虚增耐久。
+- **依据**：DF2008 0x00411C33..0x00411D06 全部修理本地填充穿戴位与全部背包装备；结账只针对穿戴位，故服务端须在 REPLY25 之后以权威 NOTI14 行撤销客户端对背包的本地改写。
+- **改动**：新增 `Game/ItemUpgrade/EquipmentRepairPlanner`（错误码枚举 `InvalidTarget=0x11`/`InsufficientGold=0x0A`）；全部修理只收集穿戴位 slot<23 的可修目标并计费，背包不动，`SynchronizationItems` 输出背包装备+穿戴位的权威行供应答回写；单件修理校验 itemSpace 0 走 `IsMainItemSlot`、itemSpace 3 要求 slot<23；`RepairEquipmentHandler` 改用规划器，应答后按 itemSpace 分组补发 `NOTI14` 权威行，日志改报计划价与件数。
+- **验证**：服务端与自测构建 0 警告 0 错误；`equipment-repair` 套件通过（全部修理只修穿戴位、背包行原样同步、满耐久零价成功、副本倍率价 1732、余额不足 0x0A、非法目标 0x11、REPLY25 与 NOTI14 字节向量、落盘金币与耐久复核）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：无。
+
+### ADD-36 玩家邮件按客户端规则收取邮费并同步余额（同步自 DFLegacy ff89a4f）
+
+- **目标**：CMD 97 寄信此前只校验「金币余额 ≥ 附带金币」，未收邮费；客户端本地会扣除「附带金币 + 邮费」，成功后服务端如不同步余额，客户端显示会偏差一个邮费。
+- **依据**：DF2008 0x00809BB4 / 0x0080AF60：邮费 = 基础 100 + 带附件 900 + floor(金币×5%)（上限 10000），取整除精确成立；余额不足时客户端报错误 10。
+- **改动**：新增 `Game/Mail/CharacterMailPostage`（`Calculate`/`TryDebit`，防溢出）；`MailboxSendHandler` 在规划期先做含邮费的余额校验（不足回错误 10），`CharacterMailSendFailure` 新增 `InsufficientGold`；CMD97 成功后的 `NOTI14` 余额同步从「仅附带金币时发送」改为恒发送绝对余额（纯文字信也收 100 基础邮费，且同步不会把邮费变相返还）；存储层 `SendCharacterMailFromCharacterAsync` 以 `TryDebit` 的期望余额做并发对账，不足返回 `InsufficientGold`，成功日志记录邮费与余额。
+- **验证**：服务端与自测构建 0 警告 0 错误；`mail-postage` 套件通过（邮费表 8 组边界、TryDebit 溢出与负值拒绝、绕过邮费的余额对账拒绝、附带金币+邮费+堆叠扣减同事务、纯文字信收基础费、收件人校验失败不扣费、系统邮件不收玩家邮费、重载持久）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：无。
+
+### ADD-35 系统邮件统一中文文案与管理员发件人（同步自 DFLegacy e52aab3）
+
+- **目标**：背包满溢出转邮件的发件人此前为 `DAFLegacy`、正文为英文模板，与管理员邮件（`游戏管理员`）不一致。
+- **改动**：新增 `Game/Mail/SystemMailTemplates`（发件人常量 `游戏管理员`、八类来源的主题前缀与中文正文模板：通关奖励/物品栏整理/任务奖励/礼包奖励/商城购买/商城礼包奖励/商店购买/任务奖励补发）；`CreateOverflowMailRequests` 参数从字符串改为 `SystemItemMailReason` 枚举，8 处调用点（登录整理、任务奖励、任务批量完成、礼包奖励、商城购买、商城容器奖励、商店购买、副本通关奖励）与存储层遗留任务奖励迁移全部换用模板；线上邮件发件人字段为空时的回退值改为管理员名；`AdminSendMailRequest` 的发件人/正文参数化默认值取模板；后台页面发件人输入框默认值同步为「游戏管理员」。
+- **验证**：服务端与自测构建 0 警告 0 错误；`system-mail` 套件通过（八类模板 CP936 编解码无损、附件元数据保真、整理类不误称「空间不足」、管理员默认发件人、NOTI97 包体与正文记录同发件人、重载持久）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：部署副本 `admin/index.html` 需随服务端发布更新（部署副本按约定由用户自行维护）。
+
+### ADD-34 角色名校验与创建失败回复细分（同步自 DFLegacy 548113c）
+
+- **目标**：CMD 5 建角此前在处理器内做重名/名额预检（与落库非同一临界区），保留名（游戏管理员/GM）不拦截，存储失败与请求错误一律回错误码 2。
+- **依据**：DF2008 0x0040FB43 失败码映射：2→串 681、4→串 682、0x12→串 683、0x13→串 684。
+- **改动**：新增 `Network/Handlers/Characters/CharacterCreationResult`（失败枚举 + `CreateCharacterResult` + `CharacterCreationReply.Create` 按失败原因选错误码：名额满 4、重名/保留名/非法名 0x12、请求错误/账号不存在 0x13、其余 2）；存储层 `CreateCharacterAsync` 返回值改为该结果：保留名（`游戏管理员` 精确匹配、`GM` 忽略大小写）拒绝、重名与名额在存储门内原子判定、落盘失败（IO/未授权）回滚新建条目并返回 `PersistenceFailed`；名称长度与等级校验收敛到 `ValidateCharacterCreation`。`CreateCharacterHandler` 去除预检，直接采纳存储结果应答。
+- **验证**：服务端与自测构建 0 警告 0 错误；`character-creation` 套件通过（六种保留名写法双路径拒绝、前缀名不误伤、大小写不敏感重名、并发建名恰好一个成功、名额满错误 4、非法名/等级/账号失败码区分、重载持久）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：源项目的「落盘失败注入」断言依赖 JSON 存储的临时文件锁形态，SQLite 形态下该项未移植（回滚分支保留在生产代码中）。
+
+### ADD-33 复活币兑换道具落地（客户端状态类型 13）（同步自 DFLegacy 476161b）
+
+- **目标**：新年硬币（7180）、硬币书（7181）、通用硬币（42）三类 `[waste]` 兑换券此前无效果定义；DF2008 的 increase_status 类型 11 是公会积分而非硬币，原生硬币券用类型 13。
+- **依据**：DF2008 对类型 13 走通用消耗路径、无独立效果消息，余额由 NOTI14 更新；7180/42 记 1 枚、7181 记 5 枚。
+- **改动**：`IncreaseStatusType` 新增 `RevivalCoins = 13` 并排除出「按 10 倍下发」与卖出价两类特判；`ItemCatalog` 对三个脚本路径硬编码硬币效果；`IncreaseStatusHandler` 应答后补发主背包 1 号槽（复活币余额槽）的 `NOTI14` 绝对余额行；存储层 `UseIncreaseStatusItemAsync` 在存储门内原子完成「券扣减 + 余额入账」：余额溢出返回新增的 `BalanceOverflow`、余额槽被非硬币占用返回 `ItemStateChanged`、券本体（物品 1）与非法槽位直接拒绝。
+- **验证**：服务端与自测构建 0 警告 0 错误；`revival-coin-voucher` 套件通过（三类券效果缓存、逐枚入账不改 SP/经验、末张清槽、空槽重放拒绝、余额上限溢出拒绝、余额槽占用拒绝、CMD32 类型 13 字节向量、NOTI14 余额行布局、重载持久）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：无。
+
+### ADD-32 拾取失败补发回包解除客户端物品操作锁定（同步自 DFLegacy 706f07e）
+
+- **目标**：CMD 46 拾取此前只在超重时回错误 0x15，其余失败路径（无效物品、落库失败、生物/装扮背包放不下等）静默返回；客户端对每次拾取持乐观挂起操作，不收到回包就不解锁，后续 CMD 18/47 全部被阻塞。
+- **依据**：DF2008 对 CMD 46 乐观拾取：错误 0x15 保持静默回滚（0x00414198 公共回滚清除物品对象 +0x7A5 挂起标记）；错误 4 在 0x00414170 格式化串 793 后走同一回滚。
+- **改动**：`GameProtocolConstants` 新增 `GetItemInventoryFullError = 0x04`；`CraftPacketBuilders` 新增 `CreateGetItemRejection(request, inventoryFull)`（`CreateGetItemSilentRejection` 保留为别名）；`GetItemHandler` 全部失败路径补发回包——背包/快捷栏满用错误 4，其余保持 0x15；请求体不足 2 字节时不回包。
+- **验证**：服务端与自测构建 0 警告 0 错误；`full-bag-consumption` 套件通过（满包错误 4 且地面物与背包不变、其余失败保持 0x15、错误 4/0x15 字节向量）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：无。
+
+### ADD-31 副本入场道具校验与原子扣除（同步自 DFLegacy 4693295）
+
+- **目标**：副本 PVF 的 `[required item]`（物品 id 数量 是否扣除）此前不解析，配置了入场票的副本可空手进入；深渊票与普通入场票的分两次落库也可能在失败时留下半扣状态。
+- **改动**：`DungeonDefinition` 新增 `RequiredItemId`/`RequiredItemCount`/`ConsumeRequiredItem` 与 `TryConsumeRequiredItem`（非变异规划：按槽位顺序跨堆叠校验总量，可选扣除；id/数量非法时整个副本定义解析失败，不静默降级为免费进入）；`SelectDungeonHandler` 在布局生成前校验入场道具，不足回 `CreateSelectDungeonMissingRequiredItemReply`（CMD 16 错误 17 + 队伍槽位字节，DF2008 0x410A3C 用其格式化串 2100）；普通入场票与深渊票合并为一份入场计划，在迷宫可用后一次性落库，失败整体不动；变更行以 `NOTI14` 统一同步。
+- **验证**：服务端与自测构建 0 警告 0 错误；`dungeon-required-item` 套件通过（注释排除、跨行参数、标志 0 保留校验、十二种合法/非法声明、跨堆叠扣除与 uint.MaxValue 溢出边界、与深渊票合成计划、CMD16/NOTI14 字节向量、失败/成功落库与重载）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：部署副本 `Script.pvf` 的对应副本脚本需实际配置 `[required item]` 段才有行为（当前自带 PVF 未登记该项配置）。
+
+### ADD-30 副本 Boss 入场条件与条件怪生成（同步自 DFLegacy a7a3a55，含其前置 78f19c2 基础）
+
+- **目标**：DF2008 支持 `[boss room entrance condition]`（`[hunt monster]` 击杀计数 / `[seeking]` 指定房间全清）与 `[monster condition]` 条件怪行；服务端此前不解析，Boss 房始终直进。
+- **依据**：13339 `SetGridPath`（0x082FFB30）把每次出现分配到非起点/非 Boss 的可用格子（可替换）；`check_boss_map` 对未满足条件返回 7；怪物队伍行 `[monster team]` 区分敌我（100 为敌方），房间清场判定只统计存活敌方（0x0830A0E8 `check_grid_clear`）。
+- **改动**（前置基础先行入库）：`GameDungeonMonster` 新增服务器侧 `Team`/`IsEnemy`，`DungeonCatalog` 解析 `[monster team]` 并在冠军候选与清场规则中按敌我过滤，`DungeonRunState` 引入 `IsCleared`/`IsBossClearPending` 终局房清场语义（MOVE_MAP 对已清场/待确认状态回错误 0x13）；随后新增 `Game/Dungeon/DungeonBossEntranceCondition`，`DungeonCatalog` 解析 `[boss room entrance condition]` 与 `[monster condition]` 模板行并提供 `GetBossEntranceMonsterCandidates`，`DungeonRunState` 开局分配条件怪（进对应房间时以追加行生成、独立运行时 id、不参与冠军晋升）、按首杀累计击杀、`[seeking]` 按房间全清记账，未满足条件时 `TryMoveRoom` 拒绝进入 Boss 房；`MoveMapHandler` 对被条件阻挡的移动回错误 7、对生命周期拒绝回 0x13；`DieMonsterHandler` 记录条件达成日志。
+- **验证**：服务端与自测构建 0 警告 0 错误；`dungeon-boss-entrance` 与 `dungeon-completion` 套件通过（前者：四组猎杀三元组解析、条件怪生成与 NOTI29 九字节记录、首杀去重、未满足条件拒绝进入且房间不变、重进房不重刷、全满解锁、终局房一次性清场、无条件副本不受影响、`[seeking]` 房间目标、无模板时拒绝开局、错误 7 字节向量；后者为 78f19c2 基础的原配套测试：队伍行解析与阵营保真、盟方心脏不阻挡清场且不可晋升冠军、Boss 死亡窗口拒绝 MOVE_MAP、空终局房一次性结算、多 Boss 等末杀、无 Boss 房需全灭、NOTI31/CMD48 字节向量）。**真机未复测**：判据见 `PENDING.md` P-56。
+- **遗留项**：①本仓库 Boss 死亡结算有自己的编排（假死判别与多场次重建，见 FIX-11 同期工作），`DungeonRunState.BeginBossClear`/`TryEnableEmptyBossClear` 已随基础入库并由 `dungeon-completion` 套件守护，但处理链尚未接线（DAFLegacy 的 `BossDieCheckHandler` 不调用 `BeginBossClear`、`EnableEmptyBossRoomSettlementAsync` 不调用 `TryEnableEmptyBossClear`），当前死亡窗口语义由既有流程承担；78f19c2 对 DIE_MONSTER/BOSS_DIE_CHECK 的敌我过滤加固（盟方不计击杀、级联只收敌方、存活校验）同样未并入既有流程——三者仅在副本定义含非 100 队伍行时才产生行为差异，如需与源项目完全对齐另行处理；②部署副本 PVF 无 `[boss room entrance condition]` 的副本行为不变。
+
 ### ADD-29 IJL15 新增副本秒杀配置开关（复刻客户端 //kill 循环）
 
 - **目标**：用户需求——ijl15 客户端插件增加「秒杀副本房间怪物」能力，配置开启与关闭，且仅在副本内生效。

@@ -43,6 +43,7 @@ public sealed class DisjointItemHandler(IGameStore store,
             DisjointCatalog.JackpotRollUpperBound);
         if (!DisjointItemPlanner.TryCreate(
                 session.Inventory.Main,
+                session.Inventory.Creature,
                 sourceSlot,
                 itemSpace,
                 senders.GetInventoryWeightLimit(context, session.Character.Active),
@@ -88,7 +89,7 @@ public sealed class DisjointItemHandler(IGameStore store,
             disjointWarehouseSettlement.Warehouse,
             cancellationToken,
             avatarInventory: session.Inventory.Avatar.Values,
-            creatureInventory: session.Inventory.Creature.Values,
+            creatureInventory: disjointPlan.CreatureInventory.Values,
             warehouseCapacity:
                 disjointWarehouseSettlement.Capacity,
             expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
@@ -103,6 +104,8 @@ public sealed class DisjointItemHandler(IGameStore store,
 
         var warehouseCapacityChanged =
             senders.AdoptSavedWarehouseUpgradeState(context, savedDisjoint);
+        session.Inventory.Creature = (savedDisjoint.CreatureInventory ?? [])
+            .ToDictionary(item => item.Slot);
         var disjointReply = CraftPacketBuilders.CreateDisjointItemReply(
             disjointPlan.SourceSlot,
             disjointPlan.ItemSpace,

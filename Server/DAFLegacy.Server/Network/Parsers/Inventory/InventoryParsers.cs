@@ -8,13 +8,6 @@ namespace DAFLegacy.Server;
 /// </summary>
 internal static class InventoryParsers
 {
-    internal readonly record struct ConsumeItemsRequestEntry(
-        ushort Operation,
-        ushort Slot,
-        ushort ItemId,
-        uint RequestedCount);
-
-
     internal static bool TryReadSortItem(
         byte[] body,
         out byte itemSpace,
@@ -88,7 +81,7 @@ internal static class InventoryParsers
     internal static bool TryReadConsumeItems(
         byte[] body,
         out byte listType,
-        out ConsumeItemsRequestEntry[] entries)
+        out ItemDeletionRequestEntry[] entries)
     {
         listType = byte.MaxValue;
         entries = [];
@@ -108,11 +101,11 @@ internal static class InventoryParsers
             return false;
         }
 
-        var parsed = new ConsumeItemsRequestEntry[count];
+        var parsed = new ItemDeletionRequestEntry[count];
         var offset = 4;
         for (var index = 0; index < count; index++)
         {
-            parsed[index] = new ConsumeItemsRequestEntry(
+            parsed[index] = new ItemDeletionRequestEntry(
                 BinaryPrimitives.ReadUInt16LittleEndian(
                     body.AsSpan(offset, sizeof(ushort))),
                 BinaryPrimitives.ReadUInt16LittleEndian(

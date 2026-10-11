@@ -493,7 +493,7 @@ public sealed class UseStackableItemHandler(
                 boosterPlan.OverflowItems.Where(item =>
                     !CharacterWarehouseProgression
                         .TryGetItemTargetCapacity(item.ItemId, out _)),
-                "Cera booster reward");
+                SystemItemMailReason.CeraBoosterReward);
             var savedCharacter = await store.SaveCharacterItemSpacesAsync(
                 session.Login.AccountName,
                 session.Character.Active.Id,

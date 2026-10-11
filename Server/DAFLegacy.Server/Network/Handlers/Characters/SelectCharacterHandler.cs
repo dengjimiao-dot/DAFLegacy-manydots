@@ -388,7 +388,7 @@ public sealed partial class SelectCharacterHandler(
             .ToArray();
         var loginOverflowMails = CharacterPacketBuilders.CreateOverflowMailRequests(
             loginOverflowItems,
-            "Login inventory repair");
+            SystemItemMailReason.InventoryRepair);
         var migratedEquipmentSlots = displacedMainItems.Count != 0
             || displacedAvatarItems.Count != 0
             || savedInventory.Any(IsAvatarItem)

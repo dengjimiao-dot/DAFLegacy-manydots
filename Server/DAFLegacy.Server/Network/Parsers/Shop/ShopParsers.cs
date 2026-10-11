@@ -11,8 +11,8 @@ namespace DAFLegacy.Server;
 internal static class ShopParsers
 {
     internal readonly record struct CeraShopPurchaseRequestItem(
-        byte ProductType,
-        ushort AttributeValue,
+        byte AvatarAbilityIndex,
+        ushort PeriodCode,
         uint CommodityNo);
 
 
@@ -124,8 +124,8 @@ internal static class ShopParsers
         var parsed = new CeraShopPurchaseRequestItem[count];
         for (var index = 0; index < count; index++)
         {
-            var productType = body[offset];
-            var attributeValue = BinaryPrimitives.ReadUInt16LittleEndian(
+            var avatarAbilityIndex = body[offset];
+            var periodCode = BinaryPrimitives.ReadUInt16LittleEndian(
                 body.AsSpan(offset + 1, sizeof(ushort)));
             var commodityNo = BinaryPrimitives.ReadUInt32LittleEndian(
                 body.AsSpan(offset + 3, sizeof(uint)));
@@ -135,8 +135,8 @@ internal static class ShopParsers
             }
 
             parsed[index] = new CeraShopPurchaseRequestItem(
-                productType,
-                attributeValue,
+                avatarAbilityIndex,
+                periodCode,
                 commodityNo);
             offset += 7;
         }

@@ -11,11 +11,8 @@ public sealed partial class CharacterPacketBuilders
 {
     internal static CreateCharacterMailRequest[] CreateOverflowMailRequests(
         IEnumerable<CharacterMailAttachmentRecord> items,
-        string source) =>
-        items.Select(item => new CreateCharacterMailRequest(
-                "DAFLegacy",
-                $"{source}: delivered because the inventory was full or overweight.",
-                Attachment: item))
+        SystemItemMailReason reason) =>
+        items.Select(item => SystemMailTemplates.CreateItemReturn(item, reason))
             .ToArray();
 
     internal GameMailEntry ToGameMailEntry(CharacterMailRecord mail)
@@ -36,7 +33,7 @@ public sealed partial class CharacterPacketBuilders
 
         return new GameMailEntry(
             mail.Id,
-            EncodeMailField(mail.Sender, 29, "DAFLegacy"),
+            EncodeMailField(mail.Sender, 29, SystemMailTemplates.SenderName),
             EncodeMailField(mail.Text, 511, string.Empty),
             checked((uint)Math.Max(0, mail.Gold)),
             attachment,

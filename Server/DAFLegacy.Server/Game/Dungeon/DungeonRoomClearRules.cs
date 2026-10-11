@@ -34,28 +34,35 @@ public static class DungeonRoomClearRules
             return DungeonRoomClearDecision.None;
         }
 
-        var bossIds = room.Monsters
+        // 13339 CBattle_Field::check_grid_clear (0x0830A0E8) blocks only
+        // surviving team-100 actors. Team 0..99 allies are not clear targets.
+        var enemyMonsters = room.Monsters.Where(monster => monster.IsEnemy).ToArray();
+        var aliveEnemyIds = enemyMonsters
+            .Where(monster => aliveMonsterIds.Contains(monster.UniqueId))
+            .Select(monster => monster.UniqueId)
+            .ToHashSet();
+        var bossIds = enemyMonsters
             .Where(monster => monster.Type == GameDungeonMonsterTypes.Boss)
             .Select(monster => monster.UniqueId)
             .ToArray();
         if (bossIds.Length == 0)
         {
-            return aliveMonsterIds.Count == 0
+            return aliveEnemyIds.Count == 0
                 ? new DungeonRoomClearDecision(
                     DungeonRoomClearReason.AllMonstersDefeated,
                     [])
                 : DungeonRoomClearDecision.None;
         }
 
-        if (defeatedMonster.Type == GameDungeonMonsterTypes.Boss
-            && !bossIds.Any(aliveMonsterIds.Contains))
+        if (defeatedMonster.IsEnemy && defeatedMonster.Type == GameDungeonMonsterTypes.Boss
+            && !bossIds.Any(aliveEnemyIds.Contains))
         {
             return new DungeonRoomClearDecision(
                 DungeonRoomClearReason.LastBossDefeated,
-                aliveMonsterIds.OrderBy(id => id).ToArray());
+                aliveEnemyIds.OrderBy(id => id).ToArray());
         }
 
-        if (aliveMonsterIds.Count == 0)
+        if (aliveEnemyIds.Count == 0)
         {
             return new DungeonRoomClearDecision(
                 DungeonRoomClearReason.AllMonstersDefeated,

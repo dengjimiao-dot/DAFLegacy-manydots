@@ -310,7 +310,7 @@ public sealed class FinishQuestHandler(
             cancellationToken,
             CharacterPacketBuilders.CreateOverflowMailRequests(
                 questMailRewards,
-                "Quest reward"),
+                SystemItemMailReason.QuestReward),
             creatureInventory: nextCreatureInventory.Values,
             skills: nextSkills,
             growType: growthAdvanced ? nextGrowType : null,

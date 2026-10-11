@@ -200,6 +200,21 @@ public sealed class SelectDungeonHandler(IGameStore store,
             return;
         }
 
+        if (!dungeon.TryConsumeRequiredItem(
+                session.Inventory.Main, out var plannedEntryInventory))
+        {
+            var requiredItemError =
+                DungeonPacketBuilders.CreateSelectDungeonMissingRequiredItemReply();
+            await context.Queue.SendAsync(requiredItemError, Name, cancellationToken);
+            RuntimeLogger.Info(
+                "Rejected dungeon {DungeonId} for character {CharacterId}: requires item {ItemId} x{Count}.",
+                dungeonId,
+                session.Character.Active.Id,
+                dungeon.RequiredItemId,
+                dungeon.RequiredItemCount);
+            return;
+        }
+
         if (!dungeonCatalog.TryCreateLayout(
                 dungeonId,
                 out var dungeonLayout,
@@ -240,12 +255,12 @@ public sealed class SelectDungeonHandler(IGameStore store,
         }
 
         CharacterItemRecord? consumedHellTicket = null;
-        GameServerPacket? pendingHellTicketUpdate = null;
+        GameServerPacket? pendingEntryItemUpdate = null;
         if (session.Dungeon.Run.HellMode)
         {
-            var plannedInventory = session.Inventory.Main.ToDictionary();
             if (session.Dungeon.SelectionWorldMap is null
-                || !session.Dungeon.SelectionWorldMap.TryConsumeHellItems(session.Inventory.Main, out plannedInventory))
+                || !session.Dungeon.SelectionWorldMap.TryConsumeHellItems(
+                    plannedEntryInventory, out var plannedHellInventory))
             {
                 session.Dungeon.Run.Stop();
                 var ticketError = ConnectionPacketBuilders.CreateCommandError(
@@ -260,21 +275,30 @@ public sealed class SelectDungeonHandler(IGameStore store,
                 return;
             }
 
-            var changedTickets = session.Inventory.Main.Values
-                .Where(item => !plannedInventory.TryGetValue(item.Slot, out var remaining)
+            consumedHellTicket = plannedEntryInventory.Values
+                .Where(item => !plannedHellInventory.TryGetValue(item.Slot, out var remaining)
                     || remaining.CountOrValue != item.CountOrValue)
-                .OrderBy(item => item.Slot).ToArray();
-            consumedHellTicket = changedTickets.FirstOrDefault();
+                .OrderBy(item => item.Slot).FirstOrDefault();
+            plannedEntryInventory = plannedHellInventory;
+        }
 
-            var savedTicketConsumption =
+        var changedEntryItems = session.Inventory.Main.Values
+            .Where(item => !plannedEntryInventory.TryGetValue(item.Slot, out var remaining)
+                || remaining.CountOrValue != item.CountOrValue)
+            .OrderBy(item => item.Slot).ToArray();
+        if (changedEntryItems.Length > 0)
+        {
+            // Commit normal admission and hell tickets together only after
+            // a usable start room exists; failed entry leaves both untouched.
+            var savedEntryConsumption =
                 await store.SaveCharacterInventoryAsync(
                     session.Login.AccountName,
                     session.Character.Active.Id,
                     session.Currency.Gold,
-                    plannedInventory.Values,
+                    plannedEntryInventory.Values,
                     session.Inventory.Equipped.Values,
                     cancellationToken);
-            if (savedTicketConsumption is null)
+            if (savedEntryConsumption is null)
             {
                 session.Dungeon.Run.Stop();
                 var ticketSaveError = ConnectionPacketBuilders.CreateCommandError(
@@ -284,11 +308,11 @@ public sealed class SelectDungeonHandler(IGameStore store,
                 return;
             }
 
-            session.Character.Active = savedTicketConsumption;
-            session.Inventory.Main = plannedInventory;
-            pendingHellTicketUpdate = InventoryPacketBuilders.CreateUpdateItemList(
+            session.Character.Active = savedEntryConsumption;
+            session.Inventory.Main = plannedEntryInventory;
+            pendingEntryItemUpdate = InventoryPacketBuilders.CreateUpdateItemList(
                 0,
-                changedTickets.Select(item => plannedInventory.TryGetValue(item.Slot, out var remaining)
+                changedEntryItems.Select(item => plannedEntryInventory.TryGetValue(item.Slot, out var remaining)
                     ? builders.ToGameInventoryEntry(remaining)
                     : new GameInventoryEntry(item.Slot, ushort.MaxValue, 0)).ToArray());
         }
@@ -351,9 +375,9 @@ public sealed class SelectDungeonHandler(IGameStore store,
             flagA: hellRoomX,
             flagB: hellRoomY);
         await context.Queue.SendAsync(dungeonInfo, Name, cancellationToken);
-        if (pendingHellTicketUpdate is not null)
+        if (pendingEntryItemUpdate is not null)
         {
-            await context.Queue.SendAsync(pendingHellTicketUpdate, Name, cancellationToken);
+            await context.Queue.SendAsync(pendingEntryItemUpdate, Name, cancellationToken);
         }
 
         var passiveObjectDrops = senders.RegisterPassiveObjectDrops(

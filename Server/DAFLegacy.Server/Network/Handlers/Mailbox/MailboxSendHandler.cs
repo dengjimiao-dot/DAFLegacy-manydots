@@ -32,11 +32,12 @@ public sealed class MailboxSendHandler(IGameStore store,
             return;
         }
 
-        if (sendRequest.Gold > session.Currency.Gold)
+        if (!CharacterMailPostage.TryDebit(session.Currency.Gold, sendRequest.Gold,
+                sendRequest.ItemId != 0, out var plannedGold))
         {
             var error = ConnectionPacketBuilders.CreateCommandError(
                 request,
-                errorCode: 17);
+                errorCode: 10);
             await context.Queue.SendAsync(error, Name, cancellationToken);
             return;
         }
@@ -126,7 +127,6 @@ public sealed class MailboxSendHandler(IGameStore store,
             return;
         }
 
-        var plannedGold = session.Currency.Gold - sendRequest.Gold;
         var sendResult = await store.SendCharacterMailFromCharacterAsync(
             session.Login.AccountName,
             session.Character.Active.Id,
@@ -145,6 +145,7 @@ public sealed class MailboxSendHandler(IGameStore store,
             var errorCode = sendResult.Failure switch
             {
                 CharacterMailSendFailure.RecipientMailboxFull => (byte)90,
+                CharacterMailSendFailure.InsufficientGold => (byte)10,
                 CharacterMailSendFailure.SenderStateChanged => (byte)17,
                 CharacterMailSendFailure.RecipientNotFound => (byte)10,
                 _ => (byte)7
@@ -164,14 +165,16 @@ public sealed class MailboxSendHandler(IGameStore store,
             success: true);
         await context.Queue.SendAsync(sendReply, Name, cancellationToken);
 
-        var senderUpdates = new List<GameInventoryEntry>();
-        if (sendRequest.Gold != 0)
+        // CMD97 success applies the client's own gold + postage debit.
+        // Sync the same absolute balance afterward, including fee-only
+        // letters, so this update cannot refund the postage as a gain.
+        var senderUpdates = new List<GameInventoryEntry>
         {
-            senderUpdates.Add(new GameInventoryEntry(
+            new(
                 Slot: 0,
                 ItemId: 0,
-                CountOrValue: checked((uint)session.Currency.Gold)));
-        }
+                CountOrValue: checked((uint)session.Currency.Gold))
+        };
 
         if (sourceSlot.HasValue)
         {

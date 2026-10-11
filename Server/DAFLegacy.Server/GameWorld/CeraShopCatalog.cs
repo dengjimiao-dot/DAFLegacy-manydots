@@ -6,6 +6,7 @@ public sealed record CeraShopProduct(
     uint CommodityNo,
     ushort ItemId,
     uint Quantity,
+    // [avatar] catalog rows store the period code here, not an ability index.
     ushort AttributeValue,
     int CashPrice,
     string Section,
@@ -28,6 +29,45 @@ public sealed record CeraShopProduct(
 
 public sealed record PremiumContractDefinition(byte ServiceType, int Days);
 public sealed record CeraShopDirectCurrencyGrant(int Gold, uint VictoryPoints);
+
+public static class CeraShopPurchaseItemPlanner
+{
+    public static bool TryCreate(
+        CeraShopProduct product,
+        byte avatarAbilityIndex,
+        ItemCatalog catalog,
+        out CharacterMailAttachmentRecord item)
+    {
+        item = null!;
+        if (!catalog.TryGetDefinition(product.ItemId, out var definition)
+            || product.Quantity == 0
+            || definition.IsEquipment && product.Quantity != 1)
+        {
+            return false;
+        }
+
+        var isAvatar = definition.InventoryCategory == ItemInventoryCategory.Avatar;
+        if (isAvatar && avatarAbilityIndex >= definition.AvatarSelectableAbilityCount)
+        {
+            return false;
+        }
+
+        item = CharacterItemIdentity.Ensure(
+            new CharacterMailAttachmentRecord(
+                product.ItemId,
+                product.Quantity,
+                Durability: definition.InventoryCategory == ItemInventoryCategory.Equipment
+                    ? catalog.GetInitialDurability(product.ItemId)
+                    : definition.IsEquipment ? (ushort)1_000 : (ushort)0,
+                SealState: CharacterItemSealing.GetInitialSealState(definition),
+                // DF2008 sub_867E80: u8 ability row, u16 period, u32 commodity.
+                // The period-only IJL15 patch must not affect the selected row.
+                AvatarRemainingSeconds: isAvatar ? 0u : null,
+                AvatarAbilityIndex: isAvatar ? avatarAbilityIndex : null),
+            definition);
+        return true;
+    }
+}
 
 public static class CeraShopDirectCurrencyPlanner
 {

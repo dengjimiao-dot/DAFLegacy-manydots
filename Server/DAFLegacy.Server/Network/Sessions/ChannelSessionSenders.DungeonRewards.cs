@@ -153,7 +153,7 @@ public sealed partial class ChannelSessionSenders
             // the generated instance in the same inventory/mail transaction.
             overflowMails.AddRange(CharacterPacketBuilders.CreateOverflowMailRequests(
                 [rewardItem],
-                "Dungeon clear reward"));
+                SystemItemMailReason.DungeonClearReward));
 
             granted[index] = true;
         }

@@ -11,6 +11,7 @@ public sealed class IncreaseStatusHandler(IGameStore store,
     SkillCatalog skillCatalog,
     CharacterSpCatalog spCatalog,
     CharacterExperienceCatalog experienceCatalog,
+    CharacterPacketBuilders builders,
     ChannelSessionSenders senders) : IGameCommandHandler
 {
     private const ushort RiverLetheItemId = 3;
@@ -18,6 +19,7 @@ public sealed class IncreaseStatusHandler(IGameStore store,
 
     private static int ToIncreaseStatusWireAmount(IncreaseStatusEffect effect) =>
         effect.Type is IncreaseStatusType.SkillPoints or IncreaseStatusType.Experience
+            or IncreaseStatusType.RevivalCoins
             ? effect.Amount
             : checked(effect.Amount * 10);
     public ushort ProtocolId => (byte)CmdPacketType.INCREASE_STATUS;
@@ -248,6 +250,25 @@ public sealed class IncreaseStatusHandler(IGameStore store,
             statusType: (byte)increaseStatus.Type,
             amount: responseAmount);
         await context.Queue.SendAsync(increaseStatusReply, Name, cancellationToken);
+        if (increaseStatus.Type == IncreaseStatusType.RevivalCoins)
+        {
+            // DF2008 consumes the voucher for native coin type 13 without
+            // a dedicated effect message. NOTI14 updates the balance and
+            // supplies its existing coin-gain notice; type 11 is guild score.
+            var coins = session.Inventory.Main[CharacterInventoryLayout.RevivalCoinSlot];
+            var coinUpdate = InventoryPacketBuilders.CreateUpdateItemList(0,
+                [builders.ToGameInventoryEntry(coins)]);
+            await context.Queue.SendAsync(coinUpdate, Name, cancellationToken);
+            RuntimeLogger.Info(
+                "Used revival-coin voucher {ItemId} at slot {SourceSlot}; granted={GrantedCoins}, balance={CoinBalance}, stack remaining={RemainingCount}.",
+                sourceItem.ItemId,
+                sourceSlot,
+                increaseStatus.Amount,
+                coins.CountOrValue,
+                useResult.RemainingItemCount);
+            return;
+        }
+
         RuntimeLogger.Info(
             "Used permanent-status item {ItemId} at slot {SourceSlot}; type={StatusType}, persisted amount={Amount}, response amount={ResponseAmount}, remaining SP={RemainingSp}, cumulative bonuses=[SP:{BonusSp}, HP:{BonusHp}, MP:{BonusMp}, STR:{BonusStrength}, VIT:{BonusVitality}, INT:{BonusIntelligence}, SPI:{BonusSpirit}, MOVE:{BonusMovementSpeed}, ALLR:{BonusAllResistance}], stack remaining={RemainingCount}.",
             sourceItem.ItemId,

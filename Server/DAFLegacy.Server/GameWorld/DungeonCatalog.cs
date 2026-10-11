@@ -44,9 +44,65 @@ public sealed record DungeonDefinition(
 
     public ushort[] HellTicketItemIds { get; init; } = [];
 
+    public ushort RequiredItemId { get; init; }
+
+    public uint RequiredItemCount { get; init; }
+
+    public bool ConsumeRequiredItem { get; init; }
+
     // DF2008 stores one value for each of its four dungeon difficulties. The
     // selected value is an expected maze-wide amount, not an exact quota.
     public int[] ChampionCounts { get; init; } = new int[4];
+
+    public DungeonBossEntranceCondition BossEntranceCondition { get; init; } =
+        DungeonBossEntranceCondition.Unrestricted;
+
+    public bool TryConsumeRequiredItem(
+        IReadOnlyDictionary<ushort, CharacterItemRecord> inventory,
+        out Dictionary<ushort, CharacterItemRecord> remaining)
+    {
+        remaining = inventory.ToDictionary();
+        if (RequiredItemId == 0 || RequiredItemCount == 0)
+        {
+            return true;
+        }
+
+        var stacks = inventory.Values
+            .Where(item => item.ItemId == RequiredItemId && item.CountOrValue > 0)
+            .OrderBy(item => item.Slot)
+            .ToArray();
+        if (stacks.Sum(item => (long)item.CountOrValue) < RequiredItemCount)
+        {
+            return false;
+        }
+
+        if (!ConsumeRequiredItem)
+        {
+            return true;
+        }
+
+        var needed = RequiredItemCount;
+        foreach (var item in stacks)
+        {
+            var consumed = Math.Min(needed, item.CountOrValue);
+            needed -= consumed;
+            if (consumed == item.CountOrValue)
+            {
+                remaining.Remove(item.Slot);
+            }
+            else
+            {
+                remaining[item.Slot] = item with { CountOrValue = item.CountOrValue - consumed };
+            }
+
+            if (needed == 0)
+            {
+                break;
+            }
+        }
+
+        return true;
+    }
 }
 
 public readonly record struct DungeonRoomPosition(byte X, byte Y);
@@ -148,6 +204,9 @@ public sealed record DungeonRoomDefinition(
     // START_MAP stores this value in the client's current-map state. Keep it
     // stable for the lifetime of a generated room, including revisits.
     public uint ClientRandomSeed { get; init; }
+
+    // Server-only templates. They enter START_MAP only at assigned coordinates.
+    public GameDungeonMonster[] BossEntranceMonsterTemplates { get; init; } = [];
 }
 
 public sealed class DungeonCatalog
@@ -365,9 +424,10 @@ public sealed class DungeonCatalog
     }
 
     private static bool IsChampionCandidate(GameDungeonMonster monster) =>
-        monster.Type == GameDungeonMonsterTypes.Normal
+        monster.IsEnemy && monster.Type == GameDungeonMonsterTypes.Normal
         && monster.IsBoxMonster == 0
-        && !monster.IsHellHidden;
+        && !monster.IsHellHidden
+        && !monster.IsBossEntranceMonster;
 
     public bool TryGetRoomTopology(
         ushort dungeonId,
@@ -673,7 +733,10 @@ public sealed class DungeonCatalog
                     Level: checked((byte)Math.Clamp(level, 1, byte.MaxValue)),
                     Type: monster.Type,
                     X: monster.X,
-                    Y: monster.Y);
+                    Y: monster.Y)
+                {
+                    Team = monster.Team
+                };
             })
             .ToList();
         foreach (var passiveObject in map.PassiveObjects)
@@ -805,7 +868,24 @@ public sealed class DungeonCatalog
             passiveItemSpawns.ToArray())
         {
             IsHellRoom = isHellRoom,
-            BaseChampionCount = map.BaseChampionCount
+            BaseChampionCount = map.BaseChampionCount,
+            BossEntranceMonsterTemplates = map.ConditionMonsters
+                .Select((monster, index) => new GameDungeonMonster(
+                    MapListIndex: checked((byte)(map.Monsters.Length + index)),
+                    UniqueId: 0,
+                    MonsterIndex: monster.MonsterIndex,
+                    Level: checked((byte)Math.Clamp(
+                        monster.UsesDungeonLevel
+                            ? definition.BasisLevel + monster.LevelOffsetOrFixedLevel
+                            : monster.LevelOffsetOrFixedLevel,
+                        1, byte.MaxValue)),
+                    Type: monster.Type,
+                    X: monster.X,
+                    Y: monster.Y)
+                {
+                    Team = monster.Team,
+                    IsBossEntranceMonster = true
+                }).ToArray()
         };
         return true;
     }
@@ -1045,7 +1125,12 @@ public sealed class DungeonCatalog
                 ParseTopologySymbols(text),
                 ParseStandaloneMapChampionCount(text),
                 monsters,
-                passiveObjects);
+                passiveObjects)
+            {
+                ConditionMonsters = ParseMonsterRows(text, "monster condition")
+                    .Take(Math.Max(0, byte.MaxValue + 1 - monsters.Length))
+                    .ToArray()
+            };
         }
 
         return maps;
@@ -1061,7 +1146,10 @@ public sealed class DungeonCatalog
         definition = null!;
         specifications = new Dictionary<DungeonRoomPosition, ushort[]>();
         var mazes = ParseMazes(text);
-        if (mazes.Length == 0)
+        if (mazes.Length == 0
+            || !TryParseBossEntranceCondition(text, out var bossEntranceCondition)
+            || !TryParseRequiredItem(text, out var requiredItemId,
+                out var requiredItemCount, out var consumeRequiredItem))
         {
             return false;
         }
@@ -1131,11 +1219,120 @@ public sealed class DungeonCatalog
                 ? checked((ushort)warRoomMap)
                 : (ushort)0,
             HellTicketItemIds = hellTicketItemIds,
+            RequiredItemId = requiredItemId,
+            RequiredItemCount = requiredItemCount,
+            ConsumeRequiredItem = consumeRequiredItem,
             ChampionCounts = NormalizeChampionCounts(
-                ParseInlineIntegers(text, "champion"))
+                ParseInlineIntegers(text, "champion")),
+            BossEntranceCondition = bossEntranceCondition
         };
         specifications = firstMaze.MapSpecifications;
         return true;
+    }
+
+    private static bool TryParseRequiredItem(
+        string text,
+        out ushort itemId,
+        out uint count,
+        out bool consume)
+    {
+        itemId = 0;
+        count = 0;
+        consume = false;
+        var uncommented = Regex.Replace(text, @"//[^\r\n]*", string.Empty);
+        if (!Regex.IsMatch(uncommented, @"(?im)^\s*\[required item\]"))
+        {
+            return true;
+        }
+
+        var match = Regex.Match(uncommented, @"(?im)^\s*\[required item\]\s*([^\r\n]*)");
+        var values = Regex.Split(match.Groups[1].Value.Trim(), @"\s+");
+        if (values.Length != 3
+            || !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var rawItemId)
+            || rawItemId is < -1 or > ushort.MaxValue
+            || !uint.TryParse(values[1], NumberStyles.None, CultureInfo.InvariantCulture, out var rawCount)
+            || values[2] is not ("0" or "1"))
+        {
+            return false;
+        }
+
+        if (rawItemId > 0 && rawCount > 0)
+        {
+            itemId = (ushort)rawItemId;
+            count = rawCount;
+            consume = values[2] == "1";
+        }
+
+        return true;
+    }
+
+    private static bool TryParseBossEntranceCondition(
+        string text,
+        out DungeonBossEntranceCondition condition)
+    {
+        condition = DungeonBossEntranceCondition.Unrestricted;
+        var match = Regex.Match(text,
+            @"(?ims)^\s*\[boss room entrance condition\]\s*(?<data>.*?)(?=^\s*\[(?!/)|\z)",
+            RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            return true;
+        }
+
+        var lines = ParseDataLines(match.Groups["data"].Value);
+        if (lines.Length < 2)
+        {
+            return false;
+        }
+
+        var values = ParseIntegers(string.Join('\n', lines.Skip(1)));
+        if (values.Length == 0 || values[0] is < 0 or > byte.MaxValue)
+        {
+            return false;
+        }
+
+        var count = values[0];
+        if (lines[0].Contains("[hunt monster]", StringComparison.OrdinalIgnoreCase))
+        {
+            if (values.Length != 1 + 3 * count)
+            {
+                return false;
+            }
+
+            var monsters = new List<DungeonBossEntranceMonsterRequirement>(count);
+            for (var index = 1; index < values.Length; index += 3)
+            {
+                if (values[index] is <= 0 or > ushort.MaxValue
+                    || values[index + 1] is < 0 or > byte.MaxValue
+                    || values[index + 2] < 0)
+                {
+                    return false;
+                }
+
+                monsters.Add(new((ushort)values[index], values[index + 1], values[index + 2]));
+            }
+
+            condition = new(DungeonBossEntranceConditionKind.HuntMonster, monsters.ToArray(), []);
+            return true;
+        }
+
+        if (lines[0].Contains("[seeking]", StringComparison.OrdinalIgnoreCase))
+        {
+            if (values.Length != 1 + 2 * count
+                || values.Skip(1).Any(value => value is < 0 or > byte.MaxValue))
+            {
+                return false;
+            }
+
+            var rooms = Enumerable.Range(0, count)
+                .Select(index => new DungeonRoomPosition((byte)values[index * 2 + 1],
+                    (byte)values[index * 2 + 2]))
+                .Distinct().ToArray();
+            condition = new(DungeonBossEntranceConditionKind.ClearRooms, [], rooms);
+            return true;
+        }
+
+        return false;
     }
 
     private static DungeonMazeDefinition[] ParseMazes(string text)
@@ -1292,6 +1489,73 @@ public sealed class DungeonCatalog
             return resolvedMapId;
         }
 
+        var candidates = GetRoomMapCandidates(state, dungeon, layout, roomX, roomY);
+        if (candidates.Length == 0)
+        {
+            return 0;
+        }
+
+        var selected = candidates[random.Next(candidates.Length)].MapId;
+        layout.SetResolvedMap(point, selected);
+        return selected;
+    }
+
+    public DungeonRoomPosition[] GetBossEntranceMonsterCandidates(
+        DungeonLayout layout,
+        ushort monsterId,
+        bool hellMode)
+    {
+        var state = _state.Value;
+        if (!state.Definitions.TryGetValue(layout.DungeonId, out var dungeon))
+        {
+            return [];
+        }
+
+        var result = new List<DungeonRoomPosition>();
+        for (byte y = 0; y < layout.Height; y++)
+        {
+            for (byte x = 0; x < layout.Width; x++)
+            {
+                if (x == layout.StartX && y == layout.StartY
+                    || x == layout.BossX && y == layout.BossY
+                    || TryGetRoomTopology(layout.Maze, x, y, out var topology)
+                        && !IsOpenRoomTopology(topology))
+                {
+                    continue;
+                }
+
+                var maps = GetRoomMapCandidates(state, dungeon, layout, x, y);
+                if (hellMode && x == dungeon.SealDoorPosition.X && y == dungeon.SealDoorPosition.Y)
+                {
+                    maps = state.Maps.TryGetValue(dungeon.SealDoorMapId, out var hellMap)
+                        ? [hellMap] : [];
+                }
+
+                // A later map draw must not remove an assigned condition actor.
+                if (maps.Length > 0 && maps.All(map => map.ConditionMonsters.Any(monster =>
+                        monster.MonsterIndex == monsterId)))
+                {
+                    result.Add(new(x, y));
+                }
+            }
+        }
+
+        return result.ToArray();
+    }
+
+    private static MapDefinition[] GetRoomMapCandidates(
+        CatalogState state,
+        DungeonDefinition dungeon,
+        DungeonLayout layout,
+        byte roomX,
+        byte roomY)
+    {
+        var point = new DungeonRoomPosition(roomX, roomY);
+        if (layout.TryGetResolvedMap(point, out var resolvedMapId))
+        {
+            return state.Maps.TryGetValue(resolvedMapId, out var map) ? [map] : [];
+        }
+
         var dungeonMaps = state.Maps.Values
             .Where(map => map.DungeonIds.Contains(dungeon.DungeonId))
             .OrderBy(map => map.MapId)
@@ -1318,29 +1582,19 @@ public sealed class DungeonCatalog
             ? map.Kind != MapKind.Boss && map.MapType == DungeonMapType.Normal
             : MatchesPreferredRole(map);
 
-        ushort SelectAndRemember(IReadOnlyList<MapDefinition> candidates)
+        if (layout.Maze.MapSpecifications.TryGetValue(point, out var specifiedIds))
         {
-            if (candidates.Count == 0)
+            var specified = specifiedIds.Select(id => state.Maps.GetValueOrDefault(id))
+                .Where(map => map is not null && MatchesRole(map)).Cast<MapDefinition>().ToArray();
+            var matchingTopology = specified.Where(map => MapSupportsTopology(map, topology)).ToArray();
+            if (matchingTopology.Length > 0)
             {
-                return 0;
+                return matchingTopology;
             }
-
-            var selected = candidates[random.Next(candidates.Count)].MapId;
-            layout.SetResolvedMap(point, selected);
-            return selected;
-        }
-
-        if (TryResolveSpecifiedMap(
-                state,
-                layout.Maze.MapSpecifications,
-                point,
-                topology,
-                MatchesRole,
-                random,
-                out var specifiedMap))
-        {
-            layout.SetResolvedMap(point, specifiedMap);
-            return specifiedMap;
+            if (specified.Length > 0)
+            {
+                return specified;
+            }
         }
 
         var roleAtCoordinate = dungeonMaps
@@ -1353,7 +1607,7 @@ public sealed class DungeonCatalog
             .ToArray();
         if (roleAtCoordinateWithTopology.Length > 0)
         {
-            return SelectAndRemember(roleAtCoordinateWithTopology);
+            return roleAtCoordinateWithTopology;
         }
 
         var rolePool = dungeonMaps
@@ -1364,7 +1618,7 @@ public sealed class DungeonCatalog
             .ToArray();
         if (rolePoolWithTopology.Length > 0)
         {
-            return SelectAndRemember(rolePoolWithTopology);
+            return rolePoolWithTopology;
         }
 
         var roleWithTopology = dungeonMaps
@@ -1372,70 +1626,33 @@ public sealed class DungeonCatalog
             .ToArray();
         if (roleWithTopology.Length > 0)
         {
-            return SelectAndRemember(roleWithTopology);
+            return roleWithTopology;
         }
 
         // Compatibility fallback for a script whose map files omit [greed].
         if (roleAtCoordinate.Length > 0)
         {
-            return SelectAndRemember(roleAtCoordinate);
+            return roleAtCoordinate;
         }
 
         if (rolePool.Length > 0)
         {
-            return SelectAndRemember(rolePool);
+            return rolePool;
         }
 
         // Never turn a selected boss coordinate into a normal/dummy map (or a
         // selected normal coordinate into a boss/dummy map). A missing role
         // pool is a bad dungeon definition and must fail visibly.
-        return 0;
+        return [];
     }
 
-    private static bool TryResolveSpecifiedMap(
-        CatalogState state,
-        IReadOnlyDictionary<DungeonRoomPosition, ushort[]> specifications,
-        DungeonRoomPosition point,
-        char topology,
-        Func<MapDefinition, bool> matchesRole,
-        IDropRandomSource random,
-        out ushort mapId)
-    {
-        mapId = 0;
-        if (!specifications.TryGetValue(point, out var candidates))
-        {
-            return false;
-        }
-
-        var matching = candidates
-            .Select(candidate => state.Maps.GetValueOrDefault(candidate))
-            .Where(map => map is not null
-                && matchesRole(map)
-                && MapSupportsTopology(map, topology))
-            .Cast<MapDefinition>()
-            .ToArray();
-        if (matching.Length == 0)
-        {
-            matching = candidates
-                .Select(candidate => state.Maps.GetValueOrDefault(candidate))
-                .Where(map => map is not null && matchesRole(map))
-                .Cast<MapDefinition>()
-                .ToArray();
-        }
-
-        if (matching.Length == 0)
-        {
-            return false;
-        }
-
-        mapId = matching[random.Next(matching.Length)].MapId;
-        return true;
-    }
-
-    private static MapMonsterDefinition[] ParseMonsterRows(string text)
+    private static MapMonsterDefinition[] ParseMonsterRows(string text, string tag = "monster")
     {
         var result = new List<MapMonsterDefinition>();
-        foreach (var block in ParseAllBlocks(text, "monster"))
+        var teams = tag == "monster"
+            ? ParseAllBlockIntegers(text, "monster team").ToArray()
+            : [];
+        foreach (var block in ParseAllBlocks(text, tag))
         {
             foreach (var rawLine in block.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
             {
@@ -1452,7 +1669,8 @@ public sealed class DungeonCatalog
                         checked((ushort)values[3]),
                         checked((ushort)values[4]),
                         values[1] != 0,
-                        values[2]));
+                        values[2],
+                        result.Count < teams.Length ? teams[result.Count] : 100));
                 }
             }
         }
@@ -1955,7 +2173,10 @@ public sealed class DungeonCatalog
         char[] TopologySymbols,
         int BaseChampionCount,
         MapMonsterDefinition[] Monsters,
-        MapSpecialPassiveObject[] PassiveObjects);
+        MapSpecialPassiveObject[] PassiveObjects)
+    {
+        public MapMonsterDefinition[] ConditionMonsters { get; init; } = [];
+    }
 
     private readonly record struct MapMonsterDefinition(
         ushort MonsterIndex,
@@ -1963,7 +2184,8 @@ public sealed class DungeonCatalog
         ushort X = 0,
         ushort Y = 0,
         bool UsesDungeonLevel = true,
-        int LevelOffsetOrFixedLevel = 0);
+        int LevelOffsetOrFixedLevel = 0,
+        int Team = 100);
 
     private sealed record MapSpecialPassiveObject(
         byte ObjectIndex,

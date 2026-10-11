@@ -9,16 +9,23 @@ namespace DAFLegacy.Server;
 /// </summary>
 internal static class CraftPacketBuilders
 {
-    public static GameServerPacket CreateGetItemSilentRejection(PacketFrame request)
+    public static GameServerPacket CreateGetItemSilentRejection(PacketFrame request) =>
+        CreateGetItemRejection(request);
+
+    public static GameServerPacket CreateGetItemRejection(
+        PacketFrame request,
+        bool inventoryFull = false)
     {
         if (request.ProtocolId != (byte)CmdPacketType.GET_ITEM)
         {
             throw new ArgumentException(
-                "A silent item-pickup rejection requires a GET_ITEM request.",
+                "An item-pickup rejection requires a GET_ITEM request.",
                 nameof(request));
         }
 
-        return ConnectionPacketBuilders.CreateCommandError(request, GameProtocolConstants.GetItemSilentRejectionError);
+        return ConnectionPacketBuilders.CreateCommandError(request,
+            inventoryFull ? GameProtocolConstants.GetItemInventoryFullError
+                : GameProtocolConstants.GetItemSilentRejectionError);
     }
     public static GameServerPacket CreateDisjointItemReply(
         ushort sourceSlot,

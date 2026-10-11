@@ -9737,6 +9737,30 @@ async Task RunProgramInlineSuite()
     }
 }
 
+RegisterSelfTest("equipment-repair", () => EquipmentRepairSmokeTests.RunAsync(Check));
+RegisterSelfTest("mail-postage", () => PlayerMailPostageSmokeTests.RunAsync(Check));
+RegisterSelfTest("system-mail", () => SystemMailSmokeTests.RunAsync(Check));
+RegisterSelfTest("character-creation", () => CharacterCreationSmokeTests.RunAsync(Check));
+RegisterSelfTest("revival-coin-voucher", () => RevivalCoinVoucherSmokeTests.RunAsync(Check));
+RegisterSelfTest("full-bag-consumption", () => FullBagConsumptionSmokeTests.RunAsync(Check));
+RegisterSelfTest("dungeon-required-item", () => DungeonRequiredItemSmokeTests.RunAsync(Check));
+RegisterSelfTest("dungeon-completion", () =>
+{
+    DungeonCompletionSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("dungeon-boss-entrance", () =>
+{
+    DungeonBossEntranceSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("cera-shop-avatar-purchase", () =>
+{
+    CeraShopAvatarPurchaseSmokeTests.Run(Check);
+    return Task.CompletedTask;
+});
+RegisterSelfTest("creature-artifact-disposal", () => CreatureArtifactDisposalSmokeTests.RunAsync(Check));
+
 RegisterSelfTest("program-inline", RunProgramInlineSuite);
 
 var selfTestNames = selfTestSuites.Select(static suite => suite.Name).ToArray();

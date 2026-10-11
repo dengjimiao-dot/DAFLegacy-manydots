@@ -175,7 +175,7 @@ public sealed class BuyItemHandler(IGameStore store,
                 CharacterInventoryPlanner.CreateMailAttachments(
                     purchasedItem,
                     itemCatalog),
-                "Town shop purchase");
+                SystemItemMailReason.TownShopPurchase);
         }
 
         var nextGold = session.Currency.Gold - totalPrice;

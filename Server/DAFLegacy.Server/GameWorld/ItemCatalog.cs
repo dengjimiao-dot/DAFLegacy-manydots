@@ -44,7 +44,11 @@ public enum IncreaseStatusType : byte
     Spirit = 7,
     MovementSpeed = 8,
     AllElementResistance = 9,
-    SkillReset = 10
+    SkillReset = 10,
+    // Native coin vouchers use type 13. DF2008's type 11 is guild score
+    // (string 3034 at 0x00412F41), not coins. Type 13 takes its common
+    // consumption path without an effect message; NOTI14 updates the balance.
+    RevivalCoins = 13
 }
 
 public sealed record IncreaseStatusEffect(
@@ -192,6 +196,8 @@ public sealed record ItemDefinition(
     CeraPackageDefinition? CeraPackage = null,
     int? InventoryLimit = null)
 {
+    public int AvatarSelectableAbilityCount { get; init; }
+
     public bool IsEquipment => ScriptKind == ItemScriptKind.Equipment;
 
     public bool IsTitle =>
@@ -257,6 +263,10 @@ public sealed class ItemCatalog
         @"^\s*\[package data\]\s*(?<value>.*?)^\s*\[/package data\]",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Multiline |
         RegexOptions.Singleline | RegexOptions.IgnoreCase);
+    private static readonly Regex AvatarSelectAbilityPattern = new(
+        @"\[avatar select ability\]\s*(?<value>.*?)\s*\[/avatar select ability\]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant |
+        RegexOptions.IgnoreCase | RegexOptions.Singleline);
     private static readonly Regex BoosterGroupTagPattern = new(
         @"^\[(?<closing>/)?(?<tag>avatar|special avatar|cera|creature|equipment|stackable|etc|special creature|emblem)\]$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -515,6 +525,7 @@ public sealed class ItemCatalog
                 {
                     Type: not IncreaseStatusType.SkillPoints
                         and not IncreaseStatusType.Experience
+                        and not IncreaseStatusType.RevivalCoins
                 }),
             priceRates.NormalSellRatePerMille,
             priceRates.DungeonSellRatePerMille,
@@ -534,6 +545,7 @@ public sealed class ItemCatalog
                 {
                     Type: not IncreaseStatusType.SkillPoints
                         and not IncreaseStatusType.Experience
+                        and not IncreaseStatusType.RevivalCoins
                 }),
             priceRates);
     }
@@ -668,8 +680,26 @@ public sealed class ItemCatalog
                      ReadDecimal(CreatureExperienceAmountRatePattern, text),
                      ReadCeraBooster(typeTag, text, scriptPath),
                      ReadCeraPackage(typeTag, text, scriptPath),
-                     ReadInteger(InventoryLimitPattern, text)));
+                     ReadInteger(InventoryLimitPattern, text))
+                {
+                    AvatarSelectableAbilityCount =
+                        ReadAvatarSelectableAbilityCount(text)
+                });
         }
+    }
+
+    private static int ReadAvatarSelectableAbilityCount(string text)
+    {
+        var match = AvatarSelectAbilityPattern.Match(text);
+        if (!match.Success)
+        {
+            return 0;
+        }
+
+        return match.Groups["value"].Value
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split("//", 2, StringSplitOptions.None)[0].Trim())
+            .Count(line => line.StartsWith("`[", StringComparison.Ordinal));
     }
 
     private static CeraPackageDefinition? ReadCeraPackage(
@@ -852,6 +882,17 @@ public sealed class ItemCatalog
     private static IncreaseStatusEffect? ReadIncreaseStatusEffect(string scriptPath) =>
         scriptPath.Replace('\\', '/') switch
         {
+            // These [waste] vouchers have no numeric PVF effect tag. Native
+            // increase_status assigns 7180/42 one coin and 7181 five coins.
+            var path when path.Equals(
+                "stackable/event/newyear/coin_newyear.stk",
+                StringComparison.OrdinalIgnoreCase) => new(IncreaseStatusType.RevivalCoins, 1),
+            var path when path.Equals(
+                "stackable/event/newyear/coin_book.stk",
+                StringComparison.OrdinalIgnoreCase) => new(IncreaseStatusType.RevivalCoins, 5),
+            var path when path.Equals(
+                "stackable/cash/coin_general.stk",
+                StringComparison.OrdinalIgnoreCase) => new(IncreaseStatusType.RevivalCoins, 1),
             var path when path.Equals(
                 "stackable/book_exp1.stk",
                 StringComparison.OrdinalIgnoreCase) => new(

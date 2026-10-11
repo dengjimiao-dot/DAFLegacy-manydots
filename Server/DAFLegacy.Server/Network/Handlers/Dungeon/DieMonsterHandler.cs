@@ -111,7 +111,17 @@ public sealed class DieMonsterHandler(
                 }
             }
 
+            var bossEntranceWasOpen = session.Dungeon.Run.IsBossRoomEntranceOpen;
             session.Dungeon.Run.MarkMonsterDefeated(monsterUniqueId);
+            if (!bossEntranceWasOpen && session.Dungeon.Run.IsBossRoomEntranceOpen)
+            {
+                RuntimeLogger.Info(
+                    "Boss entrance condition satisfied for dungeon {DungeonId} after monster {MonsterIndex} died in room ({RoomX},{RoomY}).",
+                    session.Dungeon.CurrentDungeonId,
+                    defeatedMonster.MonsterIndex,
+                    session.Dungeon.RoomX,
+                    session.Dungeon.RoomY);
+            }
 
             var championRewardOrdinal =
                 GameProtocolConstants.NoChampionRewardOrdinal;

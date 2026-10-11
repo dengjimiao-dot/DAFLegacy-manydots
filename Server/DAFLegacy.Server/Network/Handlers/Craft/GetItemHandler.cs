@@ -26,10 +26,25 @@ public sealed class GetItemHandler(IGameStore store,
     public async ValueTask HandleAsync(ConnectionContext context, PacketFrame request, CancellationToken cancellationToken)
     {
         var session = context.State;
+        async Task RejectPickupAsync(bool inventoryFull = false)
+        {
+            if (request.Body.Length < sizeof(ushort))
+            {
+                return;
+            }
+
+            // DF2008 blocks CMD18/CMD47 while a pickup remains pending.
+            // Every failed pickup must release that operation, even if the
+            // server keeps the ground item and does not grant anything.
+            var error = CraftPacketBuilders.CreateGetItemRejection(request, inventoryFull);
+            await context.Queue.SendAsync(error, Name, cancellationToken);
+        }
+
         if (request.Body.Length < 4
             || session.Dungeon.CurrentDungeonId == 0
             || session.Character.Active is null)
         {
+            await RejectPickupAsync();
             return;
         }
 
@@ -42,6 +57,7 @@ public sealed class GetItemHandler(IGameStore store,
                 out var groundItem)
             || groundItem.OwnerUserId != session.Character.LocalUserId)
         {
+            await RejectPickupAsync();
             RuntimeLogger.Warn(
                 "Ignored invalid or duplicate pickup of ground item {GroundId} for user {UserId}.",
                 groundId,
@@ -59,6 +75,7 @@ public sealed class GetItemHandler(IGameStore store,
             }
             catch (OverflowException)
             {
+                await RejectPickupAsync();
                 RuntimeLogger.Warn(
                     "Gold pickup {GroundId} would overflow the character balance.",
                     groundId);
@@ -74,6 +91,7 @@ public sealed class GetItemHandler(IGameStore store,
                 cancellationToken);
             if (saved is null)
             {
+                await RejectPickupAsync();
                 RuntimeLogger.Warn(
                     "Gold pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
@@ -115,6 +133,7 @@ public sealed class GetItemHandler(IGameStore store,
                 expectedWarehouseCapacity: session.Inventory.WarehouseCapacity);
             if (savedUpgrade is null)
             {
+                await RejectPickupAsync();
                 RuntimeLogger.Warn(
                     "Warehouse-upgrade pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
@@ -156,9 +175,7 @@ public sealed class GetItemHandler(IGameStore store,
             // CMD 46 error 0x15 rolls that state back and drops it visually.
             // NOTI 39 would falsely confirm pickup, while NOTI 40 would create
             // a second ground object instead of releasing the existing one.
-            var overweightReply =
-                CraftPacketBuilders.CreateGetItemSilentRejection(request);
-            await context.Queue.SendAsync(overweightReply, Name, cancellationToken);
+            await RejectPickupAsync();
 
             var combinedWeight = carriedWeight > ulong.MaxValue - pickupWeight
                 ? ulong.MaxValue
@@ -212,6 +229,7 @@ public sealed class GetItemHandler(IGameStore store,
                     out var creaturePickupPlan,
                     out var creaturePickupFailure))
             {
+                await RejectPickupAsync(creaturePickupFailure == InventoryPlacementFailure.Full);
                 RuntimeLogger.Info(
                     "Ground Creature item {GroundId} cannot enter Creature inventory ({Failure}); it remains in the room.",
                     groundId,
@@ -233,6 +251,7 @@ public sealed class GetItemHandler(IGameStore store,
                         creaturePickupPlan.Inventory.Values);
             if (savedCreaturePickup is null)
             {
+                await RejectPickupAsync();
                 RuntimeLogger.Warn(
                     "Creature item pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
@@ -285,6 +304,7 @@ public sealed class GetItemHandler(IGameStore store,
                     out var avatarPickupPlan,
                     out var avatarPickupFailure))
             {
+                await RejectPickupAsync(avatarPickupFailure == InventoryPlacementFailure.Full);
                 RuntimeLogger.Info(
                     "Ground Avatar item {GroundId} cannot enter Avatar inventory ({Failure}); it remains in the room.",
                     groundId,
@@ -304,6 +324,7 @@ public sealed class GetItemHandler(IGameStore store,
                     avatarInventory: avatarPickupPlan.Inventory.Values);
             if (savedAvatarPickup is null)
             {
+                await RejectPickupAsync();
                 RuntimeLogger.Warn(
                     "Avatar item pickup {GroundId} was not persisted; the ground item was retained.",
                     groundId);
@@ -334,6 +355,7 @@ public sealed class GetItemHandler(IGameStore store,
                 out var pickupPlan,
                 out var pickupFailure))
         {
+            await RejectPickupAsync(pickupFailure == InventoryPlacementFailure.Full);
             RuntimeLogger.Info(
                 "Ground item {GroundId} cannot enter the inventory ({Failure}); it remains in the room.",
                 groundId,
@@ -350,6 +372,7 @@ public sealed class GetItemHandler(IGameStore store,
             cancellationToken);
         if (savedInventory is null)
         {
+            await RejectPickupAsync();
             RuntimeLogger.Warn(
                 "Item pickup {GroundId} was not persisted; the ground item was retained.",
                 groundId);

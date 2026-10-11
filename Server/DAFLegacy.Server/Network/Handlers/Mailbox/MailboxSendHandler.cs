@@ -8,7 +8,8 @@ namespace DAFLegacy.Server;
 public sealed class MailboxSendHandler(IGameStore store,
     ItemCatalog itemCatalog,
     CharacterSessionRegistry characterSessions,
-    CharacterPacketBuilders builders) : IGameCommandHandler
+    CharacterPacketBuilders builders,
+    ChannelSessionSenders senders) : IGameCommandHandler
 {
     public ushort ProtocolId => (byte)CmdPacketType.MAILBOX_SEND;
 
@@ -191,6 +192,13 @@ public sealed class MailboxSendHandler(IGameStore store,
                 senderUpdates);
             await context.Queue.SendAsync(inventoryUpdate, Name, cancellationToken);
         }
+
+        // Mailing attachments away can unsatisfy seeking quests; keep the
+        // stored trigger in step with the inventory delta above.
+        await senders.SendSeekingQuestTriggerUpdatesAsync(
+            context,
+            Name,
+            cancellationToken);
 
         // The registry callback enqueues the mail alarm event for the target
         // session; a self-addressed mail therefore alarms through the owning

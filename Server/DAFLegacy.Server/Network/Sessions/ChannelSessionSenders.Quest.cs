@@ -63,6 +63,69 @@ public sealed partial class ChannelSessionSenders
         return refreshed;
     }
 
+    /// <summary>
+    /// Recomputes seeking-quest triggers from the live inventory and pushes a
+    /// SET_QUEST_TRIGGER reply per change. The client derives the quest-log
+    /// completion state from the stored trigger, so inventory changes made
+    /// outside the drop planner (mail claims, mail sends) must re-push here
+    /// or the quest window keeps its previous state.
+    /// </summary>
+    public async Task SendSeekingQuestTriggerUpdatesAsync(
+    ConnectionContext context,
+    string source,
+    CancellationToken cancellationToken = default)
+    {
+        if (context.State.Character.Active is null)
+        {
+            return;
+        }
+
+        var plannedQuests = RefreshSeekingQuestTriggers(context,
+            context.State.Quest.Current,
+            context.State.Inventory.Main.Values,
+            context.State.Currency.Gold,
+            context.State.Currency.VictoryPoints,
+            out var triggerChanges);
+        if (triggerChanges.Count == 0)
+        {
+            return;
+        }
+
+        var savedQuestProgress = await store.SaveCharacterQuestsAsync(
+            context.State.Login.AccountName,
+            context.State.Character.Active.Id,
+            plannedQuests,
+            context.State.Quest.CompletedIds,
+            cancellationToken);
+        if (savedQuestProgress is null)
+        {
+            RuntimeLogger.Warn(
+                "Could not persist seeking quest trigger refresh from {Source}; quest triggers were left unchanged.",
+                source);
+            return;
+        }
+
+        context.State.Quest.Current = plannedQuests;
+        context.State.Character.Active = context.State.Character.Active with
+        {
+            Quests = savedQuestProgress.Quests,
+            CompletedQuestIds = savedQuestProgress.CompletedQuestIds
+        };
+        foreach (var change in triggerChanges)
+        {
+            var triggerUpdate = QuestPacketBuilders.CreateSetQuestTriggerReply(
+                change.QuestId,
+                change.NewTrigger);
+            await context.Queue.SendAsync(triggerUpdate, "QUEST_TRIGGER", cancellationToken);
+            RuntimeLogger.Info(
+                "Refreshed quest {QuestId} trigger from {OldTrigger} to {NewTrigger} after {Source}.",
+                change.QuestId,
+                change.OldTrigger,
+                change.NewTrigger,
+                source);
+        }
+    }
+
     public async Task GrantQuestItemDropsAsync(
         ConnectionContext context,
         Func<QuestDefinition, IEnumerable<CharacterItemRecord>, IReadOnlyList<QuestItemDrop>> planDrops,

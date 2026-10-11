@@ -131,5 +131,12 @@ public sealed class MailboxExtractHandler(IGameStore store,
             await senders.SendWarehouseStateAsync(context, cancellationToken);
         }
 
+        // Claimed attachments can complete seeking quests; the quest log
+        // follows the stored trigger, so the refresh must follow the
+        // inventory packets above.
+        await senders.SendSeekingQuestTriggerUpdatesAsync(
+            context,
+            Name,
+            cancellationToken);
     }
 }

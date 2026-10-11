@@ -386,7 +386,8 @@ public sealed class EntranceService(
             store: store,
             itemCatalog: itemCatalog,
             characterSessions: characterSessions,
-            builders: _characterPacketBuilders));
+            builders: _characterPacketBuilders,
+            senders: _sessionSenders));
         // 聊天消息发送 CMD 17 (0x11) ENUM_CMDPACKET_SEND_MESSAGE
         registry.Register("social.chat", new SendMessageHandler(
             store,

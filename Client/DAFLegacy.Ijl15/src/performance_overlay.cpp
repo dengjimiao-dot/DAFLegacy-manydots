@@ -16,9 +16,11 @@ namespace
     constexpr std::uintptr_t PerformanceDrawCall = 0x0083F996;
     constexpr std::uintptr_t OriginalPerformanceRenderer = 0x00836990;
     constexpr std::uintptr_t NativeMonitoringFlagOffset = 0x2F0;
-    constexpr int OverlayX = 440;
-    constexpr int FpsY = 35;
-    constexpr int MemoryY = 48;
+    // Anchors are left/top in the client's 640x480 render space; the pair
+    // sits in the top-center gap left of the map-name label.
+    constexpr int OverlayX = 345;
+    constexpr int FpsY = 4;
+    constexpr int MemoryY = 17;
     // The 2008DF text renderer consumes colors as AABBGGRR. This encodes
     // the desired chat/channel RGB color E3C699 without the blue swap.
     constexpr std::uint32_t OverlayTextColor = 0xFF99C6E3u;

@@ -616,10 +616,22 @@ namespace
         std::array<unsigned char, 6> Replacement;
     };
 
-    std::array<CodePatch, 38> BuildPatches() noexcept
+    std::array<CodePatch, 40> BuildPatches() noexcept
     {
         const auto& settings = dfl::ijl15_config::Get();
         return { {
+        {
+            settings.RepairAllWornEquipmentOnly,
+            dfl::dnf_patches::detail::RepairAllScopePatches[0].Address,
+            dfl::dnf_patches::detail::RepairAllScopePatches[0].Expected,
+            dfl::dnf_patches::detail::RepairAllScopePatches[0].Replacement
+        },
+        {
+            settings.RepairAllWornEquipmentOnly,
+            dfl::dnf_patches::detail::RepairAllScopePatches[1].Address,
+            dfl::dnf_patches::detail::RepairAllScopePatches[1].Expected,
+            dfl::dnf_patches::detail::RepairAllScopePatches[1].Replacement
+        },
         {
             settings.DisableDebuggerDetection,
             0x0040AEE0,
@@ -911,7 +923,7 @@ namespace
     }
 
     bool ValidatePatchRanges(
-        const std::array<CodePatch, 38>& patches) noexcept
+        const std::array<CodePatch, 40>& patches) noexcept
     {
         const auto& settings = dfl::ijl15_config::Get();
         const auto* base = reinterpret_cast<const unsigned char*>(DnfImageBase);
@@ -1370,7 +1382,7 @@ namespace dfl::dnf_patches
         // keeps using the installed system fonts.
         const bool localFontRegistered =
             dfl::font_resources::RegisterLocalFonts();
-        const std::array<CodePatch, 38> patches = BuildPatches();
+        const std::array<CodePatch, 40> patches = BuildPatches();
         if (!ValidatePatchRanges(patches))
         {
             OutputDebugStringA(

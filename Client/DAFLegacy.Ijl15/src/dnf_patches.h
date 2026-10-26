@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 
 #include "ijl15_config.h"
 #include "output_paths.h"
@@ -63,6 +65,40 @@ namespace dfl::dnf_patches
 		return stackableType == CeraBoosterStackableType
 			|| stackableType == 10
 				&& IsEtcStackableUseMode1ItemId(itemId);
+	}
+
+	namespace detail
+	{
+		struct RepairAllScopePatch
+		{
+			std::uintptr_t Address;
+			std::uintptr_t ResumeAddress;
+			std::array<unsigned char, 6> Expected;
+			std::array<unsigned char, 6> Replacement;
+		};
+
+		// All-repair (slot 0xFFFF) walks worn equipment and the main bag in
+		// separate loops. Both patches jump over the main-bag half so pricing,
+		// the confirm dialog and the REPLY25 durability fill cover only the
+		// range the server charges.
+		inline constexpr std::array<RepairAllScopePatch, 2> RepairAllScopePatches{{
+			{
+				// sub_7CDC10: return the worn-only price/count before scanning
+				// the main bag. Both affordability and the confirm dialog use it.
+				0x007CDC83,
+				0x007CDEA9,
+				{0x8B, 0x35, 0xEC, 0xDC, 0xB5, 0x00},
+				{0xE9, 0x21, 0x02, 0x00, 0x00, 0x90}
+			},
+			{
+				// REPLY25's 0xFFFF branch: keep the worn loop, skip the main-bag
+				// durability fill, then retain window cleanup and ITEM_REPAIR.
+				0x00411C79,
+				0x00411D6B,
+				{0x8B, 0x0D, 0xEC, 0xDC, 0xB5, 0x00},
+				{0xE9, 0xED, 0x00, 0x00, 0x00, 0x90}
+			}
+		}};
 	}
 
 	bool IsTargetProcess() noexcept;

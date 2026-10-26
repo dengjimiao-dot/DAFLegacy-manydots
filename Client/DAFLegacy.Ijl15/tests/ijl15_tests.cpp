@@ -210,6 +210,106 @@ bool TestMailboxArchiveRefreshPatchConfiguration()
     return dfl::ijl15_config::Get().FixMailboxArchiveRefresh;
 }
 
+bool TestRepairAllScopePatches()
+{
+    if (!dfl::ijl15_config::Get().RepairAllWornEquipmentOnly)
+    {
+        return false;
+    }
+
+    constexpr std::array<std::uintptr_t, 2> Addresses{0x007CDC83, 0x00411C79};
+    constexpr std::array<std::uintptr_t, 2> ResumeAddresses{0x007CDEA9, 0x00411D6B};
+    constexpr std::array<std::array<unsigned char, 6>, 2> OriginalBytes{{
+        {0x8B, 0x35, 0xEC, 0xDC, 0xB5, 0x00},
+        {0x8B, 0x0D, 0xEC, 0xDC, 0xB5, 0x00}
+    }};
+
+    const auto& patches = dfl::dnf_patches::detail::RepairAllScopePatches;
+    for (std::size_t index = 0; index < patches.size(); ++index)
+    {
+        const auto& patch = patches[index];
+        std::int32_t displacement = 0;
+        std::memcpy(
+            &displacement,
+            patch.Replacement.data() + 1,
+            sizeof(displacement));
+        if (patch.Address != Addresses[index]
+            || patch.ResumeAddress != ResumeAddresses[index]
+            || patch.Expected != OriginalBytes[index]
+            || patch.Replacement[0] != 0xE9
+            || patch.Replacement[5] != 0x90
+            || static_cast<std::int64_t>(patch.Address) + 5 + displacement
+                != static_cast<std::int64_t>(patch.ResumeAddress))
+        {
+            return false;
+        }
+
+        // Execute the patch bytes in a relocated x86 fixture. The counters
+        // represent the retained worn loop, the skipped bag loop and the
+        // retained exit.
+        constexpr std::array<unsigned char, 7> Prefix{
+            0x56, 0x8B, 0x74, 0x24, 0x08, 0xFF, 0x06};
+        constexpr std::array<unsigned char, 3> BagLoop{0xFF, 0x46, 0x04};
+        constexpr std::array<unsigned char, 5> Exit{
+            0xFF, 0x46, 0x08, 0x5E, 0xC3};
+        const std::size_t resumeOffset = Prefix.size()
+            + patch.ResumeAddress - patch.Address;
+        const std::size_t regionSize = resumeOffset + Exit.size();
+        auto* region = static_cast<unsigned char*>(VirtualAlloc(
+            nullptr,
+            regionSize,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_READWRITE));
+        if (region == nullptr)
+        {
+            return false;
+        }
+        std::memset(region, 0x90, regionSize);
+        std::memcpy(region, Prefix.data(), Prefix.size());
+        std::memcpy(
+            region + Prefix.size() + patch.Replacement.size(),
+            BagLoop.data(),
+            BagLoop.size());
+        std::memcpy(region + resumeOffset, Exit.data(), Exit.size());
+
+        DWORD oldProtection = 0;
+        bool passed = VirtualProtect(
+            region,
+            regionSize,
+            PAGE_EXECUTE_READ,
+            &oldProtection) != FALSE
+            && FlushInstructionCache(
+                GetCurrentProcess(),
+                region,
+                regionSize) != FALSE;
+        if (passed)
+        {
+            const auto execute =
+                reinterpret_cast<void (__cdecl*)(std::uint32_t*)>(region);
+            std::array<std::uint32_t, 3> counters{};
+            execute(counters.data());
+            passed = counters == std::array<std::uint32_t, 3>{1, 1, 1}
+                && dfl::memory_patch::WriteBytes(
+                    reinterpret_cast<std::uintptr_t>(
+                        region + Prefix.size()),
+                    patch.Replacement.data(),
+                    patch.Replacement.size());
+            if (passed)
+            {
+                counters.fill(0);
+                execute(counters.data());
+                passed = counters == std::array<std::uint32_t, 3>{1, 0, 1};
+            }
+        }
+        VirtualFree(region, 0, MEM_RELEASE);
+        if (!passed)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool TestInventoryTabKeepPatchConfiguration()
 {
     return dfl::ijl15_config::Get().KeepInventoryTabOnListRefresh;
@@ -381,6 +481,10 @@ int main()
     if (!TestMailboxArchiveRefreshPatchConfiguration())
     {
         return Fail("mailbox archive refresh patch is disabled");
+    }
+    if (!TestRepairAllScopePatches())
+    {
+        return Fail("repair-all patches do not retain worn scope and skip bag scope");
     }
     if (!TestInventoryTabKeepPatchConfiguration())
     {

@@ -188,6 +188,7 @@ EnableCustomStackableUseMode1=1
 RemoveCustomPopupAnnouncementTitle=1
 UseExternalDnfStringTable=1
 FixMailboxArchiveRefresh=1
+RepairAllWornEquipmentOnly=1
 KeepInventoryTabOnListRefresh=1
 SendInventorySortTab=1
 UnblockStorageUpgradeButton=1
@@ -215,6 +216,8 @@ GiftEligibility=0
 ```
 
 窗口大小只改变外层缩放，内部渲染保持 `640×480`。`ScaleFilter` 支持 `native`、`point`/`nearest`、`linear` 和 `anisotropic`。两个功能开关分别控制性能信息覆盖层与鼠标滚轮支持，设为 `0` 关闭。修改后重启客户端生效。
+
+`RepairAllWornEquipmentOnly` 开启时，客户端「全部修理」的计价、确认框金额与应答后的本地耐久刷新都只覆盖穿戴位，与服务端只修穿戴位的规则一致；置 `0` 恢复客户端默认的穿戴与背包全量计价和显示，此时两端的修理范围不一致。
 
 `[Fonts]` 与 `RegisterLocalFonts` 用于把客户端目录里的字体文件按进程私有方式注册（`AddFontResourceEx(FR_PRIVATE)`）后再启动引擎：客户端在启动时固定按 `SimSun` 12/18 两号取字（见 `docs/protocol/client-function-register-60cn.md` §12）：12 号是常规 UI 默认字体，18 号只有一个消费方（窗口组件 `sub_815B20`，即 NPC 对话弹窗一类多行大字窗）。实测仅注册文件并不生效——GDI 对"系统已装的同族名"仍选系统字体——因此补丁在注册成功后会把引擎两处字体创建的族名改成 `LocalFontFamily`（用字体文件的英文族名，默认值即客户端 `fonts/simsun.ttc` 的 `XPSimSun`；族名可先用 `tools/diagnostics/font_family_names.py` 查看）。生效范围由 `LocalFontFamilyTarget` 控制：`large`（默认）只改 18 号字体，客户端里只有 `sub_815B20` 构造的那个大字窗口组件消费它（NPC 对话弹窗一类的多行大字窗），12 号常规 UI 字体保持 `SimSun` 不动；`small` 只改 12 号常规 UI（影响整个界面）；`both` 两者都改。`LocalFontFile` 按客户端可执行文件所在目录解析，也可写盘符绝对路径；文件缺失、注册失败、族名留空或开关关闭时保持系统字体，不影响启动。
 

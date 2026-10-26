@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-10-26
+
+### FIX-15 全部修理的客户端计价与本地耐久范围改为只覆盖穿戴位（同步自 DFLegacy c1b6a0a）
+
+- **现象**：ADD-37 起服务端对 CMD 25 全部修理（slot=0xFFFF）只收取穿戴位的费用并只修穿戴位，但客户端计价函数仍把主背包内装备一并计入：可负担性判断与确认框金额均包含背包，确认后 REPLY25 的本地分支还会把背包装备耐久刷满，只能等服务端补发的 NOTI14 权威行纠正显示。
+- **根因结论**：客户端 `sub_7CDC10` 在 0x007CDC83 处进入主背包扫描，REPLY25 的 0xFFFF 分支在 0x00411C79 处进入主背包耐久填充；两处都位于穿戴位处理之后、窗口清理与 ITEM_REPAIR 通知之前。
+- **改动**：`Client/DAFLegacy.Ijl15/src/dnf_patches.h` 新增 `detail::RepairAllScopePatches`（两处地址、原字节与续点）；`dnf_patches.cpp` 将两项按 `RepairAllWornEquipmentOnly` 接入补丁表（表长 38→40）：0x007CDC83 跳至 0x007CDEA9 跳过主背包计价，0x00411C79 跳至 0x00411D6B 跳过主背包耐久填充；`ijl15_config` 新增运行期开关 `[Features] RepairAllWornEquipmentOnly`（默认 1）；`Config.ini` 与 `README.md` 登记开关及回退语义；原生自测新增两处地址、跳转位移与补丁字节执行断言。
+- **验证**：补丁地址、原字节与续点依据源项目 DFLegacy c1b6a0a 的 IDA 复核（0x007CDC83 原指令 `8B 35 EC DC B5 00`、0x00411C79 原指令 `8B 0D EC DC B5 00`）；本仓库原生自测 `ijl15_compatibility` 新增断言，需在 Windows 上执行 `Client/DAFLegacy.Ijl15/build-native.ps1 -RunTests` 构建验证（本次会话在 macOS 上未执行）。**真机未复测**：判据并入 `PENDING.md` P-56 的 ADD-37 行。
+- **遗留项**：开关置 0 可回退到客户端默认的全量计价与显示，但此时客户端范围大于服务端收费范围，仅用于对照排查。
+
 ## 2026-10-11
 
 ### ADD-38 商城装扮购买支持客户端技能选项选择；物品删除与分解扩展生物背包（同步自 DFLegacy 0e07c31）

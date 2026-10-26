@@ -48,6 +48,11 @@ namespace dfl::ijl15_config
         bool RemoveCustomPopupAnnouncementTitle;
         bool UseExternalDnfStringTable;
         bool FixMailboxArchiveRefresh;
+        // All-repair (slot 0xFFFF) pricing, the confirm dialog and the REPLY25
+        // durability fill cover only the worn-equipment slots - the same range
+        // the server charges. Disabling this restores the client's original
+        // worn-plus-backpack pricing and display.
+        bool RepairAllWornEquipmentOnly;
         bool KeepInventoryTabOnListRefresh;
         bool SendInventorySortTab;
         // Storage-window "upgrade" button: with this switch on, the module

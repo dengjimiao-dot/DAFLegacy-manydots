@@ -143,6 +143,8 @@
 
 **应答**:8B `[1, updatedGold u32, itemSpace, slot u16]`;随后推 NOTI 14。
 
+**客户端本地行为**：全部修理（slot=0xFFFF）的计价、确认框金额与应答后的本地耐久填充范围见 [client-function-register-60cn.md](client-function-register-60cn.md) §18（IJL15 开关 `RepairAllWornEquipmentOnly`，默认只覆盖穿戴位）。
+
 发包字节(示例):`01 19 0C 00 00 00 BE 23 C2 58 01 00` *
 
 ## CMD 26 `ENUM_CMDPACKET_SET_ITEMTRADE_STATE` — 交易锁定 ✅

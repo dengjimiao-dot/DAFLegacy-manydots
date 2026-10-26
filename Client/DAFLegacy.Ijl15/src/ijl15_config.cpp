@@ -45,6 +45,7 @@ namespace
         true, // RemoveCustomPopupAnnouncementTitle
         true, // UseExternalDnfStringTable
         true, // FixMailboxArchiveRefresh
+        true, // RepairAllWornEquipmentOnly
         true, // KeepInventoryTabOnListRefresh
         true, // SendInventorySortTab
         true, // UnblockStorageUpgradeButton
@@ -292,6 +293,11 @@ namespace dfl::ijl15_config
                 "Features",
                 "FixMailboxArchiveRefresh",
                 DefaultSettings.FixMailboxArchiveRefresh);
+            CurrentSettings.RepairAllWornEquipmentOnly = ReadBoolean(
+                path,
+                "Features",
+                "RepairAllWornEquipmentOnly",
+                DefaultSettings.RepairAllWornEquipmentOnly);
             CurrentSettings.KeepInventoryTabOnListRefresh = ReadBoolean(
                 path,
                 "Features",

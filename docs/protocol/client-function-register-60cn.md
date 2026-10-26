@@ -297,3 +297,13 @@
 | 每帧主泵 | `sub_433B00` | 反编 | 全局每帧泵:临界区→世界管理器 tick(`dword_B5DCE0` vtbl+124)→UDP NAT 状态机(`sub_78C9E0`)→背包窗口(`sub_79CE00`)→热键→`sub_433660`(帧计时)→`sub_792A70`;登录期即运行 |
 | 帧计时 tick(挂点) | `sub_433660`,唯一调用点 0x433C0D | 反编+反汇 | `timeGetTime` 帧计数;**IJL15 副本秒杀挂点**:0x433C0D 处 `call sub_433660`(原字节 `E8 4E FA FF FF`)重定向到插件桩,桩内 `pushad`→同步→`popad`→重建原调用→返回(返回值经 eax 保留);调用点返回值在该处为死值,标志字不消费 |
 | IJL15 副本秒杀同步 | `Client/DAFLegacy.Ijl15/src/dungeon_killer_mode.cpp` | — | `EnableDungeonKillerMode=1` 时的秒杀为**加载门控 + 进房派发窗口 + 容器内派发**:①挂点——每帧主泵 `sub_433B00` 帧计时调用点 0x433C0D(唯一调用点,原字节 `E8 4E FA FF FF`)执行扫描;CMD 40 发送点(0x89B711/0x8A2EB5)与 NOTI 29 房间查表点(0x41F98B→`sub_405750`)挂钩**只记/清加载时刻标志不发包**;②加载门——完成包+3000ms 或房间推送+8000ms 兜底后放行(派发进加载中的房间卡死客户端);③进房派发窗口——门开时重置跟踪表并开 1500ms 窗口,窗口内扫描 `[[dword_B5DCE0] vtbl+0x80] +0xB0` 容器(`sub_4048A0`/`sub_405830` 取对象,`vtbl+0x2C(0x211)` 低字节判怪物,**首见即派发 `sub_843AC0`**——存活查询 `vtbl+0x8C` 对多数怪(含活怪)恒为 0 不可作门控,(指针,id) 跟踪防重复);**窗口关闭后新出现的实体只跟踪不派发**(多场次 Boss 假身/换阶段等战斗编排实体曾被逐个秒杀、每次结算一轮掉落——「Boss 每攻击几次掉落一次」教训),「死→活」只更新状态不派发。**派发对象一律取自容器现场,永不使用早先记录的指针——等待期间被玩家打死的怪对象可能已释放,派发悬空指针会卡死客户端**(真机教训)。临时诊断日志 `Logs\DAFLegacy.Ijl15.killer.log`（客户端目录下）记录派发决策供复盘。真机判据见 PENDING P-55 |
+
+## 18. 全部修理(CMD 25 slot 0xFFFF)的客户端计价与本地耐久范围(2026-10-26 登记,IJL15 补丁依据)
+
+结论来自源项目 DFLegacy c1b6a0a 的 IDA 复核,本仓库补丁数据见 `Client/DAFLegacy.Ijl15/src/dnf_patches.h` 的 `detail::RepairAllScopePatches`,运行期开关 `[Features] RepairAllWornEquipmentOnly`(默认 1)。
+
+| 函数/数据 | 地址 | 取证 | 功能 |
+|---|---|---|---|
+| 全部修理计价/件数 | `sub_7CDC10` 关键点 0x7CDC83,跳过点 0x7CDEA9 | 反汇(源项目 c1b6a0a) | 先扫穿戴位,在 0x7CDC83 处原指令 `8B 35 EC DC B5 00`(`mov esi, dword_B5DCEC`)进入主背包扫描,扫描结束后返回价格与件数;返回值同时供可负担性判断与确认框金额使用。IJL15 在 0x7CDC83 写 `E9 21 02 00 00 90`,跳至 0x7CDEA9 跳过主背包计价 |
+| REPLY25 的 0xFFFF 分支 | 0x411C79 进入主背包填充,续点 0x411D6B | 反汇(源项目 c1b6a0a) | CMD 25 应答的全修分支先填充穿戴位耐久,在 0x411C79 处原指令 `8B 0D EC DC B5 00`(`mov ecx, dword_B5DCEC`)进入主背包耐久填充;0x411D6B 之后保留窗口清理与 ITEM_REPAIR 通知。IJL15 在 0x411C79 写 `E9 ED 00 00 00 90`,跳至 0x411D6B,只填充穿戴位 |
+| 补丁登记与开关 | `Client/DAFLegacy.Ijl15/src/dnf_patches.h`、`Client/DAFLegacy.Ijl15/Config.ini` | — | 两处均为 6 字节替换(`E9` + 4 字节相对位移 + `90`);原生自测 `TestRepairAllScopePatches` 校验地址、原字节、位移与续点一致,并在可执行夹具中确认补丁后保留穿戴循环、跳过背包循环、保留退出路径 |

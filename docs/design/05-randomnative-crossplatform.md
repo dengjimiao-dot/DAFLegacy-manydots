@@ -393,7 +393,7 @@ endif()
 
 ### 4.4 `CMakePresets.json`（新增）
 
-预设置于项目目录内。**不含 Windows 预设**：Windows 入口继续由 `build-native.ps1` 承担（它会按已安装的 VS 版本自动挑选生成器并做缓存校验，比固定生成器更稳），本次不给 Windows 引入第二条不太健壮的入口。
+预设置于项目目录内。**不含 Windows 预设**：Windows 入口继续由 `build-native.ps1` 承担（未设置 `CMAKE_GENERATOR` 时按已安装的 VS 版本自动挑选生成器，设置时采用指定生成器；两种情况都做缓存校验），本次不给 Windows 引入第二条不太健壮的入口。
 
 ```json
 {

@@ -36,13 +36,16 @@ $repositoryRoot = Split-Path (Split-Path $projectDirectory -Parent) -Parent
 $buildDirectory = Join-Path $repositoryRoot "artifacts\native\random"
 
 $cmakeHelp = & $cmake --help
-$generator = @(
-    "Visual Studio 18 2026",
-    "Visual Studio 17 2022",
-    "Visual Studio 16 2019"
-) | Where-Object { $cmakeHelp -match [regex]::Escape($_) } |
-    Select-Object -First 1
+$generator = $env:CMAKE_GENERATOR
 if (-not $generator) {
+    $generator = @(
+        "Visual Studio 18 2026",
+        "Visual Studio 17 2022",
+        "Visual Studio 16 2019"
+    ) | Where-Object { $cmakeHelp -match [regex]::Escape($_) } |
+        Select-Object -First 1
+}
+if (-not $generator -or -not ($cmakeHelp -match [regex]::Escape($generator))) {
     throw "A Visual Studio C++ CMake generator is required."
 }
 
